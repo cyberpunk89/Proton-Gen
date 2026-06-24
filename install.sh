@@ -22,8 +22,12 @@ echo "==> Installing frontend dependencies ($pm)…"
 # `cargo build --release` leaves the app in dev mode (it would try to connect to
 # the Vite dev server at localhost:1420). `tauri build` embeds the built frontend
 # and flips the app to production. `beforeBuildCommand` runs `pnpm build` for us.
+#
+# Invoke the local CLI directly rather than `$pm run tauri build -- --no-bundle`:
+# npm strips one `--`, but pnpm forwards it, which leaks `--no-bundle` through to
+# `cargo build` and fails. The binary path is the same under npm and pnpm.
 echo "==> Building production app (frontend + binary)…"
-( cd "$here" && $pm run tauri build -- --no-bundle )
+( cd "$here" && "$here/node_modules/.bin/tauri" build --no-bundle )
 
 echo "==> Installing files…"
 mkdir -p "$bin_dir" "$icon_dir" "$app_dir"
