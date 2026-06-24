@@ -1,0 +1,340 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ fonts */
+@font-face {
+  font-family: "Lexend";
+  src: url("/fonts/Lexend-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Lexend";
+  src: url("/fonts/Lexend-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+
+/* --------------------------------------------------- design token mapping */
+@theme {
+  --font-sans: "Lexend", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+
+  --color-bg: var(--bg);
+  --color-mantle: var(--mantle);
+  --color-surface: var(--surface);
+  --color-surface-solid: var(--surface-solid);
+  --color-surface-2: var(--surface-2);
+  --color-overlay: var(--overlay);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-subtext: var(--subtext);
+  --color-muted: var(--muted);
+
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-yellow: var(--yellow);
+  --color-peach: var(--peach);
+  --color-blue: var(--blue);
+  --color-mauve: var(--mauve);
+
+  --radius-card: 16px;
+}
+
+/* ----------------------------------------------------------- base palette */
+/* Default = Catppuccin Mocha. Each theme overrides the same token contract. */
+:root,
+[data-theme="mocha"] {
+  --bg: #1e1e2e;
+  --mantle: #181825;
+  --surface: #24243648;
+  --surface-solid: #292a3d;
+  --surface-2: #313244;
+  --overlay: #45475a;
+  --border: #313244;
+  --text: #cdd6f4;
+  --subtext: #bac2de;
+  --muted: #8087a2;
+  --accent: #b4befe;
+  --on-accent: #11111b;
+  --green: #a6e3a1;
+  --red: #f38ba8;
+  --yellow: #f9e2af;
+  --peach: #fab387;
+  --blue: #89b4fa;
+  --mauve: #cba6f7;
+}
+
+[data-theme="macchiato"] {
+  --bg: #24273a;
+  --mantle: #1e2030;
+  --surface: #303449;
+  --surface-solid: #303449;
+  --surface-2: #363a4f;
+  --overlay: #494d64;
+  --border: #363a4f;
+  --text: #cad3f5;
+  --subtext: #b8c0e0;
+  --muted: #8087a2;
+  --accent: #b7bdf8;
+  --on-accent: #181926;
+  --green: #a6da95;
+  --red: #ed8796;
+  --yellow: #eed49f;
+  --peach: #f5a97f;
+  --blue: #8aadf4;
+  --mauve: #c6a0f6;
+}
+
+[data-theme="frappe"] {
+  --bg: #303446;
+  --mantle: #292c3c;
+  --surface: #3c4054;
+  --surface-solid: #3c4054;
+  --surface-2: #414559;
+  --overlay: #51576d;
+  --border: #414559;
+  --text: #c6d0f5;
+  --subtext: #b5bfe2;
+  --muted: #838ba7;
+  --accent: #babbf1;
+  --on-accent: #232634;
+  --green: #a6d189;
+  --red: #e78284;
+  --yellow: #e5c890;
+  --peach: #ef9f76;
+  --blue: #8caaee;
+  --mauve: #ca9ee6;
+}
+
+[data-theme="latte"] {
+  --bg: #eff1f5;
+  --mantle: #e6e9ef;
+  --surface: #ffffffcc;
+  --surface-solid: #ffffff;
+  --surface-2: #e6e9ef;
+  --overlay: #ccd0da;
+  --border: #ccd0da;
+  --text: #4c4f69;
+  --subtext: #5c5f77;
+  --muted: #8c8fa1;
+  --accent: #7287fd;
+  --on-accent: #ffffff;
+  --green: #40a02b;
+  --red: #d20f39;
+  --yellow: #df8e1d;
+  --peach: #fe640b;
+  --blue: #1e66f5;
+  --mauve: #8839ef;
+}
+
+[data-theme="dracula"] {
+  --bg: #282a36;
+  --mantle: #21222c;
+  --surface: #343746;
+  --surface-solid: #343746;
+  --surface-2: #44475a;
+  --overlay: #565a72;
+  --border: #44475a;
+  --text: #f8f8f2;
+  --subtext: #d8d8d2;
+  --muted: #8b8fa3;
+  --accent: #bd93f9;
+  --on-accent: #21222c;
+  --green: #50fa7b;
+  --red: #ff5555;
+  --yellow: #f1fa8c;
+  --peach: #ffb86c;
+  --blue: #8be9fd;
+  --mauve: #ff79c6;
+}
+
+[data-theme="nord"] {
+  --bg: #2e3440;
+  --mantle: #272c36;
+  --surface: #3b4252;
+  --surface-solid: #3b4252;
+  --surface-2: #434c5e;
+  --overlay: #4c566a;
+  --border: #434c5e;
+  --text: #eceff4;
+  --subtext: #d8dee9;
+  --muted: #7b88a1;
+  --accent: #88c0d0;
+  --on-accent: #2e3440;
+  --green: #a3be8c;
+  --red: #bf616a;
+  --yellow: #ebcb8b;
+  --peach: #d08770;
+  --blue: #81a1c1;
+  --mauve: #b48ead;
+}
+
+[data-theme="tokyo-night"] {
+  --bg: #1a1b26;
+  --mantle: #16161e;
+  --surface: #21222f;
+  --surface-solid: #21222f;
+  --surface-2: #292e42;
+  --overlay: #3b4261;
+  --border: #292e42;
+  --text: #c0caf5;
+  --subtext: #a9b1d6;
+  --muted: #565f89;
+  --accent: #7aa2f7;
+  --on-accent: #16161e;
+  --green: #9ece6a;
+  --red: #f7768e;
+  --yellow: #e0af68;
+  --peach: #ff9e64;
+  --blue: #7dcfff;
+  --mauve: #bb9af7;
+}
+
+[data-theme="gruvbox"] {
+  --bg: #282828;
+  --mantle: #1d2021;
+  --surface: #32302f;
+  --surface-solid: #32302f;
+  --surface-2: #3c3836;
+  --overlay: #504945;
+  --border: #3c3836;
+  --text: #ebdbb2;
+  --subtext: #d5c4a1;
+  --muted: #928374;
+  --accent: #fe8019;
+  --on-accent: #1d2021;
+  --green: #b8bb26;
+  --red: #fb4934;
+  --yellow: #fabd2f;
+  --peach: #fe8019;
+  --blue: #83a598;
+  --mauve: #d3869b;
+}
+
+[data-theme="rose-pine"] {
+  --bg: #191724;
+  --mantle: #1f1d2e;
+  --surface: #1f1d2e;
+  --surface-solid: #1f1d2e;
+  --surface-2: #26233a;
+  --overlay: #393552;
+  --border: #26233a;
+  --text: #e0def4;
+  --subtext: #c9c7e0;
+  --muted: #908caa;
+  --accent: #c4a7e7;
+  --on-accent: #191724;
+  --green: #9ccfd8;
+  --red: #eb6f92;
+  --yellow: #f6c177;
+  --peach: #ebbcba;
+  --blue: #31748f;
+  --mauve: #c4a7e7;
+}
+
+[data-theme="one-dark"] {
+  --bg: #282c34;
+  --mantle: #21252b;
+  --surface: #2f343f;
+  --surface-solid: #2f343f;
+  --surface-2: #3a3f4b;
+  --overlay: #4b5263;
+  --border: #3a3f4b;
+  --text: #abb2bf;
+  --subtext: #c4cad4;
+  --muted: #5c6370;
+  --accent: #c678dd;
+  --on-accent: #21252b;
+  --green: #98c379;
+  --red: #e06c75;
+  --yellow: #e5c07b;
+  --peach: #d19a66;
+  --blue: #61afef;
+  --mauve: #c678dd;
+}
+
+/* ----------------------------------------------------------- base styles */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%),
+    radial-gradient(1000px 500px at -10% 10%, color-mix(in srgb, var(--mauve) 8%, transparent), transparent 55%),
+    var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--overlay) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--overlay);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: padding-box;
+}
+
+/* Disable text selection on chrome; inputs/preview re-enable it. */
+button,
+.no-select {
+  user-select: none;
+}
+
+/* Reusable surface card (large translucent panels) */
+@utility card {
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-card);
+  backdrop-filter: blur(12px);
+}
+
+/* Elevated popover / dropdown / drawer surface. Opaque + bordered + shadowed —
+   no backdrop-blur (wasted over an opaque fill and washes out in WebKitGTK). */
+@utility popover {
+  background: var(--surface-solid);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, var(--text) 6%, transparent) inset,
+    0 10px 30px -10px rgb(0 0 0 / 55%),
+    0 4px 12px -6px rgb(0 0 0 / 45%);
+}
+
+/* Honor reduced-motion: collapse transitions/animations to near-instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

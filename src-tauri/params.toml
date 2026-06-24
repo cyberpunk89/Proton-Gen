@@ -1,0 +1,792 @@
+# protongen parameter catalog
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20260602  —  updated 2026-06-23
+#
+# Sources (refresh with the /update-proton-params Claude skill):
+#   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
+#   - https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md
+#   - https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md
+#   - https://wiki.cachyos.org/configuration/gaming/
+#   - https://deepwiki.com/HansKristian-Work/vkd3d-proton/8.4-environment-variables
+#   - https://github.com/doitsujin/dxvk
+#
+# Two tables:
+#   [[wrapper]]  programs placed BEFORE the target (%command% or umu-run)
+#   [[env]]      KEY=value environment variables, grouped by `category`
+#
+# Fields:
+#   key            env var name, or wrapper command
+#   label          friendly name (wrappers; optional for env)
+#   kind           wrapper only: "plain" | "gamescope"
+#   category       env only: section heading in the UI
+#   default_value  prefilled value (env) / args (gamescope)
+#   values         optional list of suggested values (combo box)
+#   requires       optional: binary that must be on PATH (drives installed/missing badge)
+#   help           one-line description
+
+# Records the proton-cachyos build this catalog was last refreshed against.
+# The app compares it to your installed build and shows a banner when newer.
+# The /update-proton-params skill bumps this when it refreshes the catalog.
+[meta]
+proton_cachyos_build = "20260602"
+updated = "2026-06-23"
+
+# ============================ Wrappers ============================
+
+[[wrapper]]
+key = "gamemoderun"
+label = "GameMode"
+kind = "plain"
+requires = "gamemoderun"
+help = "Feral GameMode: applies CPU governor / scheduling optimizations while gaming."
+details = "Feral GameMode daemon applies CPU governor, I/O priority, process niceness, and kernel scheduler optimizations while the game runs. Particularly beneficial for systems with Intel/AMD powersave governors that throttle performance; trades power savings for consistent FPS during gameplay."
+example = "gamemoderun %command%"
+url = "https://github.com/FeralInteractive/gamemode#requesting-gamemode"
+
+[[wrapper]]
+key = "mangohud"
+label = "MangoHud"
+kind = "plain"
+requires = "mangohud"
+help = "MangoHud: in-game FPS / frametime / temperature / load overlay."
+details = "Real-time performance overlay showing FPS, frame times, CPU/GPU temps, load percentages, and memory usage. Works with both Vulkan and OpenGL with minimal performance overhead. Highly configurable via MANGOHUD_CONFIG environment variable; use for gameplay monitoring or benchmarking."
+example = "mangohud %command%"
+url = "https://github.com/flightlessmango/MangoHud#normal-usage"
+
+[[wrapper]]
+key = "gamescope"
+label = "Gamescope"
+kind = "gamescope"
+default_value = "-f"
+requires = "gamescope"
+help = "Micro-compositor. Edit args, e.g. '-W 2560 -H 1440 -f -F fsr -r 144'."
+details = "Micro-compositor that runs games in a sandboxed Wayland session with optional upscaling (integer/FSR/NIS), frame rate limiting, and windowing control. Reduces latency via async compute and DRM direct flipping. Useful for exotic displays (ultrawide, multi-monitor) or isolating unstable games from the desktop."
+example = "gamescope -f -W 1920 -H 1080 -r 60 -- %command%"
+url = "https://github.com/ValveSoftware/gamescope#options"
+
+# ====================== Performance / Sync =======================
+
+[[env]]
+key = "PROTON_USE_NTSYNC"
+needs = ["ntsync"]
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "Kernel ntsync sync primitives (default-on in recent builds; set 0 to disable)."
+details = "Enables the kernel ntsync synchronization primitives for improved compatibility and performance. NTSync is enabled by default in recent Proton builds and provides faster game launch and execution. Set to 1 to enable, 0 to use FSync/other primitives instead; disable only if the game has compatibility issues with NTSync."
+example = "PROTON_USE_NTSYNC=1 %command%"
+url = "https://wiki.cachyos.org/configuration/gaming/"
+
+[[env]]
+key = "PROTON_DXVK_GPLASYNC"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable the gplasync DXVK fork to cut shader stutter (UNSAFE for anti-cheat)."
+details = "Swaps in CachyOS's gplasync DXVK fork, which compiles pipelines asynchronously to reduce shader-compilation stutter on first encounter. It can trip kernel-level anti-cheat, so do NOT use it in EAC/BattlEye multiplayer titles — prefer PROTON_DXVK_LOWLATENCY there. CachyOS-Proton only; mutually exclusive with the low-latency fork."
+example = "PROTON_DXVK_GPLASYNC=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_NO_FSYNC"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "Disable fsync (futex-based sync). Troubleshooting only."
+details = "Disables futex-based in-process synchronization primitives (fsync), which normally provides better performance than older sync methods. Automatically disabled on systems lacking FUTEX_WAIT_MULTIPLE kernel support; use only to troubleshoot games with fsync-related issues."
+example = "PROTON_NO_FSYNC=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_FORCE_LARGE_ADDRESS_AWARE"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "Force 32-bit games to use >2GB address space (fixes some crashes)."
+details = "Forces Wine to enable the LARGE_ADDRESS_AWARE flag for all 32-bit executables, allowing them to use more than 2GB of address space. Enabled by default in Proton and fixes crashes in games that require more memory than the 32-bit default limit allows."
+example = "PROTON_FORCE_LARGE_ADDRESS_AWARE=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_HEAP_DELAY_FREE"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "Delay heap frees to work around use-after-free bugs in some games."
+details = "Delays the freeing of heap memory to work around use-after-free bugs in some games that incorrectly access freed memory. Enabled by default to improve compatibility; disable only if a game has crashes or memory-related issues that are specifically caused by this workaround."
+example = "PROTON_HEAP_DELAY_FREE=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_DXVK_LOWLATENCY"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: use the low-latency DXVK fork for better frame pacing / input lag."
+details = "Swaps in CachyOS's low-latency DXVK fork, which adds frame-pacing improvements to reduce input lag. Helpful for fast-paced or competitive games; disable if you see artifacts or regressions. CachyOS-Proton only."
+example = "PROTON_DXVK_LOWLATENCY=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "LOW_LATENCY_LAYER"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable the open-source low_latency_layer (Reflex-like latency reduction)."
+details = "Enables the open-source low_latency_layer, a vendor-neutral latency-reduction layer (similar in spirit to NVIDIA Reflex) added in proton-cachyos 11.0-20260519. Reduces render-queue latency in supported titles. Pair with DXVK_NVAPI_VKREFLEX for NVIDIA Reflex games."
+example = "LOW_LATENCY_LAYER=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+# ======================== Render backend ========================
+
+[[env]]
+key = "PROTON_USE_WINED3D"
+category = "Render backend"
+default_value = "1"
+values = ["1", "0"]
+help = "Use OpenGL-based wined3d instead of Vulkan DXVK/VKD3D. Rarely needed."
+details = "Forces Direct3D 9, 10, and 11 games to use the OpenGL-based wined3d renderer instead of the faster Vulkan-based DXVK. Useful for older integrated GPUs with poor Vulkan support, or as a last resort if a game has rendering bugs with DXVK."
+example = "PROTON_USE_WINED3D=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtime-config-options"
+
+[[env]]
+key = "PROTON_NO_D3D12"
+category = "Render backend"
+default_value = "1"
+values = ["1", "0"]
+help = "Disable VKD3D-Proton (D3D12). Forces D3D11 path where possible."
+details = "Disables Direct3D 12 support (vkd3d-proton) and forces affected games to use the D3D11 rendering path instead. This can work around D3D12-specific bugs, but may reduce performance or change visual quality in some titles."
+example = "PROTON_NO_D3D12=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtime-config-options"
+
+[[env]]
+key = "PROTON_NO_D3D11"
+category = "Render backend"
+default_value = "1"
+values = ["1", "0"]
+help = "Disable DXVK for D3D11."
+details = "Disables Direct3D 11 support via DXVK; affected games fall back to the D3D9 rendering path instead. Useful for D3D11 games that have compatibility issues with DXVK but run correctly under wined3d or DXVK's D3D9 path."
+example = "PROTON_NO_D3D11=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtime-config-options"
+
+[[env]]
+key = "PROTON_NO_D3D10"
+category = "Render backend"
+default_value = "1"
+values = ["1", "0"]
+help = "Disable DXVK for D3D10."
+details = "Disables Direct3D 10 and DXGI support (both required together); games that request D3D10 will fall back to D3D9 instead. Rarely needed, but can work around D3D10-specific compatibility issues in legacy or niche titles."
+example = "PROTON_NO_D3D10=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtime-config-options"
+
+[[env]]
+key = "PROTON_NO_D3D9"
+category = "Render backend"
+default_value = "1"
+values = ["1", "0"]
+help = "Disable DXVK for D3D9 (falls back to wined3d)."
+details = "Disables Direct3D 9 support, forcing those games to use the OpenGL-based wined3d fallback path instead of DXVK. Enable only if a D3D9 game exhibits rendering or performance issues with DXVK but works with wined3d."
+example = "PROTON_NO_D3D9=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtime-config-options"
+
+[[env]]
+key = "PROTON_DXVK_D3D8"
+category = "Render backend"
+default_value = "1"
+values = ["1", "0"]
+help = "Use DXVK's native d3d8 implementation for Direct3D 8 games."
+details = "Routes Direct3D 8 games through DXVK's native d3d8.dll instead of the d3d8-to-d3d9 wrapper, improving compatibility and performance for older titles. Enable for DX8-era games that misbehave on the default path."
+example = "PROTON_DXVK_D3D8=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_DXVK_SAREK"
+category = "Render backend"
+default_value = "auto"
+values = ["auto", "1", "0"]
+help = "CachyOS: dxvk-sarek fork for older GPUs lacking Vulkan 1.3 (auto/1/0)."
+details = "Replaces DXVK with the dxvk-sarek fork, which targets older GPUs (Vulkan 1.1-1.2) that don't properly support Vulkan 1.3. As of 11.0-20260602 it accepts 'auto' (the default — fall back to sarek only when the GPU lacks Vulkan 1.3), '1' (force on), or '0' (force off). Set 1 if a game fails to start with a Vulkan 1.3 / feature-level error on legacy hardware. CachyOS-Proton only."
+example = "PROTON_DXVK_SAREK=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_D7VK_DDRAW"
+category = "Render backend"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: use D7VK's ddraw.dll for DirectX 7-or-lower games."
+details = "Provides a Vulkan-backed ddraw.dll (D7VK) for very old DirectX 7-and-earlier games, improving rendering over Wine's builtin. Enable for retro titles with 2D / early-3D rendering issues. CachyOS-Proton only."
+example = "PROTON_D7VK_DDRAW=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+# ====================== NVIDIA / Upscaling =======================
+
+[[env]]
+key = "PROTON_ENABLE_NVAPI"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "Enable NVAPI/DLSS support (NVIDIA GPUs)."
+details = "Enables NVIDIA's NVAPI GPU support library through DXVK-NVAPI, allowing games to access NVIDIA-specific features including DLSS Super Resolution, Reflex, and other optimizations. When enabled (1), Proton automatically detects and initializes NVAPI for NVIDIA GPUs; disable (0) only if experiencing crashes or compatibility issues. Most NVIDIA GPU users should keep this enabled for the best feature support."
+example = "PROTON_ENABLE_NVAPI=1 %command%"
+url = "https://github.com/jp7677/dxvk-nvapi/blob/master/README.md"
+
+[[env]]
+key = "DXVK_ENABLE_NVAPI"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "Let DXVK expose NVAPI (pairs with PROTON_ENABLE_NVAPI)."
+details = "Tells DXVK to expose NVAPI entry points to games, working in conjunction with PROTON_ENABLE_NVAPI. This variable specifically controls whether DXVK disables its internal nvapiHack (a compatibility workaround), allowing the full DXVK-NVAPI implementation to be used. Enable (1) for NVAPI game support; disable (0) only for troubleshooting when PROTON_ENABLE_NVAPI is set."
+example = "DXVK_ENABLE_NVAPI=1 %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md"
+
+[[env]]
+key = "PROTON_HIDE_NVIDIA_GPU"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "Hide the NVIDIA GPU from the game (forces fallback paths)."
+details = "Forces the game to report the GPU as AMD instead of NVIDIA, causing the game to use fallback rendering paths instead of NVIDIA-specific code. Useful for troubleshooting when games have Windows-only NVIDIA driver dependencies that break on Linux, or when NVIDIA-specific paths are causing crashes. Enable only if the game runs better without NVIDIA detection."
+example = "PROTON_HIDE_NVIDIA_GPU=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_DLSS_UPGRADE"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "Auto-upgrade the game's DLSS DLL to the latest version."
+details = "Automatically downloads and installs the latest available DLSS Super Resolution DLL for a game, replacing the bundled version. This ensures you get performance improvements and bug fixes from newer DLSS versions without waiting for game updates. Set to a specific version number (e.g., '3.8.10') to pin a version, or '1' for the latest."
+example = "PROTON_DLSS_UPGRADE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
+
+[[env]]
+key = "PROTON_DLSS_INDICATOR"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "Show the DLSS overlay indicator (confirms DLSS version in use)."
+details = "Shows an overlay indicator in the top-left corner of the screen displaying which version of DLSS is active in the game. Useful for confirming that DLSS is enabled and which version is running. The indicator appears automatically without any additional configuration beyond setting this to 1."
+example = "PROTON_DLSS_INDICATOR=1 %command%"
+url = "https://github.com/jp7677/dxvk-nvapi/blob/master/README.md"
+
+[[env]]
+key = "PROTON_FSR4_UPGRADE"
+gpu = "amd"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: upgrade FSR to FSR 4 (defaults to 4.1.0). Needs RDNA4 / compatible GPU."
+details = "CachyOS-specific: automatically upgrades AMD FidelityFX Super Resolution to FSR 4 (defaults to version 4.1.0), providing improved image quality and performance scaling. Requires RDNA4 GPU or compatible architecture. Set to a specific version (e.g., '4.0.2') to pin that version, or set to 0 to disable FSR4 upgrade."
+example = "PROTON_FSR4_UPGRADE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
+
+[[env]]
+key = "PROTON_FSR4_RDNA3_UPGRADE"
+gpu = "amd"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: RDNA3-optimized FSR 4 DLL (defaults to 4.0.0)."
+details = "CachyOS-specific: provides an RDNA3-optimized FidelityFX Super Resolution 4 DLL (defaults to version 4.0.0) for AMD RDNA3 graphics cards. RDNA3 systems use different FSR4 optimizations than RDNA4, so this parameter ensures your GPU gets the best-tuned version. Set to a specific version number to use a different release."
+example = "PROTON_FSR4_RDNA3_UPGRADE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
+
+[[env]]
+key = "PROTON_XESS_UPGRADE"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: auto-upgrade Intel XeSS to the latest version."
+details = "CachyOS-specific: automatically downloads and installs the latest available Intel XeSS upscaling DLL for a game. Intel XeSS provides AI-powered upscaling similar to DLSS, optimized for Intel Arc GPUs but also compatible with other architectures. Enable (1) to get the latest version improvements and bug fixes."
+example = "PROTON_XESS_UPGRADE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
+
+[[env]]
+key = "__NV_PRIME_RENDER_OFFLOAD"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "PRIME render offload: run the game on the NVIDIA dGPU (hybrid laptops)."
+details = "Enables NVIDIA GPU offloading on hybrid laptops with both integrated and discrete NVIDIA graphics. When set to 1, the game will run exclusively on the NVIDIA dGPU instead of the integrated GPU, providing significantly better performance. This is an NVIDIA driver feature and only applies to systems with proper NVIDIA Optimus/Prime setup."
+example = "__NV_PRIME_RENDER_OFFLOAD=1 %command%"
+url = "https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.html"
+
+[[env]]
+key = "__GLX_VENDOR_LIBRARY_NAME"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "nvidia"
+help = "PRIME offload GLX vendor; set with __NV_PRIME_RENDER_OFFLOAD on hybrid GPUs."
+details = "Sets the OpenGL/GLX library vendor when using NVIDIA PRIME render offload on hybrid systems. Should typically be set to 'nvidia' when using __NV_PRIME_RENDER_OFFLOAD=1. This tells the system to use NVIDIA's GLX implementation instead of other vendors, ensuring proper GPU routing for OpenGL-based games."
+example = "__GLX_VENDOR_LIBRARY_NAME=nvidia %command%"
+url = "https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.html"
+
+[[env]]
+key = "PROTON_FSR3_UPGRADE"
+gpu = "amd"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: upgrade a game's FSR to FSR 3.1 (adds frame generation)."
+details = "Replaces a game's bundled AMD FSR with FSR 3.1, adding frame generation and improved upscaling where supported. Use as a stepping stone when a game can't run FSR 4. CachyOS-Proton only."
+example = "PROTON_FSR3_UPGRADE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_FSR4_INDICATOR"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: show the FSR 4 watermark (top-left) to confirm it's active."
+details = "Displays an FSR 4 watermark in the top-left corner so you can confirm the FSR4 upgrade is actually running. Purely diagnostic; turn it off once verified. CachyOS-Proton only."
+example = "PROTON_FSR4_INDICATOR=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_MLFG_UPGRADE"
+gpu = "amd"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable AMD multi-frame generation (needs amdxcffx64.dll >= 4.0.3)."
+details = "Enables AMD multi-frame generation (MLFG) when the game's amdxcffx64.dll is >= 4.0.3; it is auto-enabled alongside FSR4 upgrades. Boosts perceived framerate via generated frames on supported AMD hardware. CachyOS-Proton only."
+example = "PROTON_MLFG_UPGRADE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_USE_OPTISCALER"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: auto-inject OptiScaler to swap/force upscalers (DLSS/FSR/XeSS)."
+details = "Automatically injects OptiScaler, which lets you replace or force a game's upscaler (e.g. expose FSR/XeSS where only DLSS exists, or vice-versa). Pair with PROTON_OPTISCALER_NAME to choose the injected DLL. CachyOS-Proton only (added 11.0-20260506)."
+example = "PROTON_USE_OPTISCALER=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_OPTISCALER_NAME"
+category = "NVIDIA / Upscaling"
+default_value = "dxgi.dll"
+values = ["dxgi.dll", "d3d12.dll", "dbghelp.dll"]
+help = "CachyOS: which DLL OptiScaler injects as (default dxgi.dll)."
+details = "Controls which proxy DLL OptiScaler hooks through. Try d3d12.dll or dbghelp.dll if dxgi.dll injection fails or conflicts with the game. Only meaningful with PROTON_USE_OPTISCALER=1."
+example = "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_NAME=d3d12.dll %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_OPTISCALER_CONFIG"
+category = "NVIDIA / Upscaling"
+default_value = ""
+help = "CachyOS: write OptiScaler.ini settings inline, e.g. 'Upscalers.Dx12Upscaler=fsr31'."
+details = "Pushes arbitrary OptiScaler.ini settings without editing the file by hand, as a semicolon-separated list of '{section}.{option}={value}' entries. Use it to pin the substitute upscaler or tune quality once OptiScaler is injected. Only meaningful with PROTON_USE_OPTISCALER=1. CachyOS-Proton only (added 11.0-20260601)."
+example = "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG='Upscalers.Dx12Upscaler=fsr31;FSR.UpscaleRatio=2.0' %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "DXVK_NVAPI_VKREFLEX"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "Enable DXVK-NVAPI's Vulkan Reflex layer (NVIDIA Reflex in Vulkan games)."
+details = "Turns on DXVK-NVAPI's Vulkan Reflex layer so NVIDIA Reflex low-latency works in Vulkan/DXVK titles. Requires an NVIDIA GPU with PROTON_ENABLE_NVAPI=1. Reduces input latency in supported games."
+example = "PROTON_ENABLE_NVAPI=1 DXVK_NVAPI_VKREFLEX=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_NVIDIA_LIBS"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable alternative NVIDIA libraries (PhysX, CUDA, NVENC, etc.)."
+details = "Enables CachyOS's alternative implementations of NVIDIA libraries (nvcuda, nvenc, PhysX, etc.) for hardware acceleration in games that need them. Use for titles relying on GPU PhysX or NVENC. CachyOS-Proton only."
+example = "PROTON_NVIDIA_LIBS=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+# ===================== Display / Wayland / HDR ====================
+
+[[env]]
+key = "PROTON_ENABLE_WAYLAND"
+needs = ["wayland"]
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Run on the native Wayland driver (no XWayland). Enables HDR without gamescope."
+details = "Enables native Wayland driver support (winewayland.drv) instead of XWayland, allowing games to run natively on Wayland compositors. This is experimental and work-in-progress; expect potential issues with Steam Overlay, Steam Input, and some launchers (which may display as white windows). Benefits include HDR support without gamescope and improved latency/frame pacing on compatible systems."
+example = "PROTON_ENABLE_WAYLAND=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#runtime-config-options"
+
+[[env]]
+key = "PROTON_ENABLE_HDR"
+needs = ["hdr"]
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Obsolete alias for DXVK_HDR — prefer DXVK_HDR=1 below."
+details = "Obsolete alias for DXVK_HDR. Modern Proton uses DXVK_HDR=1 to enable HDR output support. Requires either Gamescope with --hdr-enabled or PROTON_ENABLE_WAYLAND=1, plus an HDR-capable display and appropriate display server/compositor support."
+example = "PROTON_ENABLE_HDR=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#runtime-config-options"
+
+[[env]]
+key = "PROTON_WAYLAND_MONITOR"
+needs = ["wayland"]
+category = "Display / Wayland / HDR"
+default_value = ""
+help = "Pin the game to a specific Wayland output, e.g. 'DP-3'."
+details = "Pins a game window to a specific Wayland output/monitor by name (e.g., 'DP-3', 'HDMI-1'). Useful for multi-monitor setups to force the game to run on a particular display. Leave empty to allow automatic selection based on which monitor is most likely primary."
+example = "PROTON_WAYLAND_MONITOR=DP-3 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#runtime-config-options"
+
+[[env]]
+key = "ENABLE_GAMESCOPE_WSI"
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Use the gamescope WSI layer for better presentation when running under gamescope."
+details = "Uses the gamescope WSI (Window System Integration) layer for improved presentation and synchronization when running a game under gamescope. Enhances frame pacing and reduces latency in gamescope sessions; has no effect when not using gamescope."
+example = "ENABLE_GAMESCOPE_WSI=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#runtime-config-options"
+
+[[env]]
+key = "DXVK_HDR"
+needs = ["hdr"]
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Enable HDR output (the modern switch; supersedes PROTON_ENABLE_HDR)."
+details = "Enables HDR for DXVK/VKD3D games. Requires an HDR-capable display plus either gamescope with --hdr-enabled or PROTON_ENABLE_WAYLAND=1. This is the current HDR toggle; PROTON_ENABLE_HDR is only an older alias."
+example = "PROTON_ENABLE_WAYLAND=1 DXVK_HDR=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "DXVK_NO_HDR"
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Force-disable HDR if it gets auto-enabled."
+details = "Forcefully disables HDR output even when it would otherwise be auto-detected and enabled. Use when automatic HDR causes washed-out or incorrect colors on your game or display."
+example = "DXVK_NO_HDR=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "WINE_FULLSCREEN_INTEGER_SCALING"
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Integer-scale fullscreen for sharp, pixel-perfect upscaling."
+details = "Enables integer scaling for fullscreen games so low-resolution output is scaled by whole numbers, keeping pixels crisp (ideal for pixel-art / retro titles). No effect when the game's resolution already matches the display."
+example = "WINE_FULLSCREEN_INTEGER_SCALING=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "WINE_USE_KWIN_HACKS"
+needs = ["kde"]
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Enable KDE/KWin-specific windowing hacks for smoother Wayland/X11."
+details = "Turns on KDE Plasma (KWin) specific windowing workarounds that improve fullscreen and window-focus behavior under Wayland or X11. Useful on Plasma desktops where games misbehave with fullscreen toggling."
+example = "WINE_USE_KWIN_HACKS=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "WINE_DISABLE_VULKAN_OPWR"
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Disable Vulkan other-process window rendering to fix some Wayland rendering glitches."
+details = "Disables Wine's Vulkan 'other process window rendering' (OPWR) path, which can cause black or flickering windows for child-process/overlay surfaces under Wayland. Enable if a game (or its launcher) renders nothing or flickers when running with PROTON_ENABLE_WAYLAND=1."
+example = "PROTON_ENABLE_WAYLAND=1 WINE_DISABLE_VULKAN_OPWR=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+# =========================== Anti-cheat ==========================
+
+[[env]]
+key = "PROTON_EAC_RUNTIME"
+category = "Anti-cheat"
+default_value = "1"
+values = ["1", "0"]
+help = "Toggle the bundled Easy Anti-Cheat runtime."
+details = "Controls whether Proton's bundled Easy Anti-Cheat (EAC) runtime is enabled for games that use EAC protection. Setting to 0 disables the bundled EAC, which may cause anti-cheat to fail on EAC-protected games. Only disable if you're troubleshooting EAC compatibility issues or using a system-wide EAC installation."
+example = "PROTON_EAC_RUNTIME=0 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_BATTLEYE_RUNTIME"
+category = "Anti-cheat"
+default_value = "1"
+values = ["1", "0"]
+help = "Toggle the bundled BattlEye runtime."
+details = "Controls whether Proton's bundled BattlEye runtime is enabled for games that use BattlEye anti-cheat protection. Setting to 0 disables the bundled BattlEye, which may cause anti-cheat to fail on BattlEye-protected games. Only disable if you're troubleshooting BattlEye compatibility issues or using a system-wide BattlEye installation."
+example = "PROTON_BATTLEYE_RUNTIME=0 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+# ============================== DXVK =============================
+
+[[env]]
+key = "DXVK_HUD"
+category = "DXVK"
+default_value = "fps"
+values = ["fps", "full", "compiler", "1", "0"]
+help = "Built-in DXVK overlay, e.g. 'fps', 'full', 'compiler'."
+details = "Displays an in-game overlay with performance and debugging information. Can show FPS, frame times, GPU memory, shader compilation activity, and other metrics. Accepts comma-separated values like 'fps', 'full' (all elements), 'compiler', or '1' (shorthand for devinfo+fps)."
+example = "DXVK_HUD=fps,memory %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md#hud"
+
+[[env]]
+key = "DXVK_FRAME_RATE"
+category = "DXVK"
+default_value = "60"
+help = "Cap the frame rate via DXVK (0 = uncapped)."
+details = "Caps the frame rate at the DXVK level, limiting GPU work and reducing power consumption. Set to 0 to disable the cap (uncapped). Useful for reducing heat and battery drain on laptops, or forcing consistent frame pacing in competitive games."
+example = "DXVK_FRAME_RATE=60 %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md"
+
+[[env]]
+key = "DXVK_CONFIG_FILE"
+category = "DXVK"
+default_value = ""
+help = "Path to a dxvk.conf for per-game DXVK tuning."
+details = "Specifies a path to a dxvk.conf configuration file for per-game DXVK tuning. This file allows detailed control over rendering behavior without environment variables. Paths are relative to the game working directory unless absolute."
+example = "DXVK_CONFIG_FILE=/home/user/.config/dxvk/myconfig.conf %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md#debugging"
+
+[[env]]
+key = "DXVK_STATE_CACHE"
+category = "DXVK"
+default_value = "1"
+values = ["1", "0"]
+help = "Toggle DXVK's shader state cache."
+details = "Enables or disables DXVK's shader state cache, which stores compiled pipeline states to speed up subsequent game launches. Disabling it saves disk space and avoids stale cache issues, but increases load times. Default on; set to 0 to disable."
+example = "DXVK_STATE_CACHE=0 %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md#debugging"
+
+[[env]]
+key = "DXVK_FILTER_DEVICE_NAME"
+category = "DXVK"
+default_value = ""
+help = "Force a specific GPU by substring of its Vulkan device name."
+details = "Forces DXVK to use a specific GPU by matching a substring of its Vulkan device name. Useful on multi-GPU systems where the game picks the wrong adapter. The string is case-sensitive and matches the first GPU with a matching name substring."
+example = "DXVK_FILTER_DEVICE_NAME=RTX3080 %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md#device-filter"
+
+[[env]]
+key = "DXVK_CONFIG"
+category = "DXVK"
+default_value = ""
+help = "Set dxvk.conf options inline, e.g. 'dxgi.maxFrameLatency=1;dxvk.hud=fps'."
+details = "Applies dxvk.conf settings directly from the environment as a semicolon-separated list of key=value pairs, so you don't need a separate config file (unlike DXVK_CONFIG_FILE). Handy one-offs include dxgi.maxFrameLatency=1 (lower input lag), d3d11.maxFeatureLevel, and dxvk.enableGraphicsPipelineLibrary. Values here override the config file."
+example = "DXVK_CONFIG='dxgi.maxFrameLatency=1;dxgi.syncInterval=0' %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/dxvk.conf"
+
+[[env]]
+key = "PROTON_LOCAL_SHADER_CACHE"
+category = "DXVK"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: keep a per-game shader cache independent of Steam's cache setting."
+details = "Stores the DXVK/VKD3D shader cache per game, local to the prefix, instead of relying on Steam's shared shader-cache management. Useful when Steam's shader cache is disabled or keeps getting purged, or to keep a stable cache across driver updates. CachyOS-Proton only."
+example = "PROTON_LOCAL_SHADER_CACHE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+# ============================== VKD3D ============================
+
+[[env]]
+key = "VKD3D_CONFIG"
+category = "VKD3D (D3D12)"
+default_value = "dxr"
+values = ["dxr", "dxr11", "dxr12", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue"]
+help = "Comma-separated vkd3d-proton tweaks, e.g. 'dxr,dxr11' to force ray tracing."
+details = "A comma- or semicolon-separated list of options that modify vkd3d-proton behavior. Common ones: 'dxr'/'dxr11'/'dxr12' (force ray tracing at the given tier), 'no_upload_hvv' (avoid host-visible VRAM for upload heaps on constrained GPUs), 'force_static_cbv' (NVIDIA constant-buffer optimization), 'single_queue' (disable async compute/transfer), and 'descriptor_heap' (CachyOS descriptor-heap path; this replaced the old PROTON_VKD3D_HEAP knob). Most games run fine with defaults — use this for advanced features or specific workarounds."
+example = "VKD3D_CONFIG=dxr,dxr11 %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
+
+[[env]]
+key = "VKD3D_FEATURE_LEVEL"
+category = "VKD3D (D3D12)"
+default_value = "12_2"
+values = ["12_0", "12_1", "12_2"]
+help = "Override the reported D3D12 feature level."
+details = "Overrides the reported Direct3D 12 feature level, allowing you to force the game to use a lower feature level (e.g., 12_0, 12_1) for compatibility. Supported values are 11_0, 11_1, 12_0, 12_1, 12_2. Useful when a game crashes or has bugs due to assuming higher-level GPU capabilities than your driver actually exposes."
+example = "VKD3D_FEATURE_LEVEL=12_0 %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/libs/vkd3d/device.c"
+
+[[env]]
+key = "VKD3D_SHADER_MODEL"
+category = "VKD3D (D3D12)"
+default_value = "6_6"
+values = ["6_0", "6_5", "6_6", "6_7"]
+help = "Override the reported D3D12 shader model."
+details = "Overrides the maximum reported Direct3D 12 shader model version, capping the shader language features available to the game. Supported values are 5_1, 6_0, 6_1, 6_2, 6_3, 6_4, 6_5, 6_6, 6_7, 6_8. Use this to force games to use simpler shaders if they fail with advanced shader features or to work around driver issues with newer shader models."
+example = "VKD3D_SHADER_MODEL=6_5 %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/libs/vkd3d/device.c"
+
+[[env]]
+key = "VKD3D_DEBUG"
+category = "VKD3D (D3D12)"
+default_value = "warn"
+values = ["none", "err", "warn", "info"]
+help = "vkd3d-proton log verbosity."
+details = "Controls the verbosity of vkd3d-proton debug logging output. Accepts 'none' (silent), 'err' (errors only), 'warn' (warnings and errors), 'info' (informational), 'fixme', and 'trace' (very verbose). Default is 'warn'. Increasing verbosity helps diagnose compatibility issues but may impact performance slightly and generate large log files."
+example = "VKD3D_DEBUG=warn %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
+
+# ====================== Wine / DLL overrides =====================
+
+[[env]]
+key = "WINEDLLOVERRIDES"
+category = "Wine / Overrides"
+default_value = ""
+help = "Override DLL load mode, e.g. 'winmm=n,b' (native then builtin)."
+details = "Controls how Wine loads DLLs (Dynamic Link Libraries), specifying whether to use native Windows DLLs or Wine's built-in replacements. Syntax is DllName=mode, comma-separated, where modes are: n (native only), b (builtin only), n,b (try native first, fall back to builtin), b,n (try builtin first). Commonly used to disable problematic DLLs (e.g., mscoree=d to disable Mono/.NET) or force specific implementations for compatibility."
+example = "WINEDLLOVERRIDES=mscoree=d;mshtml=d %command%"
+url = "https://wiki.archlinux.org/title/Wine"
+
+[[env]]
+key = "WINEDEBUG"
+category = "Wine / Overrides"
+default_value = "-all"
+values = ["-all", "fixme-all", "+seh", "warn+all"]
+help = "Wine debug channels; '-all' silences logs for a small perf win."
+details = "Controls Wine debug logging verbosity and channel filtering. Set to '-all' to silence all debug output for a small performance gain; use '+channelname' to enable a channel or '-channelname' to disable it. Common values: '-all' (quiet), '+seh' (enable SEH exceptions), 'warn+all' (all warnings), 'fixme-all' (all fixme messages). Useful for troubleshooting game crashes or compatibility issues when you need console output."
+example = "WINEDEBUG=warn+all %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+# ============================= Logging ===========================
+
+[[env]]
+key = "PROTON_LOG"
+category = "Logging / Debug"
+default_value = "1"
+values = ["1", "0"]
+help = "Write a Proton log to ~/steam-<appid>.log for debugging."
+details = "Enables Proton debug logging to a file at ~/steam-<appid>.log (or the directory specified by PROTON_LOG_DIR). Set to 1 for default logging, or specify a string to append to WINEDEBUG channels for custom debug output. Useful for troubleshooting game compatibility issues and crashes."
+example = "PROTON_LOG=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_LOG_DIR"
+category = "Logging / Debug"
+default_value = ""
+help = "Directory for Proton logs (overrides the default home location)."
+details = "Specifies the output directory for Proton log files created by PROTON_LOG. If not set, logs default to the home directory. Useful for organizing logs or writing to a non-standard location."
+example = "PROTON_LOG_DIR=/tmp/proton_logs PROTON_LOG=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "MANGOHUD_CONFIG"
+category = "Logging / Debug"
+default_value = "fps_limit=0,cpu_temp,gpu_temp,ram,vram"
+help = "MangoHud overlay config (comma-separated). Pairs with the MangoHud wrapper."
+details = "Configures the MangoHud overlay display via comma-separated options (takes priority over config files). Enables in-game monitoring of FPS, CPU/GPU temperature, memory, and other metrics. Common options include fps, cpu_temp, gpu_temp, ram, vram; use 'full' for comprehensive monitoring."
+example = "MANGOHUD_CONFIG=fps,cpu_temp,gpu_temp,ram,vram mangohud %command%"
+url = "https://github.com/flightlessmango/MangoHud/blob/master/README.md"
+
+[[env]]
+key = "PROTON_CRASH_REPORT_DIR"
+category = "Logging / Debug"
+default_value = ""
+help = "Write Proton/Wine crash reports into this directory."
+details = "Writes crash logs/backtraces into the specified directory instead of the default location. Handy for collecting reproducible crash data when filing bug reports or bisecting a problematic game."
+example = "PROTON_CRASH_REPORT_DIR=/tmp/proton-crashes %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+# ====================== Compatibility / Misc =====================
+
+[[env]]
+key = "PROTON_SET_GAME_DRIVE"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "Expose the game's Steam library as an S: drive inside the prefix."
+details = "Creates an S: drive in the Wine prefix pointing at the Steam library folder that contains the game. Helps titles or mod tools that expect a fixed drive letter or absolute Windows-style paths."
+example = "PROTON_SET_GAME_DRIVE=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_OLD_GL_STRING"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "Limit the GL extension-string length for old games that crash on long strings."
+details = "Shortens the reported OpenGL extension string, which some old games parse into a fixed-size buffer and crash on otherwise. Enable only if an old GL game crashes at startup with no other explanation."
+example = "PROTON_OLD_GL_STRING=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_NO_WM_DECORATION"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "Use Wine's own window decorations instead of the window manager's."
+details = "Disables window-manager decorations and lets Wine draw its own. Can fix borderless/fullscreen and title-bar glitches on some compositors, or give consistent window borders across desktops."
+example = "PROTON_NO_WM_DECORATION=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_DISCORD_BRIDGE"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable Discord Rich Presence for Proton games (rpc-bridge)."
+details = "Enables the rpc-bridge so Discord Rich Presence works for games running under Proton, showing the game you're playing in Discord. Added in proton-cachyos 11.0-20260519. CachyOS-Proton only."
+example = "PROTON_DISCORD_BRIDGE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_USE_SDL"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: use SDL input instead of HIDRAW/Steam Input for controllers."
+details = "Routes controller input through SDL rather than HIDRAW/Steam Input. Try this when a gamepad isn't detected, has wrong mappings, or double-inputs under the default path. CachyOS-Proton only."
+example = "PROTON_USE_SDL=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_USE_XALIA"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "Toggle the Xalia gamepad-UI layer that makes mouse/keyboard menus controller-navigable."
+details = "Xalia overlays a gamepad-navigable UI on top of Wine dialogs and launchers that were built for mouse and keyboard, so you can drive installers and config screens with a controller (handy on Steam Deck / couch setups). It is enabled dynamically by default; set 0 to turn it off if it interferes with a game's own controller handling, or 1 to force it on."
+example = "PROTON_USE_XALIA=0 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_MEDIA_FORCE_GST"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "Force GStreamer for media to fix missing/black cutscene video."
+details = "Forces media playback through GStreamer, which fixes black or missing pre-rendered cutscenes/FMVs in some games. Enable if intro movies or in-game videos don't play."
+example = "PROTON_MEDIA_FORCE_GST=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "HOST_LC_ALL"
+category = "Compatibility / Misc"
+default_value = ""
+values = ["C", "ja_JP.UTF-8", "zh_CN.UTF-8", "ko_KR.UTF-8"]
+help = "Override the locale passed to the game (e.g. for JP/CJK text or date handling)."
+details = "Overrides the system locale seen by the game, without changing your desktop locale. Useful for Japanese/CJK titles that need a matching locale for correct text, fonts, or date parsing (set e.g. ja_JP.UTF-8). Leave empty to inherit the system locale."
+example = "HOST_LC_ALL=ja_JP.UTF-8 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "WINE_DO_NOT_CREATE_DXGI_DEVICE_MANAGER"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "Work around video glitches from incomplete IMFDXGIDeviceManager support."
+details = "Stops Wine from creating a DXGI device manager, working around video/playback corruption in games that use Media Foundation with incomplete IMFDXGIDeviceManager support. Enable if videos render garbled."
+example = "WINE_DO_NOT_CREATE_DXGI_DEVICE_MANAGER=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"

@@ -1,0 +1,383 @@
+import { ipc } from "./ipc";
+import { applyTheme, DEFAULT_THEME } from "./themes";
+import { emptyConfig } from "./types";
+import type {
+  Catalog,
+  Config,
+  GameDto,
+  Hardware,
+  Recipe,
+  RuntimeDto,
+  StaleInfo,
+  Store,
+} from "./types";
+
+interface OptState {
+  enabled: boolean;
+  value: string;
+}
+
+const EMPTY_CATALOG: Catalog = {
+  meta: { proton_cachyos_build: null, updated: null },
+  wrappers: [],
+  envs: [],
+};
+
+const EMPTY_STORE: Store = {
+  theme: DEFAULT_THEME,
+  presets: [],
+  game_memory: {},
+  dismissed_cachyos_build: "",
+  show_irrelevant: false,
+  hdr: false,
+  protondb_auto: false,
+};
+
+export type ArtKind = "portrait" | "hero" | "header";
+
+/** Single source of truth for the whole UI, backed by Svelte 5 runes. */
+class AppStore {
+  // ---- bootstrap data (mostly immutable) ----
+  ready = $state(false);
+  loadError = $state<string | null>(null);
+  steamRoot = $state<string | null>(null);
+  catalog = $state<Catalog>(EMPTY_CATALOG);
+  categories = $state<string[]>([]);
+  recipes = $state<Recipe[]>([]);
+  runtimes = $state<RuntimeDto[]>([]);
+  games = $state<GameDto[]>([]);
+  hardware = $state<Hardware>({
+    nvidia: false,
+    amd: false,
+    intel: false,
+    wayland: false,
+    kde: false,
+    ntsync: false,
+  });
+  requiresStatus = $state<Record<string, boolean>>({});
+  launchOptions = $state<Record<string, string>>({});
+  compatTools = $state<Record<string, string>>({});
+  stale = $state<StaleInfo | null>(null);
+  store = $state<Store>(EMPTY_STORE);
+
+  // ---- builder selection ----
+  umu = $state(false);
+  selectedRuntime = $state<RuntimeDto | null>(null);
+  env = $state<Record<string, OptState>>({});
+  wrap = $state<Record<string, OptState>>({});
+  extraEnv = $state("");
+  gameArgs = $state("");
+  umuExe = $state("");
+  umuWineprefix = $state("");
+  umuGameid = $state("");
+  selectedAppId = $state<number | null>(null);
+  selectedGameName = $state<string | null>(null);
+
+  // ---- derived/live ----
+  command = $state("");
+  notices = $state<string[]>([]);
+
+  // ---- ephemeral UI ----
+  activePresetName = $state<string | null>(null);
+
+  // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
+  //   undefined = not requested/loading · null = none found · string = data URL
+  artCache = $state<Record<string, string | null>>({});
+  private artRequested = new Set<string>();
+
+  private recomputeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async init() {
+    const b = await ipc.bootstrap();
+    this.loadError = b.load_error;
+    this.steamRoot = b.steam_root;
+    this.catalog = b.catalog;
+    this.categories = b.categories;
+    this.recipes = b.recipes;
+    this.runtimes = b.runtimes;
+    this.games = b.games;
+    this.hardware = b.hardware;
+    this.requiresStatus = b.requires_status;
+    this.launchOptions = b.launch_options;
+    this.compatTools = b.compat_tools;
+    this.stale = b.stale;
+    this.store = b.store;
+
+    applyTheme(b.store.theme || DEFAULT_THEME);
+    this.resetOptions();
+
+    // Default runtime: prefer an installed proton-cachyos, else first.
+    this.selectedRuntime =
+      this.runtimes.find((r) => r.display_name.toLowerCase().includes("cachyos")) ??
+      this.runtimes[0] ??
+      null;
+
+    this.ready = true;
+
+    // Recompute the command + lint whenever any builder input changes.
+    $effect.root(() => {
+      $effect(() => {
+        const cfg = this.toConfig();
+        this.scheduleRecompute(cfg);
+      });
+    });
+  }
+
+  // ----------------------------- option helpers -----------------------------
+
+  resetOptions() {
+    const env: Record<string, OptState> = {};
+    for (const e of this.catalog.envs) {
+      env[e.key] = { enabled: false, value: e.default_value };
+    }
+    const wrap: Record<string, OptState> = {};
+    for (const w of this.catalog.wrappers) {
+      wrap[w.key] = { enabled: false, value: w.default_value };
+    }
+    this.env = env;
+    this.wrap = wrap;
+    this.extraEnv = "";
+    this.gameArgs = "";
+  }
+
+  toggleEnv(key: string) {
+    const s = this.env[key];
+    if (s) s.enabled = !s.enabled;
+  }
+  setEnvValue(key: string, value: string) {
+    const s = this.env[key];
+    if (s) s.value = value;
+  }
+  toggleWrap(key: string) {
+    const s = this.wrap[key];
+    if (s) s.enabled = !s.enabled;
+  }
+  setWrapValue(key: string, value: string) {
+    const s = this.wrap[key];
+    if (s) s.value = value;
+  }
+
+  enabledCountInCategory(category: string): number {
+    return this.catalog.envs.filter(
+      (e) => e.category === category && this.env[e.key]?.enabled,
+    ).length;
+  }
+
+  // ------------------------------- config I/O -------------------------------
+
+  toConfig(): Config {
+    const env = this.catalog.envs
+      .filter((e) => this.env[e.key]?.enabled)
+      .map((e) => [e.key, this.env[e.key].value] as [string, string]);
+    const wrappers = this.catalog.wrappers
+      .filter((w) => this.wrap[w.key]?.enabled)
+      .map((w) => [w.key, this.wrap[w.key].value] as [string, string]);
+    return {
+      umu: this.umu,
+      runtime: this.selectedRuntime?.internal_name ?? null,
+      env,
+      wrappers,
+      extra_env: this.extraEnv,
+      umu_exe: this.umuExe,
+      umu_wineprefix: this.umuWineprefix,
+      umu_gameid: this.umuGameid,
+      game_args: this.gameArgs,
+    };
+  }
+
+  loadConfig(cfg: Config) {
+    this.resetOptions();
+    for (const [k, v] of cfg.env) {
+      if (this.env[k]) this.env[k] = { enabled: true, value: v };
+    }
+    for (const [k, v] of cfg.wrappers) {
+      if (this.wrap[k]) this.wrap[k] = { enabled: true, value: v };
+    }
+    this.umu = cfg.umu;
+    this.extraEnv = cfg.extra_env;
+    this.gameArgs = cfg.game_args;
+    this.umuExe = cfg.umu_exe;
+    this.umuWineprefix = cfg.umu_wineprefix;
+    this.umuGameid = cfg.umu_gameid;
+    if (cfg.runtime) {
+      const r = this.runtimes.find((x) => x.internal_name === cfg.runtime);
+      if (r) this.selectedRuntime = r;
+    }
+  }
+
+  private protonPath(): string | null {
+    return this.selectedRuntime?.path ?? null;
+  }
+
+  private scheduleRecompute(cfg: Config) {
+    if (this.recomputeTimer) clearTimeout(this.recomputeTimer);
+    this.recomputeTimer = setTimeout(async () => {
+      try {
+        this.command = await ipc.buildCommand(cfg, this.protonPath());
+        this.notices = await ipc.lint(cfg);
+      } catch (e) {
+        console.error("recompute failed", e);
+      }
+    }, 60);
+  }
+
+  // ------------------------------- game memory ------------------------------
+
+  selectGame(game: GameDto | null) {
+    // Persist the outgoing game's config.
+    if (this.selectedAppId != null) {
+      this.store.game_memory[String(this.selectedAppId)] = this.toConfig();
+      this.persistStore();
+    }
+
+    if (!game) {
+      this.selectedAppId = null;
+      this.selectedGameName = null;
+      return;
+    }
+
+    this.selectedAppId = game.app_id;
+    this.selectedGameName = game.name;
+    this.activePresetName = null;
+
+    if (game.executable) this.umuExe = game.executable;
+
+    const remembered = this.store.game_memory[String(game.app_id)];
+    if (remembered) {
+      this.loadConfig(remembered);
+    } else {
+      this.resetOptions();
+    }
+  }
+
+  // ------------------------------- presets ----------------------------------
+
+  savePreset(name: string) {
+    const preset = {
+      name,
+      game_appid: this.selectedAppId,
+      game_name: this.selectedGameName,
+      config: this.toConfig(),
+    };
+    const i = this.store.presets.findIndex((p) => p.name === name);
+    if (i >= 0) this.store.presets[i] = preset;
+    else this.store.presets.push(preset);
+    this.activePresetName = name;
+    this.persistStore();
+  }
+
+  loadPreset(name: string) {
+    const p = this.store.presets.find((x) => x.name === name);
+    if (!p) return;
+    this.loadConfig(p.config);
+    this.activePresetName = name;
+  }
+
+  deletePreset(name: string) {
+    this.store.presets = this.store.presets.filter((p) => p.name !== name);
+    if (this.activePresetName === name) this.activePresetName = null;
+    this.persistStore();
+  }
+
+  // ------------------------------- import -----------------------------------
+
+  async importCommand(text: string) {
+    const cfg = await ipc.parseCommand(text);
+    this.loadConfig(cfg);
+  }
+
+  // ------------------------------- mangohud ---------------------------------
+
+  applyMango(config: string) {
+    if (this.env["MANGOHUD_CONFIG"]) {
+      this.env["MANGOHUD_CONFIG"] = { enabled: true, value: config };
+    } else {
+      // Fall back to custom env if the catalog lacks the key.
+      this.extraEnv = `${this.extraEnv} MANGOHUD_CONFIG=${config}`.trim();
+    }
+    if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
+  }
+
+  // ------------------------------- recipes ----------------------------------
+
+  async applyRecipe(index: number) {
+    const cfg = await ipc.applyRecipe(index, this.toConfig());
+    this.loadConfig(cfg);
+  }
+
+  // ------------------------------- theme/store ------------------------------
+
+  setTheme(id: string) {
+    this.store.theme = id;
+    applyTheme(id);
+    this.persistStore();
+  }
+
+  /** Hardware facts plus the opt-in HDR capability, for relevance filtering. */
+  get hwCaps() {
+    return { ...this.hardware, hdr: this.store.hdr };
+  }
+
+  setShowIrrelevant(v: boolean) {
+    this.store.show_irrelevant = v;
+    this.persistStore();
+  }
+  setHdr(v: boolean) {
+    this.store.hdr = v;
+    this.persistStore();
+  }
+  setProtondbAuto(v: boolean) {
+    this.store.protondb_auto = v;
+    this.persistStore();
+  }
+
+  // -------------------------------- game art --------------------------------
+
+  private artKey(appId: number, source: string, kind: ArtKind): string {
+    return `${source}:${appId}:${kind}`;
+  }
+
+  /** Cached art (data URL), `null` if none found, `undefined` if not loaded. */
+  artFor(appId: number, source: string, kind: ArtKind): string | null | undefined {
+    return this.artCache[this.artKey(appId, source, kind)];
+  }
+
+  /** Lazily fetch a game's art once; result lands in `artCache` reactively. */
+  requestArt(appId: number, source: string, kind: ArtKind) {
+    const key = this.artKey(appId, source, kind);
+    if (this.artRequested.has(key)) return;
+    this.artRequested.add(key);
+    // "Local + online fallback" per the user's choice: allow the CDN backstop.
+    ipc
+      .gameArt(appId, source, kind, true)
+      .then((url) => (this.artCache[key] = url))
+      .catch(() => (this.artCache[key] = null));
+  }
+
+  dismissStale() {
+    if (this.stale) {
+      this.store.dismissed_cachyos_build = this.stale.installed;
+      this.persistStore();
+    }
+  }
+
+  get staleVisible(): boolean {
+    return (
+      this.stale != null &&
+      this.store.dismissed_cachyos_build !== this.stale.installed
+    );
+  }
+
+  persistStore() {
+    // Fire and forget; the store is small.
+    ipc.saveStore($state.snapshot(this.store)).catch((e) =>
+      console.error("saveStore failed", e),
+    );
+  }
+}
+
+export const app = new AppStore();
+
+export function freshConfig(): Config {
+  return emptyConfig();
+}
