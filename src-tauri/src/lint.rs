@@ -13,14 +13,6 @@ pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware) -> Vec<Stri
             .zip(&options.envs)
             .any(|(d, s)| s.enabled && d.key == key)
     };
-    let env_val = |key: &str| -> Option<&str> {
-        catalog
-            .envs
-            .iter()
-            .zip(&options.envs)
-            .find(|(d, s)| s.enabled && d.key == key)
-            .map(|(_, s)| s.value.as_str())
-    };
     let wrap_on = |key: &str| -> bool {
         catalog
             .wrappers
@@ -39,12 +31,7 @@ pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware) -> Vec<Stri
 
     // FSR4 hardware note.
     if env_on("PROTON_FSR4_UPGRADE") {
-        w.push("PROTON_FSR4_UPGRADE needs an RDNA4 GPU; on RDNA3 use PROTON_FSR4_RDNA3_UPGRADE instead.".to_string());
-    }
-
-    // NTSync requested but device missing.
-    if env_val("PROTON_USE_NTSYNC") == Some("1") && !hw.ntsync {
-        w.push("PROTON_USE_NTSYNC=1 but /dev/ntsync is missing (needs a kernel with ntsync) — it will fall back.".to_string());
+        w.push("PROTON_FSR4_UPGRADE needs an FSR4-capable AMD GPU (RDNA3 or RDNA4); on RDNA3, MLFG also needs DXIL_SPIRV_CONFIG=wmma_rdna3_workaround.".to_string());
     }
 
     // wined3d disables DXVK.

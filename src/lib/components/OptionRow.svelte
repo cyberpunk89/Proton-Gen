@@ -45,10 +45,10 @@
 </script>
 
 <div
-  class="rounded-xl px-3 py-2 transition-colors"
-  style="background: {enabled
-    ? 'color-mix(in srgb, var(--accent) 9%, transparent)'
-    : 'transparent'}; {dim ? 'opacity:.55' : ''}"
+  class="rounded-xl px-3 py-2 transition-colors {enabled ? '' : 'hover:bg-surface-2/40'}"
+  style="{enabled
+    ? 'background: color-mix(in srgb, var(--accent) 9%, transparent);'
+    : ''}{dim ? 'opacity:.55' : ''}"
 >
   <div class="flex items-center gap-3">
     <Switch checked={enabled} onchange={onToggle} label={title} />
@@ -85,7 +85,7 @@
           <button
             type="button"
             onclick={() => onValue?.(v)}
-            class="px-3 py-1 font-mono text-xs transition {i > 0
+            class="px-3 py-1 font-mono text-xs transition focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent {i > 0
               ? 'border-l border-border'
               : ''} {value === v ? 'font-medium' : 'text-muted hover:text-subtext'}"
             style={value === v

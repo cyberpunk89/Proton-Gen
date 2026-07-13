@@ -13,5 +13,13 @@
   >
     <CheckCircle size={16} weight="fill" class="text-green" />
     <span class="text-sm text-text">{toast.message}</span>
+    {#if toast.action}
+      <button
+        onclick={() => toast.runAction()}
+        class="ml-1 rounded-md px-2 py-0.5 text-xs font-medium text-accent transition hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        {toast.action.label}
+      </button>
+    {/if}
   </div>
 {/if}

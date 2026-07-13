@@ -25,7 +25,7 @@ export async function openUrl(url: string) {
  * hardware object the UI passes in (sourced from the Settings toggle).
  */
 export function irrelevance(
-  hw: Hardware & { hdr?: boolean },
+  hw: Hardware & { hdr?: boolean; fsr4?: boolean },
   gpu: string | null,
   needs: string[],
 ): string | null {
@@ -40,6 +40,7 @@ export function irrelevance(
     if (n === "kde" && !hw.kde) return "needs KDE Plasma";
     if (n === "ntsync" && !hw.ntsync) return "needs /dev/ntsync";
     if (n === "hdr" && !hw.hdr) return "needs HDR display";
+    if (n === "fsr4" && !hw.fsr4) return "needs an RDNA3/RDNA4 GPU (FSR upgrades)";
   }
   return null;
 }

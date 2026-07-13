@@ -88,9 +88,15 @@
             )}
             {@render toggle(
               "I have an HDR display",
-              "Enables HDR recipes — HDR can't be auto-detected.",
+              "Enables HDR recipes. HDR can't be auto-detected.",
               app.store.hdr,
               () => app.setHdr(!app.store.hdr),
+            )}
+            {@render toggle(
+              "I have an RDNA3/RDNA4 GPU",
+              "Shows FSR 3/4 upscaler-upgrade options (hidden by default).",
+              app.store.fsr4,
+              () => app.setFsr4(!app.store.fsr4),
             )}
             {@render toggle(
               "Auto-check ProtonDB",

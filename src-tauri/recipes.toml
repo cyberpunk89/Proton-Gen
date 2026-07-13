@@ -35,6 +35,7 @@ wrappers = []
 name = "AMD: FSR 4 upgrade"
 kind = "profile"
 gpu = "amd"
+needs = ["fsr4"]
 icon = "rocket"
 accent = "#e0234e"
 tags = ["FSR 4", "RDNA4", "frame-gen"]
@@ -49,11 +50,16 @@ wrappers = []
 name = "AMD: FSR 4 on RDNA3"
 kind = "profile"
 gpu = "amd"
+needs = ["fsr4"]
 icon = "rocket"
 accent = "#e0234e"
-tags = ["FSR 4", "RDNA3"]
-description = "Back-port the FSR 4 upscaler to RDNA3 cards (no multi-frame generation)."
-env = [["PROTON_FSR4_RDNA3_UPGRADE", "1"]]
+tags = ["FSR 4", "RDNA3", "frame-gen"]
+description = "FSR 4 upscaling + multi-frame generation on RDNA3 (redstone frame-gen with the RDNA3 workaround)."
+env = [
+    ["PROTON_FSR4_UPGRADE", "1"],
+    ["PROTON_MLFG_UPGRADE", "1"],
+    ["DXIL_SPIRV_CONFIG", "wmma_rdna3_workaround"],
+]
 wrappers = []
 
 [[recipe]]
@@ -86,10 +92,9 @@ kind = "profile"
 needs = ["ntsync"]
 icon = "gauge"
 accent = "#7aa2f7"
-tags = ["NTSync", "GameMode", "low-latency"]
-description = "GameMode + low-latency layer + NTSync, with a MangoHud FPS readout."
+tags = ["low-latency", "GameMode", "NTSync"]
+description = "GameMode + the low-latency layer + DXVK low-latency fork, with a MangoHud FPS readout (NTSync is on by default)."
 env = [
-    ["PROTON_USE_NTSYNC", "1"],
     ["LOW_LATENCY_LAYER", "1"],
     ["PROTON_DXVK_LOWLATENCY", "1"],
 ]

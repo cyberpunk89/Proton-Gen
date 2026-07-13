@@ -47,6 +47,7 @@
   </div>
 
   <div class="ml-auto flex items-center gap-1.5">
+    {#if app.view === "builder"}
     <button
       onclick={() => (showImport = true)}
       class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
@@ -90,6 +91,7 @@
         </button>
       </div>
     </Popover>
+    {/if}
 
     <!-- Settings -->
     <button

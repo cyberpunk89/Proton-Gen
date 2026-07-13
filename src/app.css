@@ -317,7 +317,7 @@ button,
   backdrop-filter: blur(12px);
 }
 
-/* Elevated popover / dropdown / drawer surface. Opaque + bordered + shadowed —
+/* Elevated popover / dropdown / drawer surface. Opaque + bordered + shadowed,
    no backdrop-blur (wasted over an opaque fill and washes out in WebKitGTK). */
 @utility popover {
   background: var(--surface-solid);

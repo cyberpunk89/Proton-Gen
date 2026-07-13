@@ -30,7 +30,10 @@ const EMPTY_STORE: Store = {
   dismissed_cachyos_build: "",
   show_irrelevant: false,
   hdr: false,
+  fsr4: false,
   protondb_auto: false,
+  last_session: null,
+  last_game_appid: null,
 };
 
 export type ArtKind = "portrait" | "hero" | "header";
@@ -76,9 +79,19 @@ class AppStore {
   // ---- derived/live ----
   command = $state("");
   notices = $state<string[]>([]);
+  /** Briefly true right after the session is written to disk (trust cue). */
+  saved = $state(false);
 
   // ---- ephemeral UI ----
+  /** Top-level screen: the cover-art library grid, or the focused builder. The
+   *  app opens on the library; picking a game (or "generic") enters the builder. */
+  view = $state<"library" | "builder">("library");
   activePresetName = $state<string | null>(null);
+  /** Console layout: which section the main panel shows. "recipes" | "game" |
+   *  "Wrappers" | a parameter category name. */
+  activeSection = $state<string>("recipes");
+  /** Global parameter search; when non-empty the main panel shows flat results. */
+  paramQuery = $state("");
 
   // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
   //   undefined = not requested/loading · null = none found · string = data URL
@@ -86,6 +99,10 @@ class AppStore {
   private artRequested = new Set<string>();
 
   private recomputeTimer: ReturnType<typeof setTimeout> | null = null;
+  private sessionTimer: ReturnType<typeof setTimeout> | null = null;
+  private savedTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The first persist just writes the restored session back; don't flash "Saved". */
+  private firstPersist = true;
 
   async init() {
     const b = await ipc.bootstrap();
@@ -94,7 +111,18 @@ class AppStore {
     this.catalog = b.catalog;
     this.categories = b.categories;
     this.recipes = b.recipes;
-    this.runtimes = b.runtimes;
+    // umu can resolve the "GE-Proton" codename and auto-download the latest
+    // GE-Proton; surface it as a synthetic runtime whose path IS the codename.
+    // Only meaningful in umu mode (Steam mode ignores PROTONPATH).
+    this.runtimes = [
+      {
+        internal_name: "GE-Proton",
+        display_name: "GE-Proton (latest · umu auto-download)",
+        kind: "auto",
+        path: "GE-Proton",
+      },
+      ...b.runtimes,
+    ];
     this.games = b.games;
     this.hardware = b.hardware;
     this.requiresStatus = b.requires_status;
@@ -104,23 +132,49 @@ class AppStore {
     this.store = b.store;
 
     applyTheme(b.store.theme || DEFAULT_THEME);
-    this.resetOptions();
 
-    // Default runtime: prefer an installed proton-cachyos, else first.
-    this.selectedRuntime =
-      this.runtimes.find((r) => r.display_name.toLowerCase().includes("cachyos")) ??
-      this.runtimes[0] ??
-      null;
+    // Establish the default runtime first; a restored session overrides it.
+    this.selectedRuntime = this.defaultRuntime();
+
+    // Restore the last session (selected game + every builder selection) so the
+    // user reopens exactly where they left off; otherwise start from defaults.
+    const sess = this.store.last_session;
+    if (sess) {
+      if (this.store.last_game_appid != null) {
+        const g = this.games.find((x) => x.app_id === this.store.last_game_appid);
+        if (g) {
+          this.selectedAppId = g.app_id;
+          this.selectedGameName = g.name;
+        }
+      }
+      this.loadConfig(sess);
+    } else {
+      this.resetOptions();
+    }
 
     this.ready = true;
 
-    // Recompute the command + lint whenever any builder input changes.
+    // Recompute the command + lint, and persist the session, whenever any
+    // builder input changes. Registered last so the first effect run captures
+    // the restored state rather than defaults.
     $effect.root(() => {
       $effect(() => {
         const cfg = this.toConfig();
         this.scheduleRecompute(cfg);
+        this.scheduleSessionPersist();
       });
     });
+  }
+
+  /** Preferred default runtime: an installed proton-cachyos, else the first
+   *  real (non-synthetic) runtime, else the GE-Proton-auto entry. */
+  private defaultRuntime(): RuntimeDto | null {
+    return (
+      this.runtimes.find((r) => r.display_name.toLowerCase().includes("cachyos")) ??
+      this.runtimes.find((r) => r.kind !== "auto") ??
+      this.runtimes[0] ??
+      null
+    );
   }
 
   // ----------------------------- option helpers -----------------------------
@@ -205,6 +259,20 @@ class AppStore {
     }
   }
 
+  /** Reset the command back to defaults, keeping the selected game. Returns the
+   *  prior config so the caller can offer an undo. */
+  resetCommand(): Config {
+    const prev = this.toConfig();
+    this.resetOptions();
+    this.umu = false;
+    this.umuExe = "";
+    this.umuWineprefix = "";
+    this.umuGameid = "";
+    this.activePresetName = null;
+    this.selectedRuntime = this.defaultRuntime();
+    return prev;
+  }
+
   private protonPath(): string | null {
     return this.selectedRuntime?.path ?? null;
   }
@@ -219,6 +287,50 @@ class AppStore {
         console.error("recompute failed", e);
       }
     }, 60);
+  }
+
+  /** Persist the current builder state as the "last session" (and keep the
+   *  selected game's memory fresh), debounced to keep disk writes cheap. */
+  private scheduleSessionPersist() {
+    if (!this.ready) return;
+    if (this.sessionTimer) clearTimeout(this.sessionTimer);
+    this.sessionTimer = setTimeout(() => {
+      const cfg = this.toConfig();
+      this.store.last_session = cfg;
+      this.store.last_game_appid = this.selectedAppId;
+      if (this.selectedAppId != null) {
+        this.store.game_memory[String(this.selectedAppId)] = cfg;
+      }
+      this.persistStore();
+      if (this.firstPersist) this.firstPersist = false;
+      else this.flashSaved();
+    }, 500);
+  }
+
+  /** Briefly surface a "Saved" cue after a session write. */
+  private flashSaved() {
+    this.saved = true;
+    if (this.savedTimer) clearTimeout(this.savedTimer);
+    this.savedTimer = setTimeout(() => (this.saved = false), 1200);
+  }
+
+  // ------------------------------- navigation -------------------------------
+
+  /** Pick a game from the library and drop into the focused builder. */
+  openGame(game: GameDto) {
+    this.selectGame(game);
+    this.view = "builder";
+  }
+
+  /** Build a command with no game attached (generic path). */
+  openGeneric() {
+    this.selectGame(null);
+    this.view = "builder";
+  }
+
+  /** Return to the cover-art library grid, keeping the current selection. */
+  backToLibrary() {
+    this.view = "library";
   }
 
   // ------------------------------- game memory ------------------------------
@@ -313,9 +425,15 @@ class AppStore {
     this.persistStore();
   }
 
-  /** Hardware facts plus the opt-in HDR capability, for relevance filtering. */
+  /** Navigate the Console main panel; clears any active parameter search. */
+  setSection(section: string) {
+    this.activeSection = section;
+    this.paramQuery = "";
+  }
+
+  /** Hardware facts plus the opt-in HDR/FSR capabilities, for relevance filtering. */
   get hwCaps() {
-    return { ...this.hardware, hdr: this.store.hdr };
+    return { ...this.hardware, hdr: this.store.hdr, fsr4: this.store.fsr4 };
   }
 
   setShowIrrelevant(v: boolean) {
@@ -324,6 +442,10 @@ class AppStore {
   }
   setHdr(v: boolean) {
     this.store.hdr = v;
+    this.persistStore();
+  }
+  setFsr4(v: boolean) {
+    this.store.fsr4 = v;
     this.persistStore();
   }
   setProtondbAuto(v: boolean) {

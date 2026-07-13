@@ -138,7 +138,7 @@ mod tests {
             .map(|(d, _)| d.key.as_str())
             .collect();
         assert!(on_env.contains(&"LOW_LATENCY_LAYER"));
-        assert!(on_env.contains(&"PROTON_USE_NTSYNC"));
+        assert!(on_env.contains(&"PROTON_DXVK_LOWLATENCY"));
         let on_wrap: Vec<&str> = cat
             .wrappers
             .iter()

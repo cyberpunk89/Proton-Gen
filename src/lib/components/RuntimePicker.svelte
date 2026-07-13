@@ -16,6 +16,7 @@
     system: "system",
     user: "user",
     valve: "valve",
+    auto: "auto-DL",
   };
 </script>
 
@@ -30,7 +31,7 @@
     <span class="min-w-0 flex-1">
       <span class="block text-[11px] uppercase tracking-wider text-muted">Proton</span>
       <span class="block truncate text-sm text-subtext">
-        {app.selectedRuntime?.display_name ?? "—"}
+        {app.selectedRuntime?.display_name ?? "None"}
       </span>
     </span>
     <CaretUpDown size={16} class="shrink-0 text-muted" />

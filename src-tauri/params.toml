@@ -1,5 +1,5 @@
 # protongen parameter catalog
-# Catalog for Proton 11.0 / proton-cachyos 11.0-20260602  —  updated 2026-06-23
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20260702  —  updated 2026-07-13
 #
 # Sources (refresh with the /update-proton-params Claude skill):
 #   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
@@ -27,8 +27,8 @@
 # The app compares it to your installed build and shows a banner when newer.
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
-proton_cachyos_build = "20260602"
-updated = "2026-06-23"
+proton_cachyos_build = "20260702"
+updated = "2026-07-13"
 
 # ============================ Wrappers ============================
 
@@ -66,15 +66,15 @@ url = "https://github.com/ValveSoftware/gamescope#options"
 # ====================== Performance / Sync =======================
 
 [[env]]
-key = "PROTON_USE_NTSYNC"
+key = "PROTON_NO_NTSYNC"
 needs = ["ntsync"]
 category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
-help = "Kernel ntsync sync primitives (default-on in recent builds; set 0 to disable)."
-details = "Enables the kernel ntsync synchronization primitives for improved compatibility and performance. NTSync is enabled by default in recent Proton builds and provides faster game launch and execution. Set to 1 to enable, 0 to use FSync/other primitives instead; disable only if the game has compatibility issues with NTSync."
-example = "PROTON_USE_NTSYNC=1 %command%"
-url = "https://wiki.cachyos.org/configuration/gaming/"
+help = "Disable kernel ntsync (on by default in Proton 11); set 1 to fall back to fsync/esync."
+details = "Kernel ntsync synchronization primitives are enabled by default in Proton 11 / proton-cachyos for faster game launch and execution. The old PROTON_USE_NTSYNC enable knob was removed; the only remaining toggle is PROTON_NO_NTSYNC. Set 1 to disable ntsync and fall back to fsync/esync — do this only if a game has compatibility issues with ntsync."
+example = "PROTON_NO_NTSYNC=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_DXVK_GPLASYNC"
@@ -278,24 +278,26 @@ url = "https://github.com/jp7677/dxvk-nvapi/blob/master/README.md"
 [[env]]
 key = "PROTON_FSR4_UPGRADE"
 gpu = "amd"
+needs = ["fsr4"]
 category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
-help = "CachyOS: upgrade FSR to FSR 4 (defaults to 4.1.0). Needs RDNA4 / compatible GPU."
-details = "CachyOS-specific: automatically upgrades AMD FidelityFX Super Resolution to FSR 4 (defaults to version 4.1.0), providing improved image quality and performance scaling. Requires RDNA4 GPU or compatible architecture. Set to a specific version (e.g., '4.0.2') to pin that version, or set to 0 to disable FSR4 upgrade."
-example = "PROTON_FSR4_UPGRADE=1 %command%"
+help = "CachyOS: upgrade the game's FSR to FSR 4 (accepts 4.0.0 / 4.1.1). Works on RDNA3 & RDNA4."
+details = "CachyOS-specific: automatically upgrades AMD FidelityFX Super Resolution to FSR 4, improving image quality and scaling. As of 11.0-20260702 it accepts only '4.0.0' and '4.1.1' (or '1' for the latest), and the required amdxcffx64.dll is copied in automatically. The separate PROTON_FSR4_RDNA3_UPGRADE knob was removed — this variable now covers both RDNA3 and RDNA4 (pair with PROTON_MLFG_UPGRADE for frame generation)."
+example = "PROTON_FSR4_UPGRADE=4.1.1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
 [[env]]
-key = "PROTON_FSR4_RDNA3_UPGRADE"
+key = "PROTON_FFX4_UPGRADE"
 gpu = "amd"
+needs = ["fsr4"]
 category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
-help = "CachyOS: RDNA3-optimized FSR 4 DLL (defaults to 4.0.0)."
-details = "CachyOS-specific: provides an RDNA3-optimized FidelityFX Super Resolution 4 DLL (defaults to version 4.0.0) for AMD RDNA3 graphics cards. RDNA3 systems use different FSR4 optimizations than RDNA4, so this parameter ensures your GPU gets the best-tuned version. Set to a specific version number to use a different release."
-example = "PROTON_FSR4_RDNA3_UPGRADE=1 %command%"
-url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
+help = "CachyOS: FidelityFX 4 auto-upgrade (newer naming; use latest or pin a version)."
+details = "CachyOS-specific: auto-downloads and installs the latest AMD FidelityFX Super Resolution 4 package under the newer FFX naming scheme. Companion to PROTON_FFX3_UPGRADE. Set '1' for the latest or a version string to pin one. Use PROTON_FSR4_UPGRADE if a title only recognizes the older FSR4 upgrade path. CachyOS-Proton only."
+example = "PROTON_FFX4_UPGRADE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_XESS_UPGRADE"
@@ -329,18 +331,20 @@ example = "__GLX_VENDOR_LIBRARY_NAME=nvidia %command%"
 url = "https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.html"
 
 [[env]]
-key = "PROTON_FSR3_UPGRADE"
+key = "PROTON_FFX3_UPGRADE"
 gpu = "amd"
+needs = ["fsr4"]
 category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
-help = "CachyOS: upgrade a game's FSR to FSR 3.1 (adds frame generation)."
-details = "Replaces a game's bundled AMD FSR with FSR 3.1, adding frame generation and improved upscaling where supported. Use as a stepping stone when a game can't run FSR 4. CachyOS-Proton only."
-example = "PROTON_FSR3_UPGRADE=1 %command%"
+help = "CachyOS: upgrade a game's FSR to FSR 3.1 (adds frame generation). Was PROTON_FSR3_UPGRADE."
+details = "Replaces a game's bundled AMD FSR with FSR 3.1, adding frame generation and improved upscaling where supported. Renamed from PROTON_FSR3_UPGRADE in 11.0-20260519. Use as a stepping stone when a game can't run FSR 4. CachyOS-Proton only."
+example = "PROTON_FFX3_UPGRADE=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_FSR4_INDICATOR"
+needs = ["fsr4"]
 category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
@@ -352,13 +356,26 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 [[env]]
 key = "PROTON_MLFG_UPGRADE"
 gpu = "amd"
+needs = ["fsr4"]
 category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable AMD multi-frame generation (needs amdxcffx64.dll >= 4.0.3)."
-details = "Enables AMD multi-frame generation (MLFG) when the game's amdxcffx64.dll is >= 4.0.3; it is auto-enabled alongside FSR4 upgrades. Boosts perceived framerate via generated frames on supported AMD hardware. CachyOS-Proton only."
+details = "Enables AMD multi-frame generation (MLFG) when the game's amdxcffx64.dll is >= 4.0.3; it is auto-enabled alongside FSR4 upgrades. Boosts perceived framerate via generated frames on supported AMD hardware. On RDNA3 it uses 'redstone' frame generation and additionally requires DXIL_SPIRV_CONFIG=wmma_rdna3_workaround. CachyOS-Proton only."
 example = "PROTON_MLFG_UPGRADE=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "DXIL_SPIRV_CONFIG"
+gpu = "amd"
+needs = ["fsr4"]
+category = "NVIDIA / Upscaling"
+default_value = "wmma_rdna3_workaround"
+values = ["wmma_rdna3_workaround"]
+help = "CachyOS: RDNA3 workaround required for FSR4 multi-frame generation (MLFG)."
+details = "Applies the 'wmma_rdna3_workaround' to the DXIL→SPIR-V translation, which RDNA3 cards need in order to run FSR4 multi-frame generation (PROTON_MLFG_UPGRADE). Set this alongside PROTON_MLFG_UPGRADE=1 on RDNA3; it is unnecessary on RDNA4. CachyOS-Proton only."
+example = "PROTON_MLFG_UPGRADE=1 DXIL_SPIRV_CONFIG=wmma_rdna3_workaround %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
 [[env]]
 key = "PROTON_USE_OPTISCALER"
@@ -411,6 +428,17 @@ details = "Enables CachyOS's alternative implementations of NVIDIA libraries (nv
 example = "PROTON_NVIDIA_LIBS=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
+[[env]]
+key = "PROTON_NVIDIA_NVML"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: alternative nvml.dll (GPU telemetry). On by default; set 0 to disable."
+details = "Enables CachyOS's alternative nvml.dll so games/overlays that query NVIDIA GPU telemetry (clocks, temps, utilization) work under Proton. Enabled by default for NVIDIA GPUs; set 0 to disable if a game misbehaves when NVML is present. CachyOS-Proton only."
+example = "PROTON_NVIDIA_NVML=0 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
 # ===================== Display / Wayland / HDR ====================
 
 [[env]]
@@ -422,17 +450,6 @@ values = ["1", "0"]
 help = "Run on the native Wayland driver (no XWayland). Enables HDR without gamescope."
 details = "Enables native Wayland driver support (winewayland.drv) instead of XWayland, allowing games to run natively on Wayland compositors. This is experimental and work-in-progress; expect potential issues with Steam Overlay, Steam Input, and some launchers (which may display as white windows). Benefits include HDR support without gamescope and improved latency/frame pacing on compatible systems."
 example = "PROTON_ENABLE_WAYLAND=1 %command%"
-url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#runtime-config-options"
-
-[[env]]
-key = "PROTON_ENABLE_HDR"
-needs = ["hdr"]
-category = "Display / Wayland / HDR"
-default_value = "1"
-values = ["1", "0"]
-help = "Obsolete alias for DXVK_HDR — prefer DXVK_HDR=1 below."
-details = "Obsolete alias for DXVK_HDR. Modern Proton uses DXVK_HDR=1 to enable HDR output support. Requires either Gamescope with --hdr-enabled or PROTON_ENABLE_WAYLAND=1, plus an HDR-capable display and appropriate display server/compositor support."
-example = "PROTON_ENABLE_HDR=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#runtime-config-options"
 
 [[env]]
@@ -461,9 +478,21 @@ needs = ["hdr"]
 category = "Display / Wayland / HDR"
 default_value = "1"
 values = ["1", "0"]
-help = "Enable HDR output (the modern switch; supersedes PROTON_ENABLE_HDR)."
-details = "Enables HDR for DXVK/VKD3D games. Requires an HDR-capable display plus either gamescope with --hdr-enabled or PROTON_ENABLE_WAYLAND=1. This is the current HDR toggle; PROTON_ENABLE_HDR is only an older alias."
+help = "Enable HDR output (the modern switch; PROTON_ENABLE_HDR was removed)."
+details = "Enables HDR for DXVK/VKD3D games. Requires an HDR-capable display plus either gamescope with --hdr-enabled or PROTON_ENABLE_WAYLAND=1. This is the current HDR toggle; recent proton-cachyos also auto-detects HDR (force off with DXVK_NO_HDR=1). The old PROTON_ENABLE_HDR alias has been removed."
 example = "PROTON_ENABLE_WAYLAND=1 DXVK_HDR=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "ENABLE_HDR_WSI"
+gpu = "nvidia"
+needs = ["hdr"]
+category = "Display / Wayland / HDR"
+default_value = "1"
+values = ["1", "0"]
+help = "Enable the HDR WSI layer — needed for HDR on older NVIDIA drivers."
+details = "Turns on the HDR Window System Integration layer, which older NVIDIA drivers require before DXVK_HDR output will work. Set alongside DXVK_HDR=1 if HDR won't engage on an NVIDIA GPU; unnecessary on recent drivers and on AMD/Intel. Requires an HDR-capable display."
+example = "DXVK_HDR=1 ENABLE_HDR_WSI=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
@@ -660,6 +689,15 @@ details = "Controls Wine debug logging verbosity and channel filtering. Set to '
 example = "WINEDEBUG=warn+all %command%"
 url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
+[[env]]
+key = "WINE_BLOCK_HOSTS"
+category = "Wine / Overrides"
+default_value = ""
+help = "Block the game from reaching listed hosts (telemetry/DRM), comma-separated (max 16)."
+details = "Blocks network access to the listed hostnames from inside the prefix — handy for stopping telemetry or a broken DRM/phone-home check that stalls launch. Comma- or semicolon-separated, up to 16 hosts; a second-level domain blocks its subdomains too (e.g. 'test.org' also blocks '*.test.org')."
+example = "WINE_BLOCK_HOSTS=telemetry.example.com,ads.example.net %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
 # ============================= Logging ===========================
 
 [[env]]
@@ -682,6 +720,16 @@ example = "PROTON_LOG_DIR=/tmp/proton_logs PROTON_LOG=1 %command%"
 url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
+key = "PROTON_WAIT_ATTACH"
+category = "Logging / Debug"
+default_value = "1"
+values = ["1", "0"]
+help = "Pause before launch so you can attach a debugger (advanced troubleshooting)."
+details = "Makes Proton wait at startup before executing the game, giving you time to attach a debugger (e.g. winedbg/gdb) to the process. Purely a development/troubleshooting aid — the game appears to hang until a debugger connects. Leave off for normal play."
+example = "PROTON_WAIT_ATTACH=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
 key = "MANGOHUD_CONFIG"
 category = "Logging / Debug"
 default_value = "fps_limit=0,cpu_temp,gpu_temp,ram,vram"
@@ -698,6 +746,48 @@ help = "Write Proton/Wine crash reports into this directory."
 details = "Writes crash logs/backtraces into the specified directory instead of the default location. Handy for collecting reproducible crash data when filing bug reports or bisecting a problematic game."
 example = "PROTON_CRASH_REPORT_DIR=/tmp/proton-crashes %command%"
 url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+# ============================== Audio ============================
+
+[[env]]
+key = "PROTON_USE_PIPEWIRE"
+category = "Audio"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: use the native PipeWire audio driver (winepipewire.drv). On by default."
+details = "Routes game audio through Wine's native PipeWire driver (winepipewire.drv) instead of going via PulseAudio. Enabled by default in proton-cachyos 11.0-20260702 and generally gives lower-latency, more reliable audio on PipeWire systems. Set 0 to fall back to the PulseAudio driver if a game has audio glitches, no sound, or device-selection issues. CachyOS-Proton only."
+example = "PROTON_USE_PIPEWIRE=0 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "WINE_AUDIO_DRIVER"
+category = "Audio"
+default_value = "pipewire,pulse,alsa"
+values = ["pipewire,pulse,alsa", "pulse,alsa", "pulse", "alsa"]
+help = "Preferred Wine audio driver order (default pipewire,pulse,alsa)."
+details = "Comma-separated preference list of Wine audio backends; Wine uses the first one that initializes. Defaults to 'pipewire,pulse,alsa'. Force a specific backend (e.g. 'pulse') when auto-selection lands on a driver that crackles or fails to open your device. CachyOS-Proton only."
+example = "WINE_AUDIO_DRIVER=pulse %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "WINEALSA_SPATIAL"
+category = "Audio"
+default_value = "1"
+values = ["1", "0"]
+help = "Correctly downmix spatial / surround audio through the ALSA driver."
+details = "Enables proper downmixing of spatial (surround) audio when using the ALSA backend, fixing missing channels or wrong mixing in games that output 5.1/7.1. Only relevant with the ALSA driver; pair with WINEALSA_CHANNELS to match your speaker layout. CachyOS-Proton only."
+example = "WINE_AUDIO_DRIVER=alsa WINEALSA_SPATIAL=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "WINEALSA_CHANNELS"
+category = "Audio"
+default_value = "6"
+values = ["2", "4", "6", "8"]
+help = "Channel count for the ALSA driver (2=stereo, 6=5.1, 8=7.1)."
+details = "Sets the number of output channels for the ALSA audio backend so surround setups get the right layout (2 = stereo, 4 = quad, 6 = 5.1, 8 = 7.1). Only relevant with the ALSA driver and typically paired with WINEALSA_SPATIAL. CachyOS-Proton only."
+example = "WINE_AUDIO_DRIVER=alsa WINEALSA_CHANNELS=6 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 # ====================== Compatibility / Misc =====================
 
@@ -747,8 +837,18 @@ category = "Compatibility / Misc"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: use SDL input instead of HIDRAW/Steam Input for controllers."
-details = "Routes controller input through SDL rather than HIDRAW/Steam Input. Try this when a gamepad isn't detected, has wrong mappings, or double-inputs under the default path. CachyOS-Proton only."
+details = "Routes controller input through SDL rather than HIDRAW/Steam Input. Try this when a gamepad isn't detected, has wrong mappings, or double-inputs under the default path. CachyOS-Proton only. (Alias for PROTON_PREFER_SDL.)"
 example = "PROTON_USE_SDL=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_NO_STEAMINPUT"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1", "0"]
+help = "Disable Steam Input entirely (fixes doubled or fighting controller input)."
+details = "Stops Proton from hooking Steam Input, so the game sees the raw controller directly. Use when Steam Input conflicts with a game's own controller handling — symptoms include doubled inputs, phantom buttons, or a gamepad that fights itself. Leave off if you rely on Steam Input remapping."
+example = "PROTON_NO_STEAMINPUT=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]

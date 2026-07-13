@@ -53,7 +53,7 @@
   >
     <Sparkle size={18} weight="fill" class="text-accent" />
     <h2 class="text-sm font-medium tracking-wide text-text">Recipes</h2>
-    <span class="text-xs text-muted">one-click tuning — merges onto your selection</span>
+    <span class="text-xs text-muted">one-click tuning, merges onto your selection</span>
     <span class="ml-auto text-xs text-muted">{collapsed ? "Show" : "Hide"}</span>
   </button>
 

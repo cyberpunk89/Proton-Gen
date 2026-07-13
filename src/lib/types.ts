@@ -112,7 +112,10 @@ export interface Store {
   dismissed_cachyos_build: string;
   show_irrelevant: boolean;
   hdr: boolean;
+  fsr4: boolean;
   protondb_auto: boolean;
+  last_session: Config | null;
+  last_game_appid: number | null;
 }
 
 export interface Tier {

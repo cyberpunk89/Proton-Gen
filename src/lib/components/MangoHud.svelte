@@ -14,8 +14,23 @@
     { key: "gpu_name", token: "gpu_name", label: "GPU name" },
   ];
 
-  let checks = $state<Record<string, boolean>>({ fps: true, frametime: true });
   let fpsLimit = $state("");
+
+  // Seed the picker from the current MANGOHUD_CONFIG so a restored/applied
+  // overlay is reflected here; fall back to a sensible default when empty.
+  function seedChecks(): Record<string, boolean> {
+    const raw = app.env["MANGOHUD_CONFIG"]?.value ?? "";
+    const seeded: Record<string, boolean> = {};
+    for (const t of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+      const m = METRICS.find((x) => x.token === t);
+      if (m) seeded[m.key] = true;
+      const fl = /^fps_limit=(\d+)$/.exec(t);
+      if (fl && Number(fl[1]) > 0) fpsLimit = fl[1];
+    }
+    return Object.keys(seeded).length ? seeded : { fps: true, frametime: true };
+  }
+
+  let checks = $state<Record<string, boolean>>(seedChecks());
 
   let config = $derived.by(() => {
     const parts = METRICS.filter((m) => checks[m.key]).map((m) => m.token);
@@ -54,7 +69,7 @@
   </label>
 
   <p class="overflow-x-auto rounded-lg bg-mantle p-2 font-mono text-xs text-muted">
-    MANGOHUD_CONFIG={config || "—"}
+    MANGOHUD_CONFIG={config || "none"}
   </p>
 
   <div class="flex justify-end">

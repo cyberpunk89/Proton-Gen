@@ -58,9 +58,21 @@ pub struct Store {
     /// User-declared HDR display capability (not auto-detectable; opt-in).
     #[serde(default)]
     pub hdr: bool,
+    /// User-declared FSR 3/4 upscaler-upgrade capability (RDNA3/RDNA4; opt-in,
+    /// not reliably auto-detectable). Gates the FSR upgrade params/recipes.
+    #[serde(default)]
+    pub fsr4: bool,
     /// Auto-fetch the ProtonDB tier when a Steam game is selected.
     #[serde(default)]
     pub protondb_auto: bool,
+    /// The exact builder state on screen when the app last closed, restored on
+    /// next launch so the user reopens where they left off.
+    #[serde(default)]
+    pub last_session: Option<Config>,
+    /// The game selected in that last session (matches `GameDto.app_id`), so it
+    /// can be re-selected on launch.
+    #[serde(default)]
+    pub last_game_appid: Option<u32>,
 }
 
 impl Store {
@@ -176,19 +188,29 @@ mod tests {
             },
         });
         s.remember(553850, s.presets[0].config.clone());
+        s.last_game_appid = Some(553850);
+        s.last_session = Some(Config {
+            umu: true,
+            extra_env: "FOO=bar".into(),
+            ..Default::default()
+        });
         let text = toml::to_string_pretty(&s).unwrap();
         let back: Store = toml::from_str(&text).unwrap();
         assert_eq!(back.theme, "Dracula");
         assert_eq!(back.presets.len(), 1);
         assert_eq!(back.presets[0].name, "hd2");
         assert_eq!(back.recall(553850).unwrap().game_args, "-windowed");
+        assert_eq!(back.last_game_appid, Some(553850));
+        let sess = back.last_session.expect("last_session round-trips");
+        assert!(sess.umu);
+        assert_eq!(sess.extra_env, "FOO=bar");
     }
 
     #[test]
     fn apply_then_capture_is_stable() {
         let cat = Catalog::bundled();
         let mut opts = Options::from_catalog(&cat);
-        let env = vec![("PROTON_USE_NTSYNC".to_string(), "1".to_string())];
+        let env = vec![("PROTON_NO_NTSYNC".to_string(), "1".to_string())];
         let wrappers = vec![("mangohud".to_string(), String::new())];
         apply_lists(&cat, &mut opts, &env, &wrappers);
         let (env2, wrappers2) = options_to_lists(&cat, &opts);

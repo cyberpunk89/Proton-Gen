@@ -2,11 +2,25 @@
   import { app } from "$lib/state.svelte";
   import { copyText } from "$lib/util";
   import { toast } from "$lib/toast.svelte";
-  import { Copy, Terminal } from "phosphor-svelte";
+  import { ArrowCounterClockwise, Copy, Terminal } from "phosphor-svelte";
+  import { fade } from "svelte/transition";
+
+  // Svelte JS transitions aren't covered by app.css's global reduced-motion
+  // rule, so gate the "Saved" fade explicitly.
+  const reduceMotion =
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   async function copy() {
     await copyText(app.command);
     toast.show("Command copied");
+  }
+
+  function reset() {
+    const prev = app.resetCommand();
+    toast.show("Command reset", {
+      action: { label: "Undo", onClick: () => app.loadConfig(prev) },
+    });
   }
 </script>
 
@@ -20,13 +34,30 @@
     <span class="text-[11px] font-medium uppercase tracking-wider text-muted">
       {app.umu ? "umu-launcher command" : "Steam launch options"}
     </span>
-    <button
-      onclick={copy}
-      class="ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95"
-      style="background: var(--accent); color: var(--on-accent)"
-    >
-      <Copy size={14} weight="bold" /> Copy
-    </button>
+    {#if app.saved}
+      <span
+        transition:fade={{ duration: reduceMotion ? 0 : 200 }}
+        class="text-[11px] text-muted"
+        aria-live="polite"
+      >
+        Saved
+      </span>
+    {/if}
+    <div class="ml-auto flex items-center gap-1.5">
+      <button
+        onclick={reset}
+        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent active:scale-95"
+      >
+        <ArrowCounterClockwise size={14} /> Reset
+      </button>
+      <button
+        onclick={copy}
+        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent active:scale-95"
+        style="background: var(--accent); color: var(--on-accent)"
+      >
+        <Copy size={14} weight="bold" /> Copy
+      </button>
+    </div>
   </div>
 
   <button
