@@ -407,6 +407,21 @@ class AppStore {
       // Fall back to custom env if the catalog lacks the key.
       this.extraEnv = `${this.extraEnv} MANGOHUD_CONFIG=${config}`.trim();
     }
+    // The in-app string shouldn't compete with a stale config-file path.
+    if (this.env["MANGOHUD_CONFIGFILE"]) this.env["MANGOHUD_CONFIGFILE"].enabled = false;
+    if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
+  }
+
+  applyMangoFile(path: string) {
+    if (this.env["MANGOHUD_CONFIGFILE"]) {
+      this.env["MANGOHUD_CONFIGFILE"] = { enabled: true, value: path };
+    } else {
+      // Fall back to custom env if the catalog lacks the key.
+      this.extraEnv = `${this.extraEnv} MANGOHUD_CONFIGFILE=${path}`.trim();
+    }
+    // MANGOHUD_CONFIG takes priority over config files — disable it so the
+    // file's settings actually take effect.
+    if (this.env["MANGOHUD_CONFIG"]) this.env["MANGOHUD_CONFIG"].enabled = false;
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
   }
 

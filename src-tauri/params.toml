@@ -739,6 +739,15 @@ example = "MANGOHUD_CONFIG=fps,cpu_temp,gpu_temp,ram,vram mangohud %command%"
 url = "https://github.com/flightlessmango/MangoHud/blob/master/README.md"
 
 [[env]]
+key = "MANGOHUD_CONFIGFILE"
+category = "Logging / Debug"
+default_value = ""
+help = "Path to a MangoHud .conf file (used when MANGOHUD_CONFIG is unset)."
+details = "Points MangoHud at an on-disk config file instead of the inline MANGOHUD_CONFIG string. Handy for reusing a hand-tuned overlay (position, colours, metrics) kept in ~/.config/MangoHud/MangoHud.conf. Note MANGOHUD_CONFIG, if set, takes priority over the file, so leave it unset when loading a preset. The path must be absolute — '~' is not expanded in Steam launch options."
+example = "MANGOHUD_CONFIGFILE=/home/user/.config/MangoHud/MangoHud.conf mangohud %command%"
+url = "https://github.com/flightlessmango/MangoHud/blob/master/README.md#environment-variables"
+
+[[env]]
 key = "PROTON_CRASH_REPORT_DIR"
 category = "Logging / Debug"
 default_value = ""
