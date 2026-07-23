@@ -1,6 +1,6 @@
 {
   "name": "protongen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A polished GUI for building Steam / umu-launcher Proton commands",
   "type": "module",
   "scripts": {
