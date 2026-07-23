@@ -1,6 +1,6 @@
 {
   "name": "protongen",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A polished GUI for building Steam / umu-launcher Proton commands",
   "type": "module",
   "scripts": {
@@ -28,8 +28,5 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.7"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
   }
 }

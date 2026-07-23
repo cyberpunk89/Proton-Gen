@@ -1,0 +1,6 @@
+# pnpm settings (its new home as of pnpm 10.16+; the `pnpm` field in
+# package.json is ignored by newer pnpm). Approve esbuild's postinstall so a
+# clean `pnpm install --frozen-lockfile` in CI doesn't fail with
+# ERR_PNPM_IGNORED_BUILDS.
+onlyBuiltDependencies:
+  - esbuild
