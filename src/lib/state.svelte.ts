@@ -10,6 +10,7 @@ import type {
   RuntimeDto,
   StaleInfo,
   Store,
+  UpdateInfo,
 } from "./types";
 
 interface OptState {
@@ -28,6 +29,7 @@ const EMPTY_STORE: Store = {
   presets: [],
   game_memory: {},
   dismissed_cachyos_build: "",
+  dismissed_update_version: "",
   show_irrelevant: false,
   hdr: false,
   fsr4: false,
@@ -61,6 +63,10 @@ class AppStore {
   launchOptions = $state<Record<string, string>>({});
   compatTools = $state<Record<string, string>>({});
   stale = $state<StaleInfo | null>(null);
+  update = $state<UpdateInfo | null>(null);
+  updating = $state(false);
+  /** True while a library re-scan (rescan IPC) is in flight. */
+  refreshing = $state(false);
   store = $state<Store>(EMPTY_STORE);
 
   // ---- builder selection ----
@@ -111,18 +117,7 @@ class AppStore {
     this.catalog = b.catalog;
     this.categories = b.categories;
     this.recipes = b.recipes;
-    // umu can resolve the "GE-Proton" codename and auto-download the latest
-    // GE-Proton; surface it as a synthetic runtime whose path IS the codename.
-    // Only meaningful in umu mode (Steam mode ignores PROTONPATH).
-    this.runtimes = [
-      {
-        internal_name: "GE-Proton",
-        display_name: "GE-Proton (latest · umu auto-download)",
-        kind: "auto",
-        path: "GE-Proton",
-      },
-      ...b.runtimes,
-    ];
+    this.runtimes = this.withAutoRuntime(b.runtimes);
     this.games = b.games;
     this.hardware = b.hardware;
     this.requiresStatus = b.requires_status;
@@ -154,6 +149,9 @@ class AppStore {
 
     this.ready = true;
 
+    // Check for a newer release in the background; never blocks launch.
+    this.checkForUpdate();
+
     // Recompute the command + lint, and persist the session, whenever any
     // builder input changes. Registered last so the first effect run captures
     // the restored state rather than defaults.
@@ -164,6 +162,58 @@ class AppStore {
         this.scheduleSessionPersist();
       });
     });
+  }
+
+  /** Prepend the synthetic GE-Proton auto-download entry to a discovered runtime
+   *  list. umu resolves the "GE-Proton" codename and auto-downloads the latest;
+   *  its path IS the codename. Only meaningful in umu mode (Steam ignores
+   *  PROTONPATH). */
+  private withAutoRuntime(runtimes: RuntimeDto[]): RuntimeDto[] {
+    return [
+      {
+        internal_name: "GE-Proton",
+        display_name: "GE-Proton (latest · umu auto-download)",
+        kind: "auto",
+        path: "GE-Proton",
+      },
+      ...runtimes,
+    ];
+  }
+
+  /** Re-scan the library (games, runtimes, shortcuts) without restarting. Only
+   *  the discovery-derived fields are replaced; builder selections, the store and
+   *  the theme are left intact. Current selections are re-validated against the
+   *  fresh lists so a removed game/runtime falls back gracefully. */
+  async refresh() {
+    if (this.refreshing) return;
+    this.refreshing = true;
+    try {
+      const b = await ipc.rescan();
+      this.loadError = b.load_error;
+      this.steamRoot = b.steam_root;
+      this.runtimes = this.withAutoRuntime(b.runtimes);
+      this.games = b.games;
+      this.launchOptions = b.launch_options;
+      this.compatTools = b.compat_tools;
+      this.stale = b.stale;
+
+      // Re-validate current selections against the refreshed lists.
+      if (
+        this.selectedRuntime &&
+        !this.runtimes.some((r) => r.path === this.selectedRuntime!.path)
+      ) {
+        this.selectedRuntime = this.defaultRuntime();
+      }
+      if (
+        this.selectedAppId != null &&
+        !this.games.some((g) => g.app_id === this.selectedAppId)
+      ) {
+        this.selectedAppId = null;
+        this.selectedGameName = null;
+      }
+    } finally {
+      this.refreshing = false;
+    }
   }
 
   /** Preferred default runtime: an installed proton-cachyos, else the first
@@ -503,6 +553,43 @@ class AppStore {
       this.stale != null &&
       this.store.dismissed_cachyos_build !== this.stale.installed
     );
+  }
+
+  // ------------------------------- updates ----------------------------------
+
+  async checkForUpdate() {
+    try {
+      const info = await ipc.checkForUpdate();
+      if (info?.available) this.update = info;
+    } catch (e) {
+      console.error("update check failed", e);
+    }
+  }
+
+  get updateVisible(): boolean {
+    return (
+      this.update != null &&
+      this.store.dismissed_update_version !== this.update.latest
+    );
+  }
+
+  dismissUpdate() {
+    if (this.update) {
+      this.store.dismissed_update_version = this.update.latest;
+      this.persistStore();
+    }
+  }
+
+  /** Download, verify and swap the new binary. On success the backend restarts
+   *  the app into the new version, so this never returns in the real shell. */
+  async applyUpdate() {
+    if (!this.update) return;
+    this.updating = true;
+    try {
+      await ipc.runUpdate($state.snapshot(this.update));
+    } finally {
+      this.updating = false;
+    }
   }
 
   persistStore() {

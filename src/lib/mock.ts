@@ -249,6 +249,7 @@ export const mockBootstrap: Bootstrap = {
     presets: [],
     game_memory: {},
     dismissed_cachyos_build: "",
+    dismissed_update_version: "",
     show_irrelevant: false,
     hdr: false,
     fsr4: false,

@@ -9,6 +9,7 @@
   import CommandPreview from "$lib/components/CommandPreview.svelte";
   import Notices from "$lib/components/Notices.svelte";
   import StaleBanner from "$lib/components/StaleBanner.svelte";
+  import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import { CircleNotch, WarningCircle } from "phosphor-svelte";
 
@@ -39,9 +40,10 @@
 
     {#if app.view === "library"}
       <div class="min-h-0 flex-1 overflow-y-auto" in:fade={{ duration: 120 }}>
-        {#if app.loadError || app.staleVisible}
+        {#if app.loadError || app.staleVisible || app.updateVisible}
           <div class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 pt-4">
             {@render loadErrorBanner()}
+            <UpdateBanner />
             <StaleBanner />
           </div>
         {/if}
@@ -55,6 +57,7 @@
           <div class="min-h-0 flex-1 overflow-y-auto">
             <div class="mx-auto flex max-w-4xl flex-col gap-3 px-5 py-4">
               {@render loadErrorBanner()}
+              <UpdateBanner />
               <StaleBanner />
               <Notices />
               <MainPanel />

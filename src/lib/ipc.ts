@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Bootstrap, Config, Store, Tier } from "./types";
+import type { Bootstrap, Config, Store, Tier, UpdateInfo } from "./types";
 import { mockBootstrap, mockBuildCommand } from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
@@ -8,6 +8,10 @@ const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 export const ipc = {
   bootstrap: () =>
     inTauri ? invoke<Bootstrap>("bootstrap") : Promise.resolve(mockBootstrap),
+
+  // Re-scan the library (games, runtimes, shortcuts) without restarting the app.
+  rescan: () =>
+    inTauri ? invoke<Bootstrap>("rescan") : Promise.resolve(mockBootstrap),
 
   buildCommand: (config: Config, protonPath: string | null) =>
     inTauri
@@ -51,6 +55,22 @@ export const ipc = {
 
   saveStore: (store: Store) =>
     inTauri ? invoke<void>("save_store", { store }) : Promise.resolve(),
+
+  checkForUpdate: () =>
+    inTauri
+      ? invoke<UpdateInfo>("check_for_update")
+      : Promise.resolve<UpdateInfo>({
+          available: false,
+          current: "0.0.0",
+          latest: "0.0.0",
+          notes: "",
+          html_url: "",
+          download_url: "",
+          sha256_url: "",
+        }),
+
+  runUpdate: (info: UpdateInfo) =>
+    inTauri ? invoke<void>("run_update", { info }) : Promise.resolve(),
 };
 
 function emptyParse(): Config {

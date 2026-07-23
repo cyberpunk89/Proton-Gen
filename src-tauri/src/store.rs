@@ -52,6 +52,9 @@ pub struct Store {
     /// proton-cachyos build for which the "catalog stale" banner was dismissed.
     #[serde(default)]
     pub dismissed_cachyos_build: String,
+    /// App version for which the "update available" banner was dismissed.
+    #[serde(default)]
+    pub dismissed_update_version: String,
     /// Show recipes/options that don't apply to the detected hardware (default: hide).
     #[serde(default)]
     pub show_irrelevant: bool,

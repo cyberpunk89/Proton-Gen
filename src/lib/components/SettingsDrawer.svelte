@@ -4,9 +4,22 @@
   import { fly, fade } from "svelte/transition";
   import Switch from "./Switch.svelte";
   import MangoHud from "./MangoHud.svelte";
-  import { GearSix, Palette, Gauge, SlidersHorizontal, Check, X } from "phosphor-svelte";
+  import {
+    GearSix,
+    Palette,
+    Gauge,
+    SlidersHorizontal,
+    Check,
+    X,
+    CaretDown,
+  } from "phosphor-svelte";
+  import type { Component } from "svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
+
+  // Sections are collapsible; all start collapsed to keep the (now larger)
+  // drawer tidy.
+  let sections = $state({ appearance: false, behavior: false, overlay: false });
 
   function onkeydown(e: KeyboardEvent) {
     if (e.key === "Escape") open = false;
@@ -47,12 +60,14 @@
       <div class="flex-1 space-y-6 overflow-y-auto p-4">
         <!-- Appearance -->
         <section>
-          <h3
-            class="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted"
-          >
-            <Palette size={13} /> Appearance
-          </h3>
-          <div class="grid grid-cols-2 gap-1.5">
+          {@render sectionHeading(
+            Palette,
+            "Appearance",
+            sections.appearance,
+            () => (sections.appearance = !sections.appearance),
+          )}
+          {#if sections.appearance}
+          <div class="mt-2 grid grid-cols-2 gap-1.5">
             {#each THEMES as t (t.id)}
               <button
                 onclick={() => app.setTheme(t.id)}
@@ -70,16 +85,19 @@
               </button>
             {/each}
           </div>
+          {/if}
         </section>
 
         <!-- Behavior -->
         <section>
-          <h3
-            class="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted"
-          >
-            <SlidersHorizontal size={13} /> Behavior
-          </h3>
-          <div class="space-y-0.5">
+          {@render sectionHeading(
+            SlidersHorizontal,
+            "Behavior",
+            sections.behavior,
+            () => (sections.behavior = !sections.behavior),
+          )}
+          {#if sections.behavior}
+          <div class="mt-2 space-y-0.5">
             {@render toggle(
               "Show unsupported options",
               "List recipes that don't match your detected hardware.",
@@ -105,21 +123,38 @@
               () => app.setProtondbAuto(!app.store.protondb_auto),
             )}
           </div>
+          {/if}
         </section>
 
         <!-- Overlay -->
         <section>
-          <h3
-            class="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted"
-          >
-            <Gauge size={13} /> MangoHud overlay
-          </h3>
-          <MangoHud />
+          {@render sectionHeading(
+            Gauge,
+            "MangoHud overlay",
+            sections.overlay,
+            () => (sections.overlay = !sections.overlay),
+          )}
+          {#if sections.overlay}
+            <div class="mt-2">
+              <MangoHud />
+            </div>
+          {/if}
         </section>
       </div>
     </div>
   </div>
 {/if}
+
+{#snippet sectionHeading(Icon: Component, label: string, isOpen: boolean, onclick: () => void)}
+  <button
+    {onclick}
+    class="flex w-full items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted transition hover:text-subtext"
+  >
+    <Icon size={13} />
+    {label}
+    <CaretDown size={12} class="ml-auto transition-transform {isOpen ? '' : '-rotate-90'}" />
+  </button>
+{/snippet}
 
 {#snippet toggle(title: string, desc: string, checked: boolean, onchange: () => void)}
   <div class="flex items-center gap-3 rounded-lg px-1 py-1.5">

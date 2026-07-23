@@ -1,0 +1,56 @@
+name: Release
+
+# Build a CachyOS-compatible binary and publish it to a GitHub Release whenever a
+# version tag is pushed. The in-app updater (src-tauri/src/update.rs) reads this
+# release's `protongen` + `protongen.sha256` assets.
+#
+# Cut a release:
+#   scripts/bump-version.sh 0.2.0 && git commit -am "Release v0.2.0"
+#   git tag v0.2.0 && git push && git push origin v0.2.0
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Build inside Arch so the dynamically-linked binary matches CachyOS's rolling
+    # libraries (webkit2gtk-4.1, glibc). An Ubuntu-built binary risks soname
+    # mismatches at runtime on Arch-based systems.
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel git rust nodejs npm \
+            webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl
+          npm install -g pnpm
+
+      - uses: actions/checkout@v4
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (frontend + binary, no bundle)
+        run: ./node_modules/.bin/tauri build --no-bundle
+
+      - name: Checksum
+        run: |
+          cd src-tauri/target/release
+          sha256sum protongen > protongen.sha256
+          cat protongen.sha256
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/protongen
+            src-tauri/target/release/protongen.sha256
+          generate_release_notes: true

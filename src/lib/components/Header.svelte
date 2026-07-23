@@ -5,12 +5,17 @@
   import Dialog from "./Dialog.svelte";
   import SettingsDrawer from "./SettingsDrawer.svelte";
   import { autofocus } from "$lib/actions";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     BookmarkSimple,
     ClipboardText,
     GearSix,
     Trash,
     FloppyDisk,
+    ArrowsClockwise,
+    Minus,
+    Square,
+    X,
   } from "phosphor-svelte";
 
   let showImport = $state(false);
@@ -18,6 +23,11 @@
   let showSettings = $state(false);
   let importText = $state("");
   let saveName = $state("");
+
+  // Custom window controls (native decorations are off). No-op in the browser
+  // dev/mock path, where there's no Tauri window to drive.
+  const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const win = () => (inTauri ? getCurrentWindow() : null);
 
   function openSave() {
     saveName = app.activePresetName ?? app.selectedGameName ?? "";
@@ -29,6 +39,10 @@
     toast.show("Preset saved");
     showSave = false;
   }
+  async function doRefresh() {
+    await app.refresh();
+    toast.show("Library refreshed");
+  }
   async function doImport() {
     await app.importCommand(importText);
     toast.show("Imported");
@@ -37,12 +51,12 @@
   }
 </script>
 
-<header class="flex items-center gap-3 px-5 py-3">
-  <img src="/logo.svg" alt="" class="size-8 rounded-lg" />
-  <div>
-    <h1 class="text-base font-medium leading-none text-text">protongen</h1>
+<header data-tauri-drag-region class="flex items-center gap-2.5 px-4 py-2">
+  <img src="/logo.svg" alt="" class="size-7 rounded-lg" data-tauri-drag-region />
+  <div data-tauri-drag-region>
+    <h1 class="text-sm font-medium leading-none text-text" data-tauri-drag-region>protongen</h1>
     {#if app.steamRoot}
-      <p class="mt-0.5 text-[11px] text-muted">{app.steamRoot}</p>
+      <p class="mt-0.5 text-[11px] leading-none text-muted" data-tauri-drag-region>{app.steamRoot}</p>
     {/if}
   </div>
 
@@ -93,6 +107,17 @@
     </Popover>
     {/if}
 
+    <!-- Refresh library (available on both library and builder views) -->
+    <button
+      onclick={doRefresh}
+      disabled={app.refreshing}
+      class="grid size-8 place-items-center rounded-lg border border-border bg-surface-2/50 text-subtext transition hover:border-accent/50 disabled:opacity-60"
+      aria-label="Refresh library"
+      title="Re-scan games, runtimes and shortcuts"
+    >
+      <ArrowsClockwise size={15} class={app.refreshing ? "animate-spin" : ""} />
+    </button>
+
     <!-- Settings -->
     <button
       onclick={() => (showSettings = true)}
@@ -101,6 +126,31 @@
     >
       <GearSix size={15} />
     </button>
+
+    <!-- Window controls (native decorations are off) -->
+    <div class="ml-1 flex items-center gap-1">
+      <button
+        onclick={() => win()?.minimize()}
+        class="grid size-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-text"
+        aria-label="Minimize"
+      >
+        <Minus size={15} />
+      </button>
+      <button
+        onclick={() => win()?.toggleMaximize()}
+        class="grid size-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-text"
+        aria-label="Maximize"
+      >
+        <Square size={13} />
+      </button>
+      <button
+        onclick={() => win()?.close()}
+        class="grid size-8 place-items-center rounded-lg text-muted transition hover:bg-red hover:text-white"
+        aria-label="Close"
+      >
+        <X size={15} />
+      </button>
+    </div>
   </div>
 </header>
 

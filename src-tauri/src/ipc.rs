@@ -22,6 +22,7 @@ use crate::runtime::{self, RuntimeKind};
 use crate::steam;
 use crate::steamcfg;
 use crate::store::{self, Config, Store};
+use crate::update::{self, UpdateInfo};
 
 /// A runtime, flattened for the frontend (path + kind as strings).
 #[derive(Clone, Serialize)]
@@ -86,6 +87,54 @@ pub struct AppState {
     store: Mutex<Store>,
 }
 
+/// Results of a filesystem re-scan: everything that can change while the app is
+/// running (a game installed, a Proton runtime added). Recomputed by both
+/// `AppState::new()` and the `rescan` command.
+struct Discovery {
+    steam_root: Option<String>,
+    load_error: Option<String>,
+    runtimes: Vec<RuntimeDto>,
+    games: Vec<GameDto>,
+    launch_options: HashMap<String, String>,
+    compat_tools: HashMap<String, String>,
+    stale: Option<StaleInfo>,
+}
+
+/// Re-run Steam / runtime / games discovery. Pure and idempotent — safe to call
+/// repeatedly. `catalog` is only read (for staleness); it never changes here.
+fn scan_discovery(catalog: &Catalog) -> Discovery {
+    let mut steam_root = None;
+    let mut load_error = None;
+    let mut runtimes_raw = Vec::new();
+    let mut games = Vec::new();
+    let mut launch_options = HashMap::new();
+    let mut compat_tools = HashMap::new();
+
+    match steam::locate_native() {
+        Ok(dir) => {
+            steam_root = Some(steam::root_display(&dir));
+            runtimes_raw = runtime::discover(&dir);
+            games = list_games_dto(&dir);
+            launch_options = stringify_keys(steamcfg::current_launch_options(&dir));
+            compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
+        }
+        Err(e) => load_error = Some(e.to_string()),
+    }
+
+    let stale = compute_stale(catalog, &runtimes_raw);
+    let runtimes = runtimes_raw.iter().map(runtime_dto).collect();
+
+    Discovery {
+        steam_root,
+        load_error,
+        runtimes,
+        games,
+        launch_options,
+        compat_tools,
+        stale,
+    }
+}
+
 impl AppState {
     pub fn new() -> Self {
         let catalog = Catalog::load();
@@ -93,40 +142,21 @@ impl AppState {
         let hardware = hardware::detect();
         let store = Store::load();
 
-        let mut steam_root = None;
-        let mut load_error = None;
-        let mut runtimes_raw = Vec::new();
-        let mut games = Vec::new();
-        let mut launch_options = HashMap::new();
-        let mut compat_tools = HashMap::new();
-
-        match steam::locate_native() {
-            Ok(dir) => {
-                steam_root = Some(steam::root_display(&dir));
-                runtimes_raw = runtime::discover(&dir);
-                games = list_games_dto(&dir);
-                launch_options = stringify_keys(steamcfg::current_launch_options(&dir));
-                compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
-            }
-            Err(e) => load_error = Some(e.to_string()),
-        }
-
-        let stale = compute_stale(&catalog, &runtimes_raw);
-        let runtimes = runtimes_raw.iter().map(runtime_dto).collect();
+        let d = scan_discovery(&catalog);
         let requires_status = compute_requires_status(&catalog);
 
         Self {
             catalog,
             recipes,
             hardware,
-            steam_root,
-            load_error,
-            runtimes,
-            games,
-            launch_options,
-            compat_tools,
+            steam_root: d.steam_root,
+            load_error: d.load_error,
+            runtimes: d.runtimes,
+            games: d.games,
+            launch_options: d.launch_options,
+            compat_tools: d.compat_tools,
             requires_status,
-            stale,
+            stale: d.stale,
             store: Mutex::new(store),
         }
     }
@@ -228,6 +258,33 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         compat_tools: state.compat_tools.clone(),
         requires_status: state.requires_status.clone(),
         stale: state.stale.clone(),
+    }
+}
+
+/// Re-scan Steam / runtimes / games and return a fresh `Bootstrap` so the UI can
+/// pick up newly-installed games or Proton runtimes without a restart. The
+/// static fields (catalog, recipes, hardware, requires_status) and the current
+/// store are reused unchanged. `AppState`'s discovery snapshot is intentionally
+/// left untouched — no command reads it after startup, so there's nothing to keep
+/// in sync (build_command/lint work off the passed Config + catalog).
+#[tauri::command]
+pub fn rescan(state: State<'_, AppState>) -> Bootstrap {
+    let store = state.store.lock().unwrap().clone();
+    let d = scan_discovery(&state.catalog);
+    Bootstrap {
+        steam_root: d.steam_root,
+        load_error: d.load_error,
+        catalog: state.catalog.clone(),
+        categories: state.catalog.categories(),
+        recipes: state.recipes.recipes.clone(),
+        runtimes: d.runtimes,
+        games: d.games,
+        hardware: state.hardware,
+        store,
+        launch_options: d.launch_options,
+        compat_tools: d.compat_tools,
+        requires_status: state.requires_status.clone(),
+        stale: d.stale,
     }
 }
 
@@ -363,4 +420,23 @@ pub fn save_store(state: State<'_, AppState>, store: Store) {
     let mut guard = state.store.lock().unwrap();
     *guard = store;
     guard.save();
+}
+
+/// Check GitHub Releases for a newer version (off the UI thread). A failed check
+/// returns an error the frontend swallows — it must never block launch.
+#[tauri::command]
+pub async fn check_for_update() -> Result<UpdateInfo, String> {
+    tauri::async_runtime::spawn_blocking(update::check_blocking)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Download + verify + swap the new binary, then restart into it. On success this
+/// never returns (the process is replaced); errors bubble back to the banner.
+#[tauri::command]
+pub async fn run_update(app: tauri::AppHandle, info: UpdateInfo) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || update::download_and_swap(&info))
+        .await
+        .map_err(|e| e.to_string())??;
+    app.restart()
 }

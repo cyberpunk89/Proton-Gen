@@ -21,6 +21,7 @@ mod runtime;
 mod steam;
 mod steamcfg;
 mod store;
+mod update;
 mod which;
 
 use anyhow::Result;
@@ -34,6 +35,7 @@ pub fn run() {
         .manage(ipc::AppState::new())
         .invoke_handler(tauri::generate_handler![
             ipc::bootstrap,
+            ipc::rescan,
             ipc::build_command,
             ipc::parse_command,
             ipc::apply_recipe,
@@ -42,6 +44,8 @@ pub fn run() {
             ipc::protondb_fetch,
             ipc::game_art,
             ipc::save_store,
+            ipc::check_for_update,
+            ipc::run_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

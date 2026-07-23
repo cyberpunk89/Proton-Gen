@@ -86,6 +86,16 @@ export interface StaleInfo {
   updated: string;
 }
 
+export interface UpdateInfo {
+  available: boolean;
+  current: string;
+  latest: string;
+  notes: string;
+  html_url: string;
+  download_url: string;
+  sha256_url: string;
+}
+
 export interface Config {
   umu: boolean;
   runtime: string | null;
@@ -110,6 +120,7 @@ export interface Store {
   presets: Preset[];
   game_memory: Record<string, Config>;
   dismissed_cachyos_build: string;
+  dismissed_update_version: string;
   show_irrelevant: boolean;
   hdr: boolean;
   fsr4: boolean;
