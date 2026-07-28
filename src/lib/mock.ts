@@ -1,7 +1,7 @@
 // Browser fallback data + handlers used when the app runs OUTSIDE Tauri (e.g.
 // `vite` in a plain browser for design/dev). Under Tauri this module is unused.
 
-import type { Bootstrap, Config } from "./types";
+import type { Bootstrap, Config, Token, TokenKind } from "./types";
 
 export const mockBootstrap: Bootstrap = {
   steam_root: "/home/you/.local/share/Steam",
@@ -277,4 +277,53 @@ export function mockBuildCommand(config: Config, protonPath: string | null): str
       .join(" ");
   }
   return [...env, ...wraps, "%command%", config.game_args].filter(Boolean).join(" ");
+}
+
+// Regex stand-in for explain.rs. Good enough for browser dev; the real
+// byte-exactness guarantee is the Rust round-trip test.
+const WORD_OR_SPACE = /\s+|(?:"[^"]*"|'[^']*'|[^\s"'])+/g;
+
+export function mockExplain(command: string): Token[] {
+  const pieces = command.match(WORD_OR_SPACE) ?? [];
+  const bare = (s: string) => s.replace(/["']/g, "");
+  const isUmu = pieces.some((p) => bare(p) === "umu-run");
+  const target = isUmu ? "umu-run" : "%command%";
+
+  let pastTarget = false;
+  let inGamescopeArgs = false;
+  let postCount = 0;
+
+  return pieces.map((text): Token => {
+    if (/^\s+$/.test(text)) return { text, kind: "space", key: null };
+    const w = bare(text);
+    let kind: TokenKind;
+    let key: string | null = null;
+
+    if (pastTarget) {
+      postCount += 1;
+      kind = isUmu && postCount === 1 ? "exe" : "game_arg";
+    } else if (w === target) {
+      pastTarget = true;
+      inGamescopeArgs = false;
+      kind = "target";
+    } else if (w === "--") {
+      inGamescopeArgs = false;
+      kind = "separator";
+    } else if (inGamescopeArgs) {
+      kind = "wrapper_arg";
+    } else if (w === "gamescope") {
+      inGamescopeArgs = true;
+      kind = "wrapper";
+      key = w;
+    } else if (w === "gamemoderun" || w === "mangohud") {
+      kind = "wrapper";
+      key = w;
+    } else if (/^[A-Za-z_]\w*=/.test(w)) {
+      kind = "env";
+      key = w.slice(0, w.indexOf("="));
+    } else {
+      kind = "unknown";
+    }
+    return { text, kind, key };
+  });
 }

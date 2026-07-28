@@ -12,6 +12,7 @@ use tauri::State;
 use crate::art;
 use crate::builder::Wrapper;
 use crate::compose;
+use crate::explain::{self, Token};
 use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
 use crate::lint;
@@ -319,6 +320,14 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
         umu_gameid: p.umu_gameid.unwrap_or_default(),
         game_args: p.game_args,
     }
+}
+
+/// Tokenize a launch command for the annotated preview. Stateless: tokens carry
+/// only a catalog `key`, which the frontend resolves against the already-loaded
+/// catalog.
+#[tauri::command]
+pub fn explain_command(command: String) -> Vec<Token> {
+    explain::explain(&command)
 }
 
 /// Merge recipe `index` onto `config`, returning the updated config.

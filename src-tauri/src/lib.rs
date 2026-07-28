@@ -10,6 +10,7 @@
 mod art;
 mod builder;
 mod compose;
+mod explain;
 mod games;
 mod hardware;
 mod ipc;
@@ -39,6 +40,7 @@ pub fn run() {
             ipc::rescan,
             ipc::build_command,
             ipc::parse_command,
+            ipc::explain_command,
             ipc::apply_recipe,
             ipc::lint,
             ipc::protondb_url,

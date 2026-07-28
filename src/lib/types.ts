@@ -129,6 +129,26 @@ export interface Store {
   last_game_appid: number | null;
 }
 
+/// Mirrors explain::TokenKind (serde rename_all = "snake_case").
+export type TokenKind =
+  | "space"
+  | "env"
+  | "wrapper"
+  | "wrapper_arg"
+  | "separator"
+  | "target"
+  | "exe"
+  | "game_arg"
+  | "unknown";
+
+/** One piece of a tokenized launch command. Concatenating every `text` in order
+ *  reproduces the command byte-for-byte — never re-join these with spaces. */
+export interface Token {
+  text: string;
+  kind: TokenKind;
+  key: string | null;
+}
+
 export interface Tier {
   tier: string;
   total: number;

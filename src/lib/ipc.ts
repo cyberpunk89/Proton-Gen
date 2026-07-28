@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Bootstrap, Config, Store, Tier, UpdateInfo } from "./types";
-import { mockBootstrap, mockBuildCommand } from "./mock";
+import type { Bootstrap, Config, Store, Tier, Token, UpdateInfo } from "./types";
+import { mockBootstrap, mockBuildCommand, mockExplain } from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -20,6 +20,13 @@ export const ipc = {
 
   parseCommand: (input: string) =>
     inTauri ? invoke<Config>("parse_command", { input }) : Promise.resolve(emptyParse()),
+
+  // Tokenize the preview for colouring/annotation. Tokens carry only a catalog
+  // `key`; look help/details/url up in the already-loaded catalog.
+  explainCommand: (command: string) =>
+    inTauri
+      ? invoke<Token[]>("explain_command", { command })
+      : Promise.resolve(mockExplain(command)),
 
   applyRecipe: (index: number, config: Config) =>
     inTauri ? invoke<Config>("apply_recipe", { index, config }) : Promise.resolve(config),
