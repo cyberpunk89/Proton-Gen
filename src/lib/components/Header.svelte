@@ -36,16 +36,16 @@
   function doSave() {
     if (!saveName.trim()) return;
     app.savePreset(saveName.trim());
-    toast.show("Preset saved");
+    toast.success("Preset saved");
     showSave = false;
   }
   async function doRefresh() {
     await app.refresh();
-    toast.show("Library refreshed");
+    toast.success("Library refreshed");
   }
   async function doImport() {
     await app.importCommand(importText);
-    toast.show("Imported");
+    toast.success("Imported");
     showImport = false;
     importText = "";
   }

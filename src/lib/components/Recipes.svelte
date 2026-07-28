@@ -42,7 +42,7 @@
 
   async function apply(i: number, name: string) {
     await app.applyRecipe(i);
-    toast.show(`Applied: ${name}`);
+    toast.success(`Applied: ${name}`);
   }
 </script>
 

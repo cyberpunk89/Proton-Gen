@@ -8,7 +8,7 @@
     try {
       await app.applyUpdate();
     } catch (e) {
-      toast.show(`Update failed: ${e}`);
+      toast.error(`Update failed: ${e}`);
     }
   }
 </script>

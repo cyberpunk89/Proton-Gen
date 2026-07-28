@@ -27,7 +27,7 @@
   async function loadCurrent() {
     if (!currentOpts) return;
     await app.importCommand(currentOpts);
-    toast.show("Loaded current launch options");
+    toast.success("Loaded current launch options");
   }
 </script>
 

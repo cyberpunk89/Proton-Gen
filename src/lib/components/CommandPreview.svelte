@@ -13,12 +13,12 @@
 
   async function copy() {
     await copyText(app.command);
-    toast.show("Command copied");
+    toast.success("Command copied");
   }
 
   function reset() {
     const prev = app.resetCommand();
-    toast.show("Command reset", {
+    toast.success("Command reset", {
       action: { label: "Undo", onClick: () => app.loadConfig(prev) },
     });
   }
