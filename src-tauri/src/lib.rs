@@ -73,13 +73,25 @@ pub fn dump() -> Result<()> {
 
     println!("\nDetected hardware: {}", hardware::detect().summary());
 
-    let current = steamcfg::current_launch_options(&dir);
+    let app_cfgs = steamcfg::current_app_cfgs(&dir);
+    let current = steamcfg::launch_options(&app_cfgs);
     println!("Games with existing launch options set: {}", current.len());
+    println!(
+        "Games with a recorded last-played time: {}",
+        app_cfgs.values().filter(|c| c.last_played.is_some()).count()
+    );
 
     let games = games::list_games(&dir);
     println!("\nGames + shortcuts ({}):", games.len());
     for g in &games {
-        println!("  - {:<45} ({})  [{}]", g.name, g.app_id, g.source.label());
+        let state = if g.installed { "" } else { "  (not installed)" };
+        println!(
+            "  - {:<45} ({})  [{}]{}",
+            g.name,
+            g.app_id,
+            g.source.label(),
+            state
+        );
     }
 
     let cat = params::Catalog::load();

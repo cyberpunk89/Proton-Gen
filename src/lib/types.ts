@@ -78,6 +78,10 @@ export interface GameDto {
   name: string;
   source: string; // "steam" | "non-steam"
   executable: string | null;
+  installed: boolean;
+  /** Unix seconds, from localconfig.vdf. Null when never played (or non-Steam). */
+  last_played: number | null;
+  playtime_minutes: number | null;
 }
 
 export interface StaleInfo {

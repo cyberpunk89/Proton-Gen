@@ -36,12 +36,21 @@ pub struct RuntimeDto {
 }
 
 /// A game/shortcut, flattened for the frontend.
+///
+/// `last_played` / `playtime_minutes` come from `localconfig.vdf`, not from the
+/// app manifest — `steamlocate::App` has no such fields. Both are `None` for a
+/// game Steam has never recorded, and always `None` for non-Steam shortcuts
+/// (Steam keeps no per-app user record for them).
 #[derive(Clone, Serialize)]
 pub struct GameDto {
     pub app_id: u32,
     pub name: String,
     pub source: String,
     pub executable: Option<String>,
+    pub installed: bool,
+    /// Unix seconds.
+    pub last_played: Option<u64>,
+    pub playtime_minutes: Option<u32>,
 }
 
 /// The "catalog refreshed for an older build" banner data.
@@ -116,8 +125,11 @@ fn scan_discovery(catalog: &Catalog) -> Discovery {
         Ok(dir) => {
             steam_root = Some(steam::root_display(&dir));
             runtimes_raw = runtime::discover(&dir);
-            games = list_games_dto(&dir);
-            launch_options = stringify_keys(steamcfg::current_launch_options(&dir));
+            // localconfig first: `list_games_dto` reads last-played/playtime out
+            // of it, so the parsed map has to exist before the games are built.
+            let app_cfgs = steamcfg::current_app_cfgs(&dir);
+            games = list_games_dto(&dir, &app_cfgs);
+            launch_options = stringify_keys(steamcfg::launch_options(&app_cfgs));
             compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
         }
         Err(e) => load_error = Some(e.to_string()),
@@ -178,18 +190,29 @@ fn runtime_dto(r: &runtime::Runtime) -> RuntimeDto {
     }
 }
 
-fn list_games_dto(dir: &SteamDir) -> Vec<GameDto> {
+fn list_games_dto(dir: &SteamDir, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> Vec<GameDto> {
     games::list_games(dir)
         .into_iter()
-        .map(|g| GameDto {
-            app_id: g.app_id,
-            name: g.name,
-            source: match g.source {
-                GameSource::Steam => "steam",
-                GameSource::NonSteam => "non-steam",
+        .map(|g| {
+            // Only Steam apps have a localconfig record; a shortcut's appid is a
+            // locally-generated hash that would collide with nothing useful.
+            let cfg = match g.source {
+                GameSource::Steam => app_cfgs.get(&g.app_id),
+                GameSource::NonSteam => None,
+            };
+            GameDto {
+                app_id: g.app_id,
+                name: g.name,
+                source: match g.source {
+                    GameSource::Steam => "steam",
+                    GameSource::NonSteam => "non-steam",
+                }
+                .to_string(),
+                executable: g.executable,
+                installed: g.installed,
+                last_played: cfg.and_then(|c| c.last_played),
+                playtime_minutes: cfg.and_then(|c| c.playtime_minutes),
             }
-            .to_string(),
-            executable: g.executable,
         })
         .collect()
 }

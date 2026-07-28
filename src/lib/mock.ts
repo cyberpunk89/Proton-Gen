@@ -225,15 +225,45 @@ export const mockBootstrap: Bootstrap = {
       path: "/home/you/.local/share/Steam/compatibilitytools.d/GE-Proton11-1",
     },
   ],
+  // Deliberately covers every branch of the metadata the library grid sorts on:
+  // recently played, played a while back, uninstalled-but-previously-played, and
+  // a non-Steam shortcut Steam keeps no per-app record for (all-null).
   games: [
-    { app_id: 553850, name: "HELLDIVERS 2", source: "steam", executable: null },
-    { app_id: 1245620, name: "ELDEN RING", source: "steam", executable: null },
-    { app_id: 275850, name: "No Man's Sky", source: "steam", executable: null },
+    {
+      app_id: 553850,
+      name: "HELLDIVERS 2",
+      source: "steam",
+      executable: null,
+      installed: true,
+      last_played: 1785024000, // 2026-07-26
+      playtime_minutes: 4210,
+    },
+    {
+      app_id: 1245620,
+      name: "ELDEN RING",
+      source: "steam",
+      executable: null,
+      installed: true,
+      last_played: 1783000000, // 2026-07-02
+      playtime_minutes: 8640,
+    },
+    {
+      app_id: 275850,
+      name: "No Man's Sky",
+      source: "steam",
+      executable: null,
+      installed: false,
+      last_played: 1740000000, // 2025-02-19
+      playtime_minutes: 312,
+    },
     {
       app_id: 2001,
       name: "Heroic - Cyberpunk 2077",
       source: "non-steam",
       executable: "/games/cp2077/bin/x64/Cyberpunk2077.exe",
+      installed: true,
+      last_played: null,
+      playtime_minutes: null,
     },
   ],
   hardware: {
