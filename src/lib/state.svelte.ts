@@ -557,12 +557,26 @@ class AppStore {
 
   // ------------------------------- updates ----------------------------------
 
-  async checkForUpdate() {
+  /**
+   * Returns what happened, so a user-initiated check can report "you're
+   * already up to date" — the silent startup check has nothing to say in
+   * that case, but someone who pressed a button is owed an answer.
+   */
+  async checkForUpdate(): Promise<"available" | "up-to-date" | "failed"> {
     try {
       const info = await ipc.checkForUpdate();
-      if (info?.available) this.update = info;
+      if (info?.available) {
+        this.update = info;
+        // A previous dismissal shouldn't suppress a check the user asked for.
+        if (this.store.dismissed_update_version === info.latest) {
+          this.store.dismissed_update_version = "";
+        }
+        return "available";
+      }
+      return "up-to-date";
     } catch (e) {
       console.error("update check failed", e);
+      return "failed";
     }
   }
 
