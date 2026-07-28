@@ -98,6 +98,11 @@ class AppStore {
   activeSection = $state<string>("recipes");
   /** Global parameter search; when non-empty the main panel shows flat results. */
   paramQuery = $state("");
+  /** Overlay visibility. These live here rather than in Header.svelte so the
+   *  command palette and the Ctrl+, binding can open them from anywhere. */
+  showImport = $state(false);
+  showSave = $state(false);
+  showSettings = $state(false);
 
   // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
   //   undefined = not requested/loading · null = none found · string = data URL

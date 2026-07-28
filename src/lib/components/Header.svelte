@@ -18,9 +18,6 @@
     X,
   } from "phosphor-svelte";
 
-  let showImport = $state(false);
-  let showSave = $state(false);
-  let showSettings = $state(false);
   let importText = $state("");
   let saveName = $state("");
 
@@ -31,13 +28,13 @@
 
   function openSave() {
     saveName = app.activePresetName ?? app.selectedGameName ?? "";
-    showSave = true;
+    app.showSave = true;
   }
   function doSave() {
     if (!saveName.trim()) return;
     app.savePreset(saveName.trim());
     toast.success("Preset saved");
-    showSave = false;
+    app.showSave = false;
   }
   async function doRefresh() {
     await app.refresh();
@@ -46,7 +43,7 @@
   async function doImport() {
     await app.importCommand(importText);
     toast.success("Imported");
-    showImport = false;
+    app.showImport = false;
     importText = "";
   }
 </script>
@@ -63,7 +60,7 @@
   <div class="ml-auto flex items-center gap-1.5">
     {#if app.view === "builder"}
     <button
-      onclick={() => (showImport = true)}
+      onclick={() => (app.showImport = true)}
       class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
     >
       <ClipboardText size={14} /> Import
@@ -120,7 +117,7 @@
 
     <!-- Settings -->
     <button
-      onclick={() => (showSettings = true)}
+      onclick={() => (app.showSettings = true)}
       class="grid size-8 place-items-center rounded-lg border border-border bg-surface-2/50 text-subtext transition hover:border-accent/50"
       aria-label="Settings"
     >
@@ -155,7 +152,7 @@
 </header>
 
 <Dialog
-  bind:open={showImport}
+  bind:open={app.showImport}
   title="Import a command"
   subtitle="Paste a Steam launch-options string or a umu-run command."
 >
@@ -166,7 +163,7 @@
     class="w-full rounded-lg border border-border bg-surface-2 p-2.5 font-mono text-xs text-text outline-none focus:border-accent"
   ></textarea>
   <div class="mt-4 flex justify-end gap-2">
-    <button onclick={() => (showImport = false)} class="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-text"
+    <button onclick={() => (app.showImport = false)} class="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-text"
       >Cancel</button
     >
     <button
@@ -177,7 +174,7 @@
   </div>
 </Dialog>
 
-<Dialog bind:open={showSave} title="Save preset" width="24rem">
+<Dialog bind:open={app.showSave} title="Save preset" width="24rem">
   <input
     use:autofocus
     bind:value={saveName}
@@ -186,7 +183,7 @@
     class="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text outline-none focus:border-accent"
   />
   <div class="mt-4 flex justify-end gap-2">
-    <button onclick={() => (showSave = false)} class="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-text"
+    <button onclick={() => (app.showSave = false)} class="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-text"
       >Cancel</button
     >
     <button
@@ -198,4 +195,4 @@
   </div>
 </Dialog>
 
-<SettingsDrawer bind:open={showSettings} />
+<SettingsDrawer bind:open={app.showSettings} />
