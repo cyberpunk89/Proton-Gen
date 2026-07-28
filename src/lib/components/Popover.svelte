@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { fly } from "svelte/transition";
+  import { fly } from "$lib/motion.svelte";
   import { clickOutside } from "$lib/actions";
 
   let {

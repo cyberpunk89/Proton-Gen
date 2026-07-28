@@ -3,13 +3,7 @@
   import { copyText } from "$lib/util";
   import { toast } from "$lib/toast.svelte";
   import { ArrowCounterClockwise, Copy, Terminal } from "phosphor-svelte";
-  import { fade } from "svelte/transition";
-
-  // Svelte JS transitions aren't covered by app.css's global reduced-motion
-  // rule, so gate the "Saved" fade explicitly.
-  const reduceMotion =
-    typeof matchMedia !== "undefined" &&
-    matchMedia("(prefers-reduced-motion: reduce)").matches;
+  import { fade } from "$lib/motion.svelte";
 
   async function copy() {
     await copyText(app.command);
@@ -36,7 +30,7 @@
     </span>
     {#if app.saved}
       <span
-        transition:fade={{ duration: reduceMotion ? 0 : 200 }}
+        transition:fade={{ duration: 200 }}
         class="text-[11px] text-muted"
         aria-live="polite"
       >

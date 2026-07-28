@@ -1,7 +1,7 @@
 <script lang="ts">
   import { toast, type ToastVariant } from "$lib/toast.svelte";
   import { CheckCircle, WarningCircle, Info, X } from "phosphor-svelte";
-  import { fly } from "svelte/transition";
+  import { fly } from "$lib/motion.svelte";
 
   const ICONS = {
     success: CheckCircle,

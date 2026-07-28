@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { THEMES } from "$lib/themes";
-  import { fly, fade } from "svelte/transition";
+  import { fly, fade } from "$lib/motion.svelte";
   import Switch from "./Switch.svelte";
   import MangoHud from "./MangoHud.svelte";
   import {

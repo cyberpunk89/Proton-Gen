@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fade } from "svelte/transition";
+  import { fade } from "$lib/motion.svelte";
   import { app } from "$lib/state.svelte";
   import Header from "$lib/components/Header.svelte";
   import NavRail from "$lib/components/NavRail.svelte";
