@@ -515,7 +515,12 @@ Discovery against the real filesystem and the WebView UI are validated manually 
   proton-cachyos changelog/README, CachyOS wiki, vkd3d-proton, DXVK), diffs them against
   `params.toml`, and adds/updates entries plus the `[meta]` build/date — without touching
   the user's `$XDG_CONFIG_HOME` override. The `[meta].proton_cachyos_build` drives the
-  in-app "catalog stale" banner (compared against the installed runtime's date).
+  in-app "catalog stale" banner (compared against the installed runtime's date). Invoke it
+  from Claude Code as `/update-proton-params`; definition in
+  `.claude/skills/update-proton-params/SKILL.md`.
+- **The user wiki** is generated from `docs/wiki/` — `scripts/sync-wiki.sh` mirrors it into
+  the GitHub wiki, and `.github/workflows/wiki.yml` runs that on every push to `main` that
+  touches those files. Edit the repo copy, never the wiki in the browser.
 - **Adding a parameter** is a TOML edit — no Rust change — as long as it's an env var or
   one of the three known wrappers. New *wrapper programs* require a `Wrapper` enum variant
   + `rank()` + `to_spec`/`parser` handling.

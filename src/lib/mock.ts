@@ -77,7 +77,7 @@ export const mockBootstrap: Bootstrap = {
         needs: [],
       },
       {
-        key: "PROTON_ENABLE_NVAPI",
+        key: "DXVK_ENABLE_NVAPI",
         category: "NVIDIA",
         default_value: "1",
         values: ["1"],
@@ -161,14 +161,14 @@ export const mockBootstrap: Bootstrap = {
     {
       name: "NVIDIA: DLSS + Reflex",
       kind: "profile",
-      description: "NVAPI on, auto-upgrade DLSS, enable Reflex low-latency.",
+      description: "Expose NVAPI to DXVK, auto-upgrade DLSS, enable Reflex low-latency.",
       symptom: null,
       gpu: "nvidia",
       needs: [],
       icon: "lightning",
       accent: "#76b900",
       tags: ["DLSS", "Reflex"],
-      env: [["PROTON_ENABLE_NVAPI", "1"]],
+      env: [["DXVK_ENABLE_NVAPI", "1"]],
       wrappers: [],
     },
     {

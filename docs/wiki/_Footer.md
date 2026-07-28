@@ -1,0 +1,1 @@
+These pages are generated from [`docs/wiki/`](https://github.com/cyberpunk89/Proton-Gen/tree/main/docs/wiki) in the main repo and are overwritten on every sync — **edits made here in the browser will be lost.** To change a page, open a pull request against that directory.

@@ -22,9 +22,8 @@ gpu = "nvidia"
 icon = "lightning"
 accent = "#76b900"
 tags = ["DLSS", "Reflex", "NVAPI"]
-description = "NVAPI on, auto-upgrade DLSS, and enable Reflex low-latency in Vulkan/DXVK."
+description = "Expose NVAPI to DXVK, auto-upgrade DLSS, and enable Reflex low-latency in Vulkan/DXVK."
 env = [
-    ["PROTON_ENABLE_NVAPI", "1"],
     ["DXVK_ENABLE_NVAPI", "1"],
     ["PROTON_DLSS_UPGRADE", "1"],
     ["DXVK_NVAPI_VKREFLEX", "1"],

@@ -1,5 +1,5 @@
 # protongen parameter catalog
-# Catalog for Proton 11.0 / proton-cachyos 11.0-20260702  —  updated 2026-07-13
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-07-26
 #
 # Sources (refresh with the /update-proton-params Claude skill):
 #   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
@@ -27,8 +27,8 @@
 # The app compares it to your installed build and shows a banner when newer.
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
-proton_cachyos_build = "20260702"
-updated = "2026-07-13"
+proton_cachyos_build = "20260703"
+updated = "2026-07-26"
 
 # ============================ Wrappers ============================
 
@@ -136,6 +136,16 @@ details = "Enables the open-source low_latency_layer, a vendor-neutral latency-r
 example = "LOW_LATENCY_LAYER=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
+[[env]]
+key = "PROTON_VKD3D_LOWLATENCY"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable the vkd3d-low-latency fork for better D3D12 frame pacing / input lag."
+details = "CachyOS-specific (added 11.0-20260703): swaps in the vkd3d-low-latency fork, giving hardware-agnostic low-latency frame pacing for D3D12 titles — the VKD3D counterpart to PROTON_DXVK_LOWLATENCY. Disable if you see artifacts or regressions. CachyOS-Proton only."
+example = "PROTON_VKD3D_LOWLATENCY=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
+
 # ======================== Render backend ========================
 
 [[env]]
@@ -221,15 +231,26 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 # ====================== NVIDIA / Upscaling =======================
 
 [[env]]
-key = "PROTON_ENABLE_NVAPI"
+key = "PROTON_DISABLE_NVAPI"
 gpu = "nvidia"
 category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
-help = "Enable NVAPI/DLSS support (NVIDIA GPUs)."
-details = "Enables NVIDIA's NVAPI GPU support library through DXVK-NVAPI, allowing games to access NVIDIA-specific features including DLSS Super Resolution, Reflex, and other optimizations. When enabled (1), Proton automatically detects and initializes NVAPI for NVIDIA GPUs; disable (0) only if experiencing crashes or compatibility issues. Most NVIDIA GPU users should keep this enabled for the best feature support."
-example = "PROTON_ENABLE_NVAPI=1 %command%"
-url = "https://github.com/jp7677/dxvk-nvapi/blob/master/README.md"
+help = "Disable NVIDIA's NVAPI GPU support library (on by default; troubleshooting only)."
+details = "NVAPI (via DXVK-NVAPI) is enabled automatically on NVIDIA GPUs, giving games access to DLSS Super Resolution, Reflex, and other NVIDIA-specific features. Set this to disable it — useful only if a game crashes or misbehaves specifically because of NVAPI being present. This replaced the older opt-in PROTON_ENABLE_NVAPI naming; the real Proton 11.0 toggle is opt-out."
+example = "PROTON_DISABLE_NVAPI=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_FORCE_NVAPI"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "Force NVAPI on even when Proton's own heuristics would normally disable it."
+details = "Forces NVAPI to load even in situations where Proton's detection would otherwise disable it (e.g. an unusual or unrecognized NVIDIA driver setup). Internally also relaxes DXVK-NVAPI's driver-version/allow-other-drivers checks. Advanced troubleshooting toggle for NVAPI-dependent features (DLSS, Reflex) that fail to activate despite a genuine NVIDIA GPU."
+example = "PROTON_FORCE_NVAPI=1 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "DXVK_ENABLE_NVAPI"
@@ -237,8 +258,8 @@ gpu = "nvidia"
 category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
-help = "Let DXVK expose NVAPI (pairs with PROTON_ENABLE_NVAPI)."
-details = "Tells DXVK to expose NVAPI entry points to games, working in conjunction with PROTON_ENABLE_NVAPI. This variable specifically controls whether DXVK disables its internal nvapiHack (a compatibility workaround), allowing the full DXVK-NVAPI implementation to be used. Enable (1) for NVAPI game support; disable (0) only for troubleshooting when PROTON_ENABLE_NVAPI is set."
+help = "Let DXVK expose NVAPI (NVAPI is on by default on NVIDIA)."
+details = "Tells DXVK to expose NVAPI entry points to games. This variable specifically controls whether DXVK disables its internal nvapiHack (a compatibility workaround), allowing the full DXVK-NVAPI implementation to be used. Enable (1) for NVAPI game support; disable (0) only for troubleshooting. Has no effect if NVAPI itself is turned off via PROTON_DISABLE_NVAPI."
 example = "DXVK_ENABLE_NVAPI=1 %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/README.md"
 
@@ -413,8 +434,8 @@ category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
 help = "Enable DXVK-NVAPI's Vulkan Reflex layer (NVIDIA Reflex in Vulkan games)."
-details = "Turns on DXVK-NVAPI's Vulkan Reflex layer so NVIDIA Reflex low-latency works in Vulkan/DXVK titles. Requires an NVIDIA GPU with PROTON_ENABLE_NVAPI=1. Reduces input latency in supported games."
-example = "PROTON_ENABLE_NVAPI=1 DXVK_NVAPI_VKREFLEX=1 %command%"
+details = "Turns on DXVK-NVAPI's Vulkan Reflex layer so NVIDIA Reflex low-latency works in Vulkan/DXVK titles. Requires an NVIDIA GPU with NVAPI active (the default; don't set PROTON_DISABLE_NVAPI). Reduces input latency in supported games."
+example = "DXVK_NVAPI_VKREFLEX=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
@@ -424,8 +445,19 @@ category = "NVIDIA / Upscaling"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable alternative NVIDIA libraries (PhysX, CUDA, NVENC, etc.)."
-details = "Enables CachyOS's alternative implementations of NVIDIA libraries (nvcuda, nvenc, PhysX, etc.) for hardware acceleration in games that need them. Use for titles relying on GPU PhysX or NVENC. CachyOS-Proton only."
+details = "Enables CachyOS's alternative implementations of NVIDIA libraries (nvcuda, nvenc, PhysX, etc.) for hardware acceleration in games that need them. Use for titles relying on GPU PhysX or NVENC. Pair with PROTON_NVIDIA_LIBS_NO_32BIT on RTX 4000/5000-series cards if 32-bit games crash. CachyOS-Proton only."
 example = "PROTON_NVIDIA_LIBS=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_NVIDIA_LIBS_NO_32BIT"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: with PROTON_NVIDIA_LIBS, load only the 64-bit alt NVIDIA libraries."
+details = "Companion to PROTON_NVIDIA_LIBS: restricts the alternative NVIDIA library implementations to their 64-bit versions only. Fixes bad performance or crashes in 32-bit games on RTX 4000/5000-series GPUs when PROTON_NVIDIA_LIBS is enabled. Has no effect on its own — set alongside PROTON_NVIDIA_LIBS=1. CachyOS-Proton only."
+example = "PROTON_NVIDIA_LIBS=1 PROTON_NVIDIA_LIBS_NO_32BIT=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
@@ -571,15 +603,6 @@ example = "DXVK_HUD=fps,memory %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/README.md#hud"
 
 [[env]]
-key = "DXVK_FRAME_RATE"
-category = "DXVK"
-default_value = "60"
-help = "Cap the frame rate via DXVK (0 = uncapped)."
-details = "Caps the frame rate at the DXVK level, limiting GPU work and reducing power consumption. Set to 0 to disable the cap (uncapped). Useful for reducing heat and battery drain on laptops, or forcing consistent frame pacing in competitive games."
-example = "DXVK_FRAME_RATE=60 %command%"
-url = "https://github.com/doitsujin/dxvk/blob/master/README.md"
-
-[[env]]
 key = "DXVK_CONFIG_FILE"
 category = "DXVK"
 default_value = ""
@@ -589,13 +612,13 @@ example = "DXVK_CONFIG_FILE=/home/user/.config/dxvk/myconfig.conf %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/README.md#debugging"
 
 [[env]]
-key = "DXVK_STATE_CACHE"
+key = "DXVK_SHADER_CACHE"
 category = "DXVK"
 default_value = "1"
 values = ["1", "0"]
-help = "Toggle DXVK's shader state cache."
-details = "Enables or disables DXVK's shader state cache, which stores compiled pipeline states to speed up subsequent game launches. Disabling it saves disk space and avoids stale cache issues, but increases load times. Default on; set to 0 to disable."
-example = "DXVK_STATE_CACHE=0 %command%"
+help = "Toggle DXVK's internal shader cache (was DXVK_STATE_CACHE in older DXVK)."
+details = "Enables or disables DXVK's internal shader cache, which stores compiled pipeline states to speed up subsequent game launches. Disabling it saves disk space and avoids stale cache issues, but increases load times. Default on; set to 0 to disable. This is current DXVK's name for the option — the older DXVK_STATE_CACHE spelling no longer exists in current DXVK."
+example = "DXVK_SHADER_CACHE=0 %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/README.md#debugging"
 
 [[env]]
@@ -612,8 +635,8 @@ key = "DXVK_CONFIG"
 category = "DXVK"
 default_value = ""
 help = "Set dxvk.conf options inline, e.g. 'dxgi.maxFrameLatency=1;dxvk.hud=fps'."
-details = "Applies dxvk.conf settings directly from the environment as a semicolon-separated list of key=value pairs, so you don't need a separate config file (unlike DXVK_CONFIG_FILE). Handy one-offs include dxgi.maxFrameLatency=1 (lower input lag), d3d11.maxFeatureLevel, and dxvk.enableGraphicsPipelineLibrary. Values here override the config file."
-example = "DXVK_CONFIG='dxgi.maxFrameLatency=1;dxgi.syncInterval=0' %command%"
+details = "Applies dxvk.conf settings directly from the environment as a semicolon-separated list of key=value pairs, so you don't need a separate config file (unlike DXVK_CONFIG_FILE). Handy one-offs include dxgi.maxFrameLatency=1 (lower input lag), dxvk.maxFrameRate=60 (cap the frame rate — there is no standalone DXVK_FRAME_RATE variable), and dxvk.enableGraphicsPipelineLibrary. Values here override the config file."
+example = "DXVK_CONFIG='dxvk.maxFrameRate=60;dxgi.syncInterval=0' %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/dxvk.conf"
 
 [[env]]
@@ -632,10 +655,19 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 key = "VKD3D_CONFIG"
 category = "VKD3D (D3D12)"
 default_value = "dxr"
-values = ["dxr", "dxr11", "dxr12", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue"]
-help = "Comma-separated vkd3d-proton tweaks, e.g. 'dxr,dxr11' to force ray tracing."
-details = "A comma- or semicolon-separated list of options that modify vkd3d-proton behavior. Common ones: 'dxr'/'dxr11'/'dxr12' (force ray tracing at the given tier), 'no_upload_hvv' (avoid host-visible VRAM for upload heaps on constrained GPUs), 'force_static_cbv' (NVIDIA constant-buffer optimization), 'single_queue' (disable async compute/transfer), and 'descriptor_heap' (CachyOS descriptor-heap path; this replaced the old PROTON_VKD3D_HEAP knob). Most games run fine with defaults — use this for advanced features or specific workarounds."
-example = "VKD3D_CONFIG=dxr,dxr11 %command%"
+values = ["dxr", "nodxr", "dxr12", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue"]
+help = "Comma-separated vkd3d-proton tweaks, e.g. 'dxr' to force-enable ray tracing."
+details = "A comma- or semicolon-separated list of options that modify vkd3d-proton behavior. Common ones: 'dxr' (force-enable ray tracing even when considered unsafe; DXR is normally auto-detected), 'nodxr' (disable it), 'dxr12' (experimental DXR 1.2 support), 'no_upload_hvv' (avoid host-visible VRAM for upload heaps on constrained GPUs), 'force_static_cbv' (NVIDIA constant-buffer optimization), 'single_queue' (disable async compute/transfer), and 'descriptor_heap' (CachyOS-only descriptor-heap path; this replaced the old PROTON_VKD3D_HEAP knob). Most games run fine with defaults — use this for advanced features or specific workarounds."
+example = "VKD3D_CONFIG=dxr %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
+
+[[env]]
+key = "VKD3D_FRAME_RATE"
+category = "VKD3D (D3D12)"
+default_value = "60"
+help = "Cap the frame rate via vkd3d-proton for D3D12 games (0 = uncapped)."
+details = "Caps the frame rate at the vkd3d-proton level for Direct3D 12 titles — the D3D12 counterpart to DXVK's frame-rate limiting (dxvk.maxFrameRate via DXVK_CONFIG). Set to 0 to disable the cap. Useful for reducing heat/power draw on laptops or forcing consistent frame pacing."
+example = "VKD3D_FRAME_RATE=60 %command%"
 url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
 
 [[env]]
@@ -878,6 +910,16 @@ values = ["1", "0"]
 help = "Force GStreamer for media to fix missing/black cutscene video."
 details = "Forces media playback through GStreamer, which fixes black or missing pre-rendered cutscenes/FMVs in some games. Enable if intro movies or in-game videos don't play."
 example = "PROTON_MEDIA_FORCE_GST=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_GST_VIDEO_ORIENTATION"
+category = "Compatibility / Misc"
+default_value = "clockwise"
+values = ["none", "clockwise", "rotate-180", "counterclockwise", "horizontal-flip", "vertical-flip", "automatic"]
+help = "Rotate/flip GStreamer-rendered video (fixes sideways or upside-down cutscenes)."
+details = "Changes the orientation of videos rendered through GStreamer, using the same values as GStreamer's videoflip plugin. Fixes cutscenes or FMVs that play back sideways or upside-down under Proton. Only affects titles already routed through PROTON_MEDIA_FORCE_GST."
+example = "PROTON_MEDIA_FORCE_GST=1 PROTON_GST_VIDEO_ORIENTATION=clockwise %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]

@@ -24,7 +24,7 @@ pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware) -> Vec<Stri
     let mut w = Vec::new();
 
     // NVAPI / DLSS without an NVIDIA GPU.
-    let nvapi = ["PROTON_ENABLE_NVAPI", "DXVK_ENABLE_NVAPI", "PROTON_DLSS_UPGRADE", "DXVK_NVAPI_VKREFLEX", "PROTON_NVIDIA_LIBS"];
+    let nvapi = ["PROTON_FORCE_NVAPI", "DXVK_ENABLE_NVAPI", "PROTON_DLSS_UPGRADE", "DXVK_NVAPI_VKREFLEX", "PROTON_NVIDIA_LIBS"];
     if !hw.nvidia && nvapi.iter().any(|k| env_on(k)) {
         w.push("NVAPI/DLSS options are enabled but no NVIDIA GPU was detected — they'll have no effect.".to_string());
     }
@@ -93,7 +93,7 @@ mod tests {
     fn flags_nvapi_without_nvidia() {
         let cat = Catalog::bundled();
         let mut opts = Options::from_catalog(&cat);
-        enable(&cat, &mut opts, "PROTON_ENABLE_NVAPI", "1");
+        enable(&cat, &mut opts, "PROTON_FORCE_NVAPI", "1");
         let hw = Hardware { nvidia: false, ..Default::default() };
         assert!(warnings(&cat, &opts, &hw).iter().any(|m| m.contains("NVIDIA")));
         // With NVIDIA present, that warning disappears.
