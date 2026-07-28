@@ -10,11 +10,12 @@ use steamlocate::SteamDir;
 use tauri::State;
 
 use crate::art;
-use crate::builder::{self, Wrapper};
+use crate::builder::Wrapper;
+use crate::compose;
 use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
 use crate::lint;
-use crate::params::{self, Catalog, Options};
+use crate::params::{Catalog, Options};
 use crate::parser;
 use crate::protondb::{self, Tier};
 use crate::recipes::{self, Recipe, Recipes};
@@ -225,20 +226,6 @@ fn compute_stale(catalog: &Catalog, runtimes: &[runtime::Runtime]) -> Option<Sta
     }
 }
 
-/// Split the "custom env" field (`K=V K=V …`) into pairs.
-fn parse_extra_env(s: &str) -> Vec<(String, String)> {
-    s.split_whitespace()
-        .filter_map(|t| t.split_once('=').map(|(k, v)| (k.to_string(), v.to_string())))
-        .collect()
-}
-
-/// Rebuild `Options` from a `Config`'s catalog env/wrapper lists.
-fn options_from_config(catalog: &Catalog, config: &Config) -> Options {
-    let mut options = Options::from_catalog(catalog);
-    store::apply_lists(catalog, &mut options, &config.env, &config.wrappers);
-    options
-}
-
 // ----------------------------- commands -----------------------------
 
 #[tauri::command]
@@ -296,27 +283,7 @@ pub fn build_command(
     config: Config,
     proton_path: Option<String>,
 ) -> String {
-    let options = options_from_config(&state.catalog, &config);
-    let (mut env, wrappers) = params::to_spec(&state.catalog, &options);
-    env.extend(parse_extra_env(&config.extra_env));
-
-    if config.umu {
-        let wineprefix = {
-            let wp = config.umu_wineprefix.trim();
-            if wp.is_empty() { None } else { Some(wp) }
-        };
-        builder::build_umu_command(
-            &env,
-            &wrappers,
-            proton_path.as_deref().unwrap_or(""),
-            &config.umu_gameid,
-            wineprefix,
-            &config.umu_exe,
-            &config.game_args,
-        )
-    } else {
-        builder::build_command(&env, &wrappers, &config.game_args)
-    }
+    compose::assemble(&state.catalog, &config, proton_path.as_deref())
 }
 
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
@@ -362,7 +329,7 @@ pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) ->
         return config;
     };
 
-    let mut options = options_from_config(catalog, &config);
+    let mut options = compose::options_from_config(catalog, &config);
     let mut extra_env = config.extra_env.clone();
     recipes::apply(recipe, catalog, &mut options, &mut extra_env);
 
@@ -378,7 +345,7 @@ pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) ->
 /// Conflict / footgun notices for the current config.
 #[tauri::command]
 pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<String> {
-    let options = options_from_config(&state.catalog, &config);
+    let options = compose::options_from_config(&state.catalog, &config);
     lint::warnings(&state.catalog, &options, &state.hardware)
 }
 

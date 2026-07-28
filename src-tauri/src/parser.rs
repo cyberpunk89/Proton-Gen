@@ -52,7 +52,7 @@ impl Parsed {
 
 /// Split a command line into tokens, honoring single/double quotes (quotes are
 /// stripped from the resulting tokens).
-fn tokenize(input: &str) -> Vec<String> {
+pub fn tokenize(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut cur = String::new();
     let mut quote: Option<char> = None;

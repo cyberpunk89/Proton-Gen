@@ -9,6 +9,7 @@
 
 mod art;
 mod builder;
+mod compose;
 mod games;
 mod hardware;
 mod ipc;
