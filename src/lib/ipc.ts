@@ -1,6 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Bootstrap, Config, Notice, Store, Tier, Token, UpdateInfo } from "./types";
-import { mockBootstrap, mockBuildCommand, mockExplain, mockNotices } from "./mock";
+import type {
+  Bootstrap,
+  Config,
+  LaunchDiff,
+  Notice,
+  Store,
+  Tier,
+  Token,
+  UpdateInfo,
+} from "./types";
+import {
+  mockBootstrap,
+  mockBuildCommand,
+  mockExplain,
+  mockLaunchDiff,
+  mockNotices,
+} from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -27,6 +42,14 @@ export const ipc = {
     inTauri
       ? invoke<Token[]>("explain_command", { command })
       : Promise.resolve(mockExplain(command)),
+
+  // Semantic comparison of the built command against Steam's current launch
+  // options. Both sides are re-parsed, so ordering/quoting differences don't
+  // register as drift.
+  launchDiff: (built: string, current: string) =>
+    inTauri
+      ? invoke<LaunchDiff>("launch_diff", { built, current })
+      : Promise.resolve(mockLaunchDiff(built, current)),
 
   applyRecipe: (index: number, config: Config) =>
     inTauri ? invoke<Config>("apply_recipe", { index, config }) : Promise.resolve(config),

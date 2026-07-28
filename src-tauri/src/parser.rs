@@ -17,7 +17,8 @@ pub struct Parsed {
     /// Pre-target tokens protongen can't model (foreign wrappers like `prime-run`,
     /// bare flags, or `PROTONPATH=` in Steam mode). Kept rather than dropped so
     /// callers can tell "protongen built this" from "something else did".
-    #[allow(dead_code)] // read by tests today; the sync diff (#29) is the consumer
+    /// Consumed by `diff::compare`: a non-empty `unknown` on the Steam side is
+    /// on its own enough to call a command drifted.
     pub unknown: Vec<String>,
     pub gamescope: Option<String>,
     pub gamemoderun: bool,

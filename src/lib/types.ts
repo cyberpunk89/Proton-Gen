@@ -177,6 +177,32 @@ export interface Notice {
   fix: LintFix | null;
 }
 
+/// Mirrors diff::DiffStatus (serde rename_all = "kebab-case").
+export type DiffStatus = "in-sync" | "drifted" | "not-applied" | "umu";
+
+/** One key present on both sides with a different value. `key` is an env var
+ *  name, a wrapper key, or the literal "game_args". */
+export interface Change {
+  key: string;
+  current: string;
+  built: string;
+}
+
+/** Semantic comparison of the built command against Steam's current launch
+ *  options. Env and wrapper ordering, quoting and arg whitespace are
+ *  deliberately normalised away — see diff.rs. */
+export interface LaunchDiff {
+  status: DiffStatus;
+  /** Keys in the built command that Steam does not have. */
+  added: string[];
+  /** Keys Steam has that the built command does not. */
+  removed: string[];
+  changed: Change[];
+  /** Tokens protongen cannot represent; any at all means drifted. */
+  unmodeled: string[];
+  game_args: Change | null;
+}
+
 export interface Tier {
   tier: string;
   total: number;

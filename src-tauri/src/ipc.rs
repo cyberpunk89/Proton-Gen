@@ -12,6 +12,7 @@ use tauri::State;
 use crate::art;
 use crate::builder::Wrapper;
 use crate::compose;
+use crate::diff::{self, LaunchDiff};
 use crate::explain::{self, Token};
 use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
@@ -351,6 +352,18 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
 #[tauri::command]
 pub fn explain_command(command: String) -> Vec<Token> {
     explain::explain(&command)
+}
+
+/// Compare a built launch command against the one Steam currently has set.
+/// Stateless and pure — see `diff.rs` for what is deliberately normalised away.
+///
+/// The *contextual* states (no game selected, non-Steam shortcut, generic
+/// command) stay out of the DTO: the frontend already holds `selectedAppId`,
+/// `game.source` and `app.umu`, and pushing them here would drag game/mode
+/// state through an otherwise trivially pure function.
+#[tauri::command]
+pub fn launch_diff(built: String, current: String) -> LaunchDiff {
+    diff::compare(&built, &current)
 }
 
 /// Merge recipe `index` onto `config`, returning the updated config.

@@ -1,7 +1,15 @@
 // Browser fallback data + handlers used when the app runs OUTSIDE Tauri (e.g.
 // `vite` in a plain browser for design/dev). Under Tauri this module is unused.
 
-import type { Bootstrap, Config, Notice, Token, TokenKind } from "./types";
+import type {
+  Bootstrap,
+  Change,
+  Config,
+  LaunchDiff,
+  Notice,
+  Token,
+  TokenKind,
+} from "./types";
 
 export const mockBootstrap: Bootstrap = {
   steam_root: "/home/you/.local/share/Steam",
@@ -287,7 +295,16 @@ export const mockBootstrap: Bootstrap = {
     last_session: null,
     last_game_appid: null,
   },
-  launch_options: { "553850": "PROTON_USE_NTSYNC=1 mangohud %command%" },
+  // 553850 drifts against anything the builder produces; 1245620 is exactly
+  // what `mockBuildCommand` emits for a freshly-reset config, so opening it
+  // lands on the **in-sync** state with no clicks. Without that second entry
+  // in-sync is unreachable under `pnpm dev` and the UI can't be iterated. The
+  // bare "%command%" looks odd for launch options, and that is the point: it
+  // is the default build output, verbatim.
+  launch_options: {
+    "553850": "PROTON_USE_NTSYNC=1 mangohud %command%",
+    "1245620": "%command%",
+  },
   compat_tools: { "553850": "proton-cachyos-slr" },
   requires_status: { gamescope: true, gamemoderun: true, mangohud: false },
   stale: null,
@@ -332,6 +349,71 @@ export function mockBuildCommand(config: Config, protonPath: string | null): str
       .join(" ");
   }
   return [...env, ...wraps, "%command%", config.game_args].filter(Boolean).join(" ");
+}
+
+// Reduced stand-in for diff.rs::compare. Understands the same normalisations
+// (env order, quoting, wrapper order, arg whitespace) over the mock's small
+// token vocabulary; the real guarantees live in the Rust tests.
+const MOCK_WRAPPERS = ["gamemoderun", "mangohud"];
+
+function mockNormalForm(command: string): {
+  map: Record<string, string>;
+  unmodeled: string[];
+  gameArgs: string;
+} {
+  const bare = (s: string) => s.replace(/["']/g, "");
+  const toks = (command.match(/(?:"[^"]*"|'[^']*'|[^\s"'])+/g) ?? []).map(bare);
+  const isUmu = toks.includes("umu-run");
+  const at = toks.indexOf(isUmu ? "umu-run" : "%command%");
+  const pre = at === -1 ? toks : toks.slice(0, at);
+  const post = at === -1 ? [] : toks.slice(at + 1);
+
+  const map: Record<string, string> = {};
+  const unmodeled: string[] = [];
+  for (let i = 0; i < pre.length; i++) {
+    const t = pre[i];
+    if (t === "gamescope") {
+      const args: string[] = [];
+      while (++i < pre.length && pre[i] !== "--") args.push(pre[i]);
+      map.gamescope = args.join(" ");
+    } else if (MOCK_WRAPPERS.includes(t)) {
+      map[t] = "";
+    } else if (/^[A-Za-z_]\w*=/.test(t)) {
+      map[t.slice(0, t.indexOf("="))] = t.slice(t.indexOf("=") + 1);
+    } else {
+      unmodeled.push(t);
+    }
+  }
+  // In umu mode the first post-target token is the exe, not a game arg.
+  return { map, unmodeled, gameArgs: (isUmu ? post.slice(1) : post).join(" ") };
+}
+
+export function mockLaunchDiff(built: string, current: string): LaunchDiff {
+  const b = mockNormalForm(built);
+  const c = mockNormalForm(current);
+  const added = Object.keys(b.map).filter((k) => !(k in c.map)).sort();
+  const removed = Object.keys(c.map).filter((k) => !(k in b.map)).sort();
+  const changed: Change[] = Object.keys(b.map)
+    .filter((k) => k in c.map && c.map[k] !== b.map[k])
+    .sort()
+    .map((k) => ({ key: k, current: c.map[k], built: b.map[k] }));
+  const unmodeled = [...new Set([...c.unmodeled, ...b.unmodeled])].sort();
+  const game_args =
+    b.gameArgs === c.gameArgs
+      ? null
+      : { key: "game_args", current: c.gameArgs, built: b.gameArgs };
+
+  const identical =
+    !added.length && !removed.length && !changed.length && !unmodeled.length && !game_args;
+  const status = built.includes("umu-run")
+    ? "umu"
+    : !current.trim()
+      ? "not-applied"
+      : identical
+        ? "in-sync"
+        : "drifted";
+
+  return { status, added, removed, changed, unmodeled, game_args };
 }
 
 // Regex stand-in for explain.rs. Good enough for browser dev; the real
