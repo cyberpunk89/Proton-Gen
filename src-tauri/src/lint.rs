@@ -92,6 +92,11 @@ impl Ctx<'_> {
 }
 
 /// One lint rule.
+///
+/// Only `check` runs in production: `id`, `keys` and `prefixes` are a
+/// *declaration about* the check, consumed by the guards in `mod tests`. Hence
+/// the allow — they are documentation the test suite happens to enforce.
+#[cfg_attr(not(test), allow(dead_code))]
 struct Rule {
     id: &'static str,
     /// Every catalog key the rule reads or can report. Verified against the

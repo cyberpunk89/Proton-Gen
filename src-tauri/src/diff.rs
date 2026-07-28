@@ -22,12 +22,15 @@
 //! a launch string full of `prime-run`/`strangle` that happens to set no env
 //! must never read as "in sync".
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 
 use crate::builder::Wrapper;
+use crate::compose;
+use crate::params::Catalog;
 use crate::parser::{self, Parsed};
+use crate::store::{self, Config};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -169,6 +172,52 @@ pub fn compare(built: &str, current: &str) -> LaunchDiff {
     }
 }
 
+/// One status per remembered game, for the library grid — the batch form of
+/// [`compare`]. Pure: `launch_options` is passed in rather than read off
+/// `AppState`, whose discovery snapshot is deliberately never refreshed by
+/// `rescan` and would go stale after a library refresh.
+///
+/// `proton_path` is `None` throughout: it only feeds `PROTONPATH` in umu mode,
+/// and umu configs short-circuit to [`DiffStatus::Umu`] before anything is
+/// built.
+///
+/// **Caveat, deliberately conservative.** `store::apply_lists` silently drops
+/// env keys the catalog no longer knows, so a config remembered before a
+/// catalog refresh assembles into a command missing them — and could then
+/// compare equal to Steam and be reported `InSync` when it is nothing of the
+/// sort. Such configs are downgraded to `Drifted` instead of being trusted.
+/// That is a workaround, not a fix: the real fix is for `apply_lists` to stop
+/// dropping keys (route them to `extra_env`, or keep them on the `Config`).
+pub fn statuses(
+    catalog: &Catalog,
+    memory: &BTreeMap<String, Config>,
+    launch_options: &HashMap<String, String>,
+) -> HashMap<String, DiffStatus> {
+    memory
+        .iter()
+        .map(|(appid, config)| {
+            let status = if config.umu {
+                // Steam's launch options say nothing about a umu command.
+                DiffStatus::Umu
+            } else {
+                let built = compose::assemble(catalog, config, None);
+                let current = launch_options.get(appid).map(String::as_str).unwrap_or("");
+                let status = compare(&built, current).status;
+                // Never claim in-sync for a config the builder couldn't render
+                // faithfully.
+                if status == DiffStatus::InSync
+                    && !store::dropped_env_keys(catalog, &config.env).is_empty()
+                {
+                    DiffStatus::Drifted
+                } else {
+                    status
+                }
+            };
+            (appid.clone(), status)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +322,95 @@ mod tests {
     fn a_bare_command_placeholder_matches_the_default_config() {
         // The command a freshly-reset builder produces.
         assert_eq!(compare("%command%", "%command%").status, DiffStatus::InSync);
+    }
+
+    // ------------------------------- statuses --------------------------------
+
+    fn memory(entries: &[(&str, Config)]) -> BTreeMap<String, Config> {
+        entries
+            .iter()
+            .map(|(id, c)| (id.to_string(), c.clone()))
+            .collect()
+    }
+
+    fn options(entries: &[(&str, &str)]) -> HashMap<String, String> {
+        entries
+            .iter()
+            .map(|(id, v)| (id.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn statuses_covers_every_remembered_game() {
+        let cat = Catalog::bundled();
+        let wayland = Config {
+            env: vec![("PROTON_ENABLE_WAYLAND".to_string(), "1".to_string())],
+            ..Config::default()
+        };
+        let mem = memory(&[
+            // Exactly what Steam has.
+            ("1", wayland.clone()),
+            // Steam has something else.
+            ("2", wayland.clone()),
+            // Remembered, but never pasted into Steam.
+            ("3", wayland.clone()),
+            // umu: Steam's launch options are irrelevant.
+            (
+                "4",
+                Config {
+                    umu: true,
+                    umu_exe: "/games/game.exe".to_string(),
+                    ..Config::default()
+                },
+            ),
+        ]);
+        let opts = options(&[
+            ("1", "PROTON_ENABLE_WAYLAND=1 %command%"),
+            ("2", "mangohud %command%"),
+            ("4", "whatever %command%"),
+            // A game with launch options but no remembered config is not ours
+            // to report on.
+            ("9", "PROTON_ENABLE_WAYLAND=1 %command%"),
+        ]);
+
+        let got = statuses(&cat, &mem, &opts);
+        assert_eq!(got.len(), 4, "one entry per remembered game, and no more");
+        assert_eq!(got["1"], DiffStatus::InSync);
+        assert_eq!(got["2"], DiffStatus::Drifted);
+        assert_eq!(got["3"], DiffStatus::NotApplied);
+        assert_eq!(got["4"], DiffStatus::Umu);
+        assert!(!got.contains_key("9"));
+    }
+
+    #[test]
+    fn a_config_with_dropped_env_keys_never_reads_as_in_sync() {
+        // `store::apply_lists` silently discards env keys the catalog doesn't
+        // know, so this config assembles to a bare "%command%" — which really
+        // does equal Steam's side. Reporting InSync would be a confident lie
+        // about a variable that vanished in a catalog refresh.
+        let cat = Catalog::bundled();
+        let stale = Config {
+            env: vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())],
+            ..Config::default()
+        };
+        assert!(!store::dropped_env_keys(&cat, &stale.env).is_empty());
+        assert_eq!(compose::assemble(&cat, &stale, None), "%command%");
+        assert_eq!(compare("%command%", "%command%").status, DiffStatus::InSync);
+
+        let got = statuses(&cat, &memory(&[("1", stale)]), &options(&[("1", "%command%")]));
+        assert_eq!(got["1"], DiffStatus::Drifted);
+    }
+
+    #[test]
+    fn dropped_keys_do_not_upgrade_a_not_applied_verdict() {
+        // The downgrade only guards the in-sync *claim*; "Steam has nothing set"
+        // is still true regardless of what the config could not render.
+        let cat = Catalog::bundled();
+        let stale = Config {
+            env: vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())],
+            ..Config::default()
+        };
+        let got = statuses(&cat, &memory(&[("1", stale)]), &HashMap::new());
+        assert_eq!(got["1"], DiffStatus::NotApplied);
     }
 }

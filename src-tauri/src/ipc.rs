@@ -2,7 +2,7 @@
 //! modules. Frontend selection state is the existing `store::Config`; the
 //! catalog / recipes / runtimes / games / hardware are sent once via `bootstrap`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -364,6 +364,23 @@ pub fn explain_command(command: String) -> Vec<Token> {
 #[tauri::command]
 pub fn launch_diff(built: String, current: String) -> LaunchDiff {
     diff::compare(&built, &current)
+}
+
+/// Applied / drifted / not-applied for every remembered game in one call, so
+/// the library grid can badge them all at a glance.
+///
+/// `launch_options` comes from the frontend rather than `AppState`: the
+/// discovery snapshot there is deliberately not refreshed by `rescan` (see
+/// above), so reading it would silently go stale after a library refresh. The
+/// frontend already holds the fresh copy as `app.launchOptions`, and passing it
+/// in keeps `diff::statuses` a pure function of its arguments.
+#[tauri::command]
+pub fn launch_statuses(
+    state: State<'_, AppState>,
+    memory: BTreeMap<String, Config>,
+    launch_options: HashMap<String, String>,
+) -> HashMap<String, diff::DiffStatus> {
+    diff::statuses(&state.catalog, &memory, &launch_options)
 }
 
 /// Merge recipe `index` onto `config`, returning the updated config.

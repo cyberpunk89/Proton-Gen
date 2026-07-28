@@ -5,11 +5,28 @@ import type {
   Bootstrap,
   Change,
   Config,
+  DiffStatus,
   LaunchDiff,
   Notice,
   Token,
   TokenKind,
 } from "./types";
+
+/** A blank Config, for seeding mock per-game memory. Local rather than
+ *  `types.emptyConfig()` to keep mock.ts free of runtime imports. */
+function emptyMockConfig(): Config {
+  return {
+    umu: false,
+    runtime: null,
+    env: [],
+    wrappers: [],
+    extra_env: "",
+    umu_exe: "",
+    umu_wineprefix: "",
+    umu_gameid: "",
+    game_args: "",
+  };
+}
 
 export const mockBootstrap: Bootstrap = {
   steam_root: "/home/you/.local/share/Steam",
@@ -285,7 +302,14 @@ export const mockBootstrap: Bootstrap = {
   store: {
     theme: "mocha",
     presets: [],
-    game_memory: {},
+    // Seeded so the library grid's per-game sync badges have something to show
+    // under `pnpm dev`: 1245620 matches its launch options exactly (in-sync),
+    // 553850 does not (drifted), 275850 has none set at all (not-applied).
+    game_memory: {
+      "1245620": emptyMockConfig(),
+      "553850": { ...emptyMockConfig(), wrappers: [["mangohud", ""]] },
+      "275850": { ...emptyMockConfig(), env: [["DXVK_ASYNC", "1"]] },
+    },
     dismissed_cachyos_build: "",
     dismissed_update_version: "",
     show_irrelevant: false,
@@ -414,6 +438,19 @@ export function mockLaunchDiff(built: string, current: string): LaunchDiff {
         : "drifted";
 
   return { status, added, removed, changed, unmodeled, game_args };
+}
+
+export function mockLaunchStatuses(
+  memory: Record<string, Config>,
+  launchOptions: Record<string, string>,
+): Record<string, DiffStatus> {
+  const out: Record<string, DiffStatus> = {};
+  for (const [appid, config] of Object.entries(memory)) {
+    out[appid] = config.umu
+      ? "umu"
+      : mockLaunchDiff(mockBuildCommand(config, null), launchOptions[appid] ?? "").status;
+  }
+  return out;
 }
 
 // Regex stand-in for explain.rs. Good enough for browser dev; the real

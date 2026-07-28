@@ -43,6 +43,7 @@ pub fn run() {
             ipc::parse_command,
             ipc::explain_command,
             ipc::launch_diff,
+            ipc::launch_statuses,
             ipc::apply_recipe,
             ipc::lint,
             ipc::protondb_url,

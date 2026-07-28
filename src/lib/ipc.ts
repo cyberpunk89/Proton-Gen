@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Bootstrap,
   Config,
+  DiffStatus,
   LaunchDiff,
   Notice,
   Store,
@@ -14,6 +15,7 @@ import {
   mockBuildCommand,
   mockExplain,
   mockLaunchDiff,
+  mockLaunchStatuses,
   mockNotices,
 } from "./mock";
 
@@ -50,6 +52,14 @@ export const ipc = {
     inTauri
       ? invoke<LaunchDiff>("launch_diff", { built, current })
       : Promise.resolve(mockLaunchDiff(built, current)),
+
+  // Batch form of launchDiff for the library grid: one status per remembered
+  // game. `launchOptions` is passed in rather than read from AppState, whose
+  // discovery snapshot goes stale after a rescan.
+  launchStatuses: (memory: Record<string, Config>, launchOptions: Record<string, string>) =>
+    inTauri
+      ? invoke<Record<string, DiffStatus>>("launch_statuses", { memory, launchOptions })
+      : Promise.resolve(mockLaunchStatuses(memory, launchOptions)),
 
   applyRecipe: (index: number, config: Config) =>
     inTauri ? invoke<Config>("apply_recipe", { index, config }) : Promise.resolve(config),
