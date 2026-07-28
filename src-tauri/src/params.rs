@@ -137,16 +137,38 @@ pub struct Catalog {
 
 impl Catalog {
     /// Load from the user override if present, else the bundled default.
-    pub fn load() -> Self {
-        if let Some(path) = user_config_path() {
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                if let Ok(cat) = toml::from_str::<Catalog>(&text) {
-                    return cat;
-                }
-                eprintln!("warning: {} failed to parse; using bundled catalog", path.display());
+    ///
+    /// Returns a warning rather than only printing to stderr: a GUI user who
+    /// drops a slightly malformed params.toml otherwise gets the bundled
+    /// catalog with no indication their file was ignored.
+    pub fn load() -> (Self, Option<ConfigWarning>) {
+        let Some(path) = user_config_path() else {
+            return (Self::bundled(), None);
+        };
+        // A missing override is the normal case, not a problem worth reporting.
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return (Self::bundled(), None);
+        };
+
+        let (cat, error) = Self::parse_or_bundled(&text);
+        let warning = error.map(|error| {
+            eprintln!("warning: {} failed to parse; using bundled catalog", path.display());
+            ConfigWarning {
+                file: "params.toml".to_string(),
+                path: path.display().to_string(),
+                error,
             }
+        });
+        (cat, warning)
+    }
+
+    /// Pure core of [`Self::load`]: parse `text`, falling back to the bundled
+    /// catalog and returning the toml error message.
+    pub fn parse_or_bundled(text: &str) -> (Self, Option<String>) {
+        match toml::from_str::<Catalog>(text) {
+            Ok(cat) => (cat, None),
+            Err(e) => (Self::bundled(), Some(e.to_string())),
         }
-        Self::bundled()
     }
 
     /// The bundled catalog (also used as the parse-fixture in tests).
@@ -176,6 +198,17 @@ pub fn config_dir() -> Option<PathBuf> {
 }
 
 /// A file under the protongen config dir, e.g. `config_file("state.toml")`.
+/// A user config override that couldn't be parsed and was therefore ignored.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ConfigWarning {
+    /// Which override this was, e.g. `params.toml`.
+    pub file: String,
+    /// Absolute path, so the message can tell the user what to go and fix.
+    pub path: String,
+    /// The underlying toml parse error.
+    pub error: String,
+}
+
 pub fn config_file(name: &str) -> Option<PathBuf> {
     config_dir().map(|d| d.join(name))
 }
@@ -315,5 +348,31 @@ mod tests {
         sorted.sort();
         sorted.dedup();
         assert_eq!(sorted.len(), cats.len());
+    }
+
+    #[test]
+    fn parse_or_bundled_accepts_valid_toml() {
+        let text = r#"
+[[env]]
+key = "MY_OVERRIDE"
+category = "Custom"
+default_value = "1"
+values = ["1"]
+help = "A user-supplied entry."
+"#;
+        let (cat, err) = Catalog::parse_or_bundled(text);
+        assert!(err.is_none(), "valid toml should not warn: {err:?}");
+        assert_eq!(cat.envs.len(), 1);
+        assert_eq!(cat.envs[0].key, "MY_OVERRIDE");
+    }
+
+    #[test]
+    fn parse_or_bundled_falls_back_and_reports_the_error() {
+        let (cat, err) = Catalog::parse_or_bundled("this is not = valid toml [[[");
+        // The user still gets a working app...
+        assert_eq!(cat.envs.len(), Catalog::bundled().envs.len());
+        // ...but the reason their file was ignored survives, rather than
+        // being thrown away by an `if let Ok`.
+        assert!(err.is_some(), "garbage input must produce an error message");
     }
 }

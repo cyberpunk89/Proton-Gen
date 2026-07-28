@@ -89,16 +89,26 @@ impl Store {
         }
     }
 
-    pub fn save(&self) {
+    /// Resolve the XDG path and write. The thin shell over [`Self::save_to`].
+    pub fn save(&self) -> Result<(), String> {
         let Some(path) = params::config_file("state.toml") else {
-            return;
+            return Err("no config directory available (is $HOME set?)".to_string());
         };
+        self.save_to(&path)
+    }
+
+    /// Write the store to `path`, creating parent directories as needed.
+    ///
+    /// Pure enough to test: every error names the path, because the path is
+    /// what makes a write failure actionable ("which directory is read-only?").
+    pub fn save_to(&self, path: &std::path::Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("couldn't create {}: {e}", parent.display()))?;
         }
-        if let Ok(text) = toml::to_string_pretty(self) {
-            let _ = std::fs::write(&path, text);
-        }
+        let text = toml::to_string_pretty(self)
+            .map_err(|e| format!("couldn't serialize settings: {e}"))?;
+        std::fs::write(path, text).map_err(|e| format!("couldn't write {}: {e}", path.display()))
     }
 
     pub fn remember(&mut self, appid: u32, config: Config) {
@@ -219,6 +229,43 @@ mod tests {
         let (env2, wrappers2) = options_to_lists(&cat, &opts);
         assert_eq!(env, env2);
         assert_eq!(wrappers, wrappers2);
+    }
+
+    #[test]
+    fn save_to_writes_a_readable_store() {
+        let dir = std::env::temp_dir().join(format!("protongen-save-{}", std::process::id()));
+        let path = dir.join("nested").join("state.toml");
+        let s = Store {
+            theme: "Dracula".into(),
+            ..Default::default()
+        };
+
+        // Parent directories are created on demand.
+        s.save_to(&path).expect("save should succeed");
+        let back: Store = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(back.theme, "Dracula");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn save_to_reports_a_parent_that_cannot_be_created() {
+        // A regular file cannot become a directory, so create_dir_all fails.
+        let blocker = std::env::temp_dir().join(format!("protongen-blocker-{}", std::process::id()));
+        std::fs::write(&blocker, b"not a directory").unwrap();
+
+        let err = Store::default()
+            .save_to(&blocker.join("state.toml"))
+            .expect_err("writing under a regular file must fail");
+
+        // The path is the whole point of the message: it's what makes the
+        // failure actionable.
+        assert!(
+            err.contains(&blocker.display().to_string()),
+            "error should name the path, got: {err}"
+        );
+
+        std::fs::remove_file(&blocker).ok();
     }
 }
 

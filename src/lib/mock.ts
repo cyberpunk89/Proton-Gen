@@ -261,6 +261,7 @@ export const mockBootstrap: Bootstrap = {
   compat_tools: { "553850": "proton-cachyos-slr" },
   requires_status: { gamescope: true, gamemoderun: true, mangohud: false },
   stale: null,
+  config_warnings: [],
 };
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {

@@ -29,6 +29,37 @@
       {app.loadError}
     </div>
   {/if}
+  {#each app.configWarnings as w (w.path)}
+    <!-- Their override was ignored. Without this the app just silently
+         appears to disregard the file they wrote. -->
+    <div
+      class="flex items-start gap-2 rounded-xl border px-4 py-2.5 text-xs"
+      style="border-color: color-mix(in srgb, var(--yellow) 35%, transparent); background: color-mix(in srgb, var(--yellow) 8%, transparent)"
+    >
+      <WarningCircle size={16} weight="fill" class="mt-0.5 shrink-0 text-yellow" />
+      <span class="text-subtext">
+        Your custom <code class="font-mono text-text">{w.file}</code> at
+        <code class="font-mono text-text">{w.path}</code> couldn't be parsed
+        (<span class="font-mono">{w.error}</span>); using the bundled
+        {w.file === "recipes.toml" ? "recipes" : "catalog"}.
+      </span>
+    </div>
+  {/each}
+  {#if app.persistError}
+    <!-- Sticky: settings are silently not being saved, which the user only
+         discovers on exit. Cleared by the next successful write. -->
+    <div
+      class="flex items-start gap-2 rounded-xl border px-4 py-2.5 text-xs text-red"
+      style="border-color: color-mix(in srgb, var(--red) 35%, transparent); background: color-mix(in srgb, var(--red) 8%, transparent)"
+      role="alert"
+    >
+      <WarningCircle size={16} weight="fill" class="mt-0.5 shrink-0" />
+      <span class="text-subtext">
+        <span class="font-medium text-red">Your settings aren't being saved.</span>
+        Changes will be lost when you quit. — {app.persistError}
+      </span>
+    </div>
+  {/if}
 {/snippet}
 
 {#if app.initError}
@@ -71,7 +102,7 @@
 
     {#if app.view === "library"}
       <div class="min-h-0 flex-1 overflow-y-auto" in:fade={{ duration: 120 }}>
-        {#if app.loadError || app.staleVisible || app.updateVisible}
+        {#if app.loadError || app.persistError || app.configWarnings.length || app.staleVisible || app.updateVisible}
           <div class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 pt-4">
             {@render loadErrorBanner()}
             <UpdateBanner />

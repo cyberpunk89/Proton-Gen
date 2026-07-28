@@ -1,4 +1,5 @@
 import { ipc } from "./ipc";
+import { toast } from "./toast.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { emptyConfig } from "./types";
 import type {
@@ -8,6 +9,7 @@ import type {
   Hardware,
   Recipe,
   RuntimeDto,
+  ConfigWarning,
   StaleInfo,
   Store,
   UpdateInfo,
@@ -63,6 +65,8 @@ class AppStore {
   launchOptions = $state<Record<string, string>>({});
   compatTools = $state<Record<string, string>>({});
   stale = $state<StaleInfo | null>(null);
+  /** User params.toml / recipes.toml overrides that failed to parse. */
+  configWarnings = $state<ConfigWarning[]>([]);
   update = $state<UpdateInfo | null>(null);
   updating = $state(false);
   /** True while a library re-scan (rescan IPC) is in flight. */
@@ -113,6 +117,10 @@ class AppStore {
   buildError = $state<string | null>(null);
   /** init() failure; the app shows an error screen with Retry instead of spinning. */
   initError = $state<string | null>(null);
+  /** Last settings-write failure, shown as a sticky banner until a save works. */
+  persistError = $state<string | null>(null);
+  /** Rate-limits the persist-failure toast; the banner carries the detail. */
+  private lastPersistToast = 0;
 
   /** Monotonic guard so a slow earlier recompute cannot overwrite a newer one. */
   private recomputeSeq = 0;
@@ -152,6 +160,7 @@ class AppStore {
     this.launchOptions = b.launch_options;
     this.compatTools = b.compat_tools;
     this.stale = b.stale;
+    this.configWarnings = b.config_warnings;
     this.store = b.store;
 
     applyTheme(b.store.theme || DEFAULT_THEME);
@@ -674,9 +683,26 @@ class AppStore {
 
   persistStore() {
     // Fire and forget; the store is small.
-    ipc.saveStore($state.snapshot(this.store)).catch((e) =>
-      console.error("saveStore failed", e),
-    );
+    ipc
+      .saveStore($state.snapshot(this.store))
+      .then(() => {
+        // Recovered — drop the banner so it can't linger once writes work.
+        this.persistError = null;
+      })
+      .catch((e) => {
+        console.error("saveStore failed", e);
+        const message = String(e);
+        this.persistError = message;
+
+        // persistStore fires on a debounce during typing, so a broken config
+        // dir would otherwise produce a toast storm. The sticky banner is the
+        // durable signal; the toast just draws the eye, once per minute.
+        const now = Date.now();
+        if (now - this.lastPersistToast > 60_000) {
+          this.lastPersistToast = now;
+          toast.error("Couldn't save your settings");
+        }
+      });
   }
 }
 

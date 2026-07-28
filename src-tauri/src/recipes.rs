@@ -51,16 +51,34 @@ pub struct Recipes {
 }
 
 impl Recipes {
-    pub fn load() -> Self {
-        if let Some(path) = params::config_file("recipes.toml") {
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                if let Ok(r) = toml::from_str::<Recipes>(&text) {
-                    return r;
-                }
-                eprintln!("warning: {} failed to parse; using bundled recipes", path.display());
+    /// Load from the user override if present, else the bundled default.
+    /// Mirrors [`params::Catalog::load`]; see there for why the error survives.
+    pub fn load() -> (Self, Option<params::ConfigWarning>) {
+        let Some(path) = params::config_file("recipes.toml") else {
+            return (Self::bundled(), None);
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return (Self::bundled(), None);
+        };
+
+        let (r, error) = Self::parse_or_bundled(&text);
+        let warning = error.map(|error| {
+            eprintln!("warning: {} failed to parse; using bundled recipes", path.display());
+            params::ConfigWarning {
+                file: "recipes.toml".to_string(),
+                path: path.display().to_string(),
+                error,
             }
+        });
+        (r, warning)
+    }
+
+    /// Pure core of [`Self::load`].
+    pub fn parse_or_bundled(text: &str) -> (Self, Option<String>) {
+        match toml::from_str::<Recipes>(text) {
+            Ok(r) => (r, None),
+            Err(e) => (Self::bundled(), Some(e.to_string())),
         }
-        Self::bundled()
     }
 
     pub fn bundled() -> Self {
@@ -148,5 +166,16 @@ mod tests {
             .collect();
         assert!(on_wrap.contains(&"gamemoderun"));
         assert!(on_wrap.contains(&"mangohud"));
+    }
+
+    #[test]
+    fn parse_or_bundled_falls_back_and_reports_the_error() {
+        let (r, err) = Recipes::parse_or_bundled("nope = [[[");
+        assert_eq!(r.recipes.len(), Recipes::bundled().recipes.len());
+        assert!(err.is_some(), "garbage input must produce an error message");
+
+        let (ok, none) = Recipes::parse_or_bundled(BUNDLED);
+        assert!(none.is_none());
+        assert_eq!(ok.recipes.len(), Recipes::bundled().recipes.len());
     }
 }

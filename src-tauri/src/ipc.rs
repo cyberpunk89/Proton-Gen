@@ -14,7 +14,7 @@ use crate::builder::{self, Wrapper};
 use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
 use crate::lint;
-use crate::params::{self, Catalog, Options};
+use crate::params::{self, Catalog, ConfigWarning, Options};
 use crate::parser;
 use crate::protondb::{self, Tier};
 use crate::recipes::{self, Recipe, Recipes};
@@ -69,6 +69,8 @@ pub struct Bootstrap {
     /// required binary name -> whether it's on $PATH (drives installed/missing badges).
     pub requires_status: HashMap<String, bool>,
     pub stale: Option<StaleInfo>,
+    /// User config overrides that failed to parse and were ignored.
+    pub config_warnings: Vec<ConfigWarning>,
 }
 
 /// Shared application state: immutable discovery results + a mutable store.
@@ -84,6 +86,7 @@ pub struct AppState {
     compat_tools: HashMap<String, String>,
     requires_status: HashMap<String, bool>,
     stale: Option<StaleInfo>,
+    config_warnings: Vec<ConfigWarning>,
     store: Mutex<Store>,
 }
 
@@ -137,8 +140,9 @@ fn scan_discovery(catalog: &Catalog) -> Discovery {
 
 impl AppState {
     pub fn new() -> Self {
-        let catalog = Catalog::load();
-        let recipes = Recipes::load();
+        let (catalog, catalog_warning) = Catalog::load();
+        let (recipes, recipes_warning) = Recipes::load();
+        let config_warnings = catalog_warning.into_iter().chain(recipes_warning).collect();
         let hardware = hardware::detect();
         let store = Store::load();
 
@@ -157,6 +161,7 @@ impl AppState {
             compat_tools: d.compat_tools,
             requires_status,
             stale: d.stale,
+            config_warnings,
             store: Mutex::new(store),
         }
     }
@@ -258,6 +263,7 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         compat_tools: state.compat_tools.clone(),
         requires_status: state.requires_status.clone(),
         stale: state.stale.clone(),
+        config_warnings: state.config_warnings.clone(),
     }
 }
 
@@ -285,6 +291,7 @@ pub fn rescan(state: State<'_, AppState>) -> Bootstrap {
         compat_tools: d.compat_tools,
         requires_status: state.requires_status.clone(),
         stale: d.stale,
+        config_warnings: state.config_warnings.clone(),
     }
 }
 
@@ -416,10 +423,10 @@ pub async fn game_art(
 
 /// Replace and persist the whole store (theme, presets, per-game memory, dismissals).
 #[tauri::command]
-pub fn save_store(state: State<'_, AppState>, store: Store) {
+pub fn save_store(state: State<'_, AppState>, store: Store) -> Result<(), String> {
     let mut guard = state.store.lock().unwrap();
     *guard = store;
-    guard.save();
+    guard.save()
 }
 
 /// Check GitHub Releases for a newer version (off the UI thread). A failed check
