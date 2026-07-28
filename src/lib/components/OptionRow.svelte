@@ -82,10 +82,12 @@
     {:else if valueField === "segmented"}
       <div class="inline-flex shrink-0 overflow-hidden rounded-lg border border-border">
         {#each values as v, i (v)}
+          <!-- Inset focus offset only: the group clips with overflow-hidden, so
+               the global outward ring from app.css would be cut off. -->
           <button
             type="button"
             onclick={() => onValue?.(v)}
-            class="px-3 py-1 font-mono text-xs transition focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent {i > 0
+            class="px-3 py-1 font-mono text-xs transition focus-visible:-outline-offset-2 {i > 0
               ? 'border-l border-border'
               : ''} {value === v ? 'font-medium' : 'text-muted hover:text-subtext'}"
             style={value === v

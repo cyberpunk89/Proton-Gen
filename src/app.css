@@ -329,6 +329,22 @@ button,
     0 4px 12px -6px rgb(0 0 0 / 45%);
 }
 
+/* Default keyboard focus indicator for every interactive element.
+   `:focus-visible` keeps it off mouse clicks, and the outline follows the
+   element's own border-radius, so nothing needs to restate it.
+
+   It MUST live in `@layer base`: Tailwind declares `@layer theme, base,
+   components, utilities`, and an unlayered rule outranks every layer no
+   matter how low its specificity — a bare `:where()` here would make
+   `focus-visible:outline-none` / `focus-visible:-outline-offset-2` on a
+   component impossible to apply. In `base`, utilities win as expected. */
+@layer base {
+  :where(button, [role="button"], a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
 /* Honor reduced-motion: collapse transitions/animations to near-instant. */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -40,13 +40,13 @@
     <div class="ml-auto flex items-center gap-1.5">
       <button
         onclick={reset}
-        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent active:scale-95"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 active:scale-95"
       >
         <ArrowCounterClockwise size={14} /> Reset
       </button>
       <button
         onclick={copy}
-        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent active:scale-95"
+        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95"
         style="background: var(--accent); color: var(--on-accent)"
       >
         <Copy size={14} weight="bold" /> Copy
@@ -79,7 +79,7 @@
       </div>
       <button
         onclick={() => app.retryBuild()}
-        class="shrink-0 rounded-md bg-surface-2 px-2 py-1 text-xs text-subtext transition hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        class="shrink-0 rounded-md bg-surface-2 px-2 py-1 text-xs text-subtext transition hover:text-text"
       >
         Retry
       </button>
