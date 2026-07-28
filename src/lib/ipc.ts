@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Bootstrap, Config, Store, Tier, Token, UpdateInfo } from "./types";
-import { mockBootstrap, mockBuildCommand, mockExplain } from "./mock";
+import type { Bootstrap, Config, Notice, Store, Tier, Token, UpdateInfo } from "./types";
+import { mockBootstrap, mockBuildCommand, mockExplain, mockNotices } from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -32,7 +32,7 @@ export const ipc = {
     inTauri ? invoke<Config>("apply_recipe", { index, config }) : Promise.resolve(config),
 
   lint: (config: Config) =>
-    inTauri ? invoke<string[]>("lint", { config }) : Promise.resolve([] as string[]),
+    inTauri ? invoke<Notice[]>("lint", { config }) : Promise.resolve(mockNotices),
 
   protondbUrl: (appid: number) =>
     inTauri

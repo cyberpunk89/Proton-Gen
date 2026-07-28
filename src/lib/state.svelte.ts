@@ -6,6 +6,7 @@ import type {
   Config,
   GameDto,
   Hardware,
+  Notice,
   Recipe,
   RuntimeDto,
   StaleInfo,
@@ -84,7 +85,7 @@ class AppStore {
 
   // ---- derived/live ----
   command = $state("");
-  notices = $state<string[]>([]);
+  notices = $state<Notice[]>([]);
   /** Briefly true right after the session is written to disk (trust cue). */
   saved = $state(false);
 

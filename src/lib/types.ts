@@ -153,6 +153,30 @@ export interface Token {
   key: string | null;
 }
 
+/// Mirrors lint::Severity (serde rename_all = "lowercase").
+export type Severity = "error" | "warning" | "info";
+
+/** A one-click remedy for a notice. Applied entirely on the frontend with the
+ *  existing toggleEnv / setEnvValue / toggleWrap helpers — there is no
+ *  apply-fix command. */
+export interface LintFix {
+  label: string;
+  /** Catalog keys (env or wrapper) to turn off. */
+  disable: string[];
+  /** Catalog env keys to turn on, with the value to set. */
+  enable: Pair[];
+}
+
+export interface Notice {
+  /** Stable rule id — usable as a list key. */
+  id: string;
+  severity: Severity;
+  message: string;
+  /** Catalog keys this notice implicates, for click-to-jump. */
+  keys: string[];
+  fix: LintFix | null;
+}
+
 export interface Tier {
   tier: string;
   total: number;

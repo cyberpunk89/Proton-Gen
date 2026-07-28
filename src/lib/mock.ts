@@ -1,7 +1,7 @@
 // Browser fallback data + handlers used when the app runs OUTSIDE Tauri (e.g.
 // `vite` in a plain browser for design/dev). Under Tauri this module is unused.
 
-import type { Bootstrap, Config, Token, TokenKind } from "./types";
+import type { Bootstrap, Config, Notice, Token, TokenKind } from "./types";
 
 export const mockBootstrap: Bootstrap = {
   steam_root: "/home/you/.local/share/Steam",
@@ -292,6 +292,31 @@ export const mockBootstrap: Bootstrap = {
   requires_status: { gamescope: true, gamemoderun: true, mangohud: false },
   stale: null,
 };
+
+// Static stand-in for lint::warnings. Two real rule ids at two severities, one
+// with a fix and one without, so the notices UI can be iterated under
+// `pnpm dev` — the browser mock has no rule engine to derive them from.
+export const mockNotices: Notice[] = [
+  {
+    id: "gplasync-anticheat",
+    severity: "error",
+    message:
+      "PROTON_DXVK_GPLASYNC can trip kernel anti-cheat — avoid it in EAC/BattlEye games.",
+    keys: ["PROTON_DXVK_GPLASYNC", "PROTON_EAC_RUNTIME"],
+    fix: {
+      label: "Disable PROTON_DXVK_GPLASYNC",
+      disable: ["PROTON_DXVK_GPLASYNC"],
+      enable: [],
+    },
+  },
+  {
+    id: "gamescope-vs-wayland",
+    severity: "warning",
+    message: "gamescope and PROTON_ENABLE_WAYLAND together can conflict — usually pick one.",
+    keys: ["gamescope", "PROTON_ENABLE_WAYLAND"],
+    fix: null,
+  },
+];
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {
   const env = config.env.map(([k, v]) => `${k}=${v}`);

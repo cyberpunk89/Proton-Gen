@@ -376,7 +376,7 @@ pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) ->
 
 /// Conflict / footgun notices for the current config.
 #[tauri::command]
-pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<String> {
+pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
     let options = compose::options_from_config(&state.catalog, &config);
     lint::warnings(&state.catalog, &options, &state.hardware)
 }
