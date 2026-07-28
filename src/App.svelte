@@ -11,7 +11,8 @@
   import StaleBanner from "$lib/components/StaleBanner.svelte";
   import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import Toast from "$lib/components/Toast.svelte";
-  import { CircleNotch, WarningCircle } from "phosphor-svelte";
+  import { CircleNotch, WarningCircle, ArrowsClockwise, Copy } from "phosphor-svelte";
+  import { copyText } from "$lib/util";
 
   onMount(() => {
     app.init();
@@ -30,7 +31,37 @@
   {/if}
 {/snippet}
 
-{#if !app.ready}
+{#if app.initError}
+  <div class="flex h-screen items-center justify-center p-8">
+    <div class="flex max-w-lg flex-col items-start gap-3">
+      <div class="flex items-center gap-2 text-red">
+        <WarningCircle size={20} weight="fill" />
+        <h1 class="text-base font-semibold">protongen couldn't start</h1>
+      </div>
+      <p class="text-sm text-subtext">
+        Scanning your Steam install and Proton runtimes failed. This is usually
+        temporary — retrying is safe.
+      </p>
+      <pre
+        class="max-h-40 w-full overflow-auto rounded-xl border border-border bg-surface-2 p-3 font-mono text-xs text-subtext">{app.initError}</pre>
+      <div class="flex items-center gap-2">
+        <button
+          onclick={() => app.init()}
+          class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition active:scale-95"
+          style="background: var(--accent); color: var(--on-accent)"
+        >
+          <ArrowsClockwise size={14} /> Retry
+        </button>
+        <button
+          onclick={() => copyText(app.initError ?? "")}
+          class="inline-flex items-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-sm text-subtext transition hover:text-text"
+        >
+          <Copy size={14} /> Copy details
+        </button>
+      </div>
+    </div>
+  </div>
+{:else if !app.ready}
   <div class="flex h-screen items-center justify-center">
     <CircleNotch size={28} class="animate-spin text-accent" />
   </div>

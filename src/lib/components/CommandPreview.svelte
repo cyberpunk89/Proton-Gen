@@ -2,7 +2,7 @@
   import { app } from "$lib/state.svelte";
   import { copyText } from "$lib/util";
   import { toast } from "$lib/toast.svelte";
-  import { ArrowCounterClockwise, Copy, Terminal } from "phosphor-svelte";
+  import { ArrowCounterClockwise, Copy, Terminal, WarningCircle } from "phosphor-svelte";
   import { fade } from "$lib/motion.svelte";
 
   async function copy() {
@@ -61,6 +61,30 @@
   >
     {app.command || "%command%"}
   </button>
+
+  {#if app.buildError}
+    <!-- Inline rather than a toast: this re-fires on every keystroke while
+         the build is broken, so a toast would spam. -->
+    <div
+      class="mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs"
+      style="border-color: color-mix(in srgb, var(--red) 35%, transparent);
+             background: color-mix(in srgb, var(--red) 8%, transparent)"
+      role="alert"
+    >
+      <WarningCircle size={14} weight="fill" class="mt-0.5 shrink-0 text-red" />
+      <div class="flex-1 text-subtext">
+        <p class="font-medium text-red">Couldn't build the command</p>
+        <p class="mt-0.5 font-mono break-all">{app.buildError}</p>
+        <p class="mt-1">The command above may be out of date.</p>
+      </div>
+      <button
+        onclick={() => app.retryBuild()}
+        class="shrink-0 rounded-md bg-surface-2 px-2 py-1 text-xs text-subtext transition hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        Retry
+      </button>
+    </div>
+  {/if}
 
   {#if !app.umu && app.selectedRuntime}
     <p class="mt-3 border-t border-border/50 pt-2 text-xs text-muted">

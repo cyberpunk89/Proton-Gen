@@ -109,6 +109,16 @@ class AppStore {
   artCache = $state<Record<string, string | null>>({});
   private artRequested = new Set<string>();
 
+  /** Last build_command failure, rendered inline in the command bar. */
+  buildError = $state<string | null>(null);
+  /** init() failure; the app shows an error screen with Retry instead of spinning. */
+  initError = $state<string | null>(null);
+
+  /** Monotonic guard so a slow earlier recompute cannot overwrite a newer one. */
+  private recomputeSeq = 0;
+  /** $effect.root must be registered exactly once, even across Retry. */
+  private effectsRegistered = false;
+
   private recomputeTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionTimer: ReturnType<typeof setTimeout> | null = null;
   private savedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -116,6 +126,19 @@ class AppStore {
   private firstPersist = true;
 
   async init() {
+    this.initError = null;
+    try {
+      await this.load();
+    } catch (e) {
+      // Leave ready false so App renders the error screen rather than a
+      // spinner that never resolves.
+      this.initError = String(e);
+      return;
+    }
+    this.startReactivity();
+  }
+
+  private async load() {
     const b = await ipc.bootstrap();
     this.loadError = b.load_error;
     this.steamRoot = b.steam_root;
@@ -156,10 +179,21 @@ class AppStore {
 
     // Check for a newer release in the background; never blocks launch.
     this.checkForUpdate();
+  }
 
-    // Recompute the command + lint, and persist the session, whenever any
-    // builder input changes. Registered last so the first effect run captures
-    // the restored state rather than defaults.
+  /**
+   * Recompute the command + lint, and persist the session, whenever any
+   * builder input changes. Called after a successful load so the first effect
+   * run captures the restored state rather than defaults.
+   *
+   * Guarded because Retry calls init() again: a second $effect.root would
+   * leave two live roots, double-recomputing and double-persisting for the
+   * rest of the session.
+   */
+  private startReactivity() {
+    if (this.effectsRegistered) return;
+    this.effectsRegistered = true;
+
     $effect.root(() => {
       $effect(() => {
         const cfg = this.toConfig();
@@ -334,14 +368,41 @@ class AppStore {
 
   private scheduleRecompute(cfg: Config) {
     if (this.recomputeTimer) clearTimeout(this.recomputeTimer);
+    const seq = ++this.recomputeSeq;
     this.recomputeTimer = setTimeout(async () => {
+      const path = this.protonPath();
+
+      // Separate try/catch per call: a lint rejection must not blank an
+      // otherwise-valid command, and vice versa.
       try {
-        this.command = await ipc.buildCommand(cfg, this.protonPath());
-        this.notices = await ipc.lint(cfg);
+        const command = await ipc.buildCommand(cfg, path);
+        // Two awaits race freely, so a slower earlier invocation can resolve
+        // after a newer one. Without this guard it would overwrite the fresh
+        // command with a stale value.
+        if (seq === this.recomputeSeq) {
+          this.command = command;
+          this.buildError = null;
+        }
       } catch (e) {
-        console.error("recompute failed", e);
+        if (seq === this.recomputeSeq) {
+          // Surfaced inline in the command bar, never toasted: this fires on
+          // every keystroke while broken, and a toast storm would bury it.
+          this.buildError = String(e);
+        }
+      }
+
+      try {
+        const notices = await ipc.lint(cfg);
+        if (seq === this.recomputeSeq) this.notices = notices;
+      } catch (e) {
+        console.error("lint failed", e);
       }
     }, 60);
+  }
+
+  /** Re-run the build immediately, for the inline error's Retry. */
+  retryBuild() {
+    this.scheduleRecompute(this.toConfig());
   }
 
   /** Persist the current builder state as the "last session" (and keep the
