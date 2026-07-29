@@ -18,11 +18,12 @@
   } = $props();
 </script>
 
-<Popover width="22rem">
-  {#snippet trigger({ toggle, open })}
+<!-- trapFocus={false}: a read-only bubble shouldn't capture the keyboard. -->
+<Popover width="22rem" trapFocus={false}>
+  {#snippet trigger({ props, open })}
     <button
+      {...props}
       type="button"
-      onclick={toggle}
       class="grid size-6 place-items-center rounded-md text-muted transition hover:bg-surface-2 hover:text-blue {open
         ? 'bg-surface-2 text-blue'
         : ''}"

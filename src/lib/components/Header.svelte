@@ -68,9 +68,9 @@
 
     <!-- Presets -->
     <Popover width="16rem">
-      {#snippet trigger({ toggle })}
+      {#snippet trigger({ props })}
         <button
-          onclick={toggle}
+          {...props}
           class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
         >
           <BookmarkSimple size={14} />
