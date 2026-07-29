@@ -13,7 +13,12 @@
            background: color-mix(in srgb, var(--peach) 8%, transparent)"
     transition:slide={{ duration: 150 }}
   >
-    <button class="flex w-full items-center gap-2" onclick={() => (open = !open)}>
+    <button
+      class="flex w-full items-center gap-2"
+      onclick={() => (open = !open)}
+      aria-expanded={open}
+      aria-controls="notices-list"
+    >
       <Warning size={15} weight="fill" class="text-peach" />
       <span class="text-xs font-medium text-peach"
         >{app.notices.length} notice{app.notices.length > 1 ? "s" : ""}</span
@@ -21,7 +26,11 @@
       <span class="ml-auto text-[11px] text-muted">{open ? "hide" : "show"}</span>
     </button>
     {#if open}
-      <ul class="mt-2 space-y-1 pl-6 text-xs text-subtext" transition:slide={{ duration: 120 }}>
+      <ul
+        id="notices-list"
+        class="mt-2 space-y-1 pl-6 text-xs text-subtext"
+        transition:slide={{ duration: 120 }}
+      >
         {#each app.notices as n (n)}
           <li class="list-disc">{n}</li>
         {/each}

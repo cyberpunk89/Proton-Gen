@@ -79,7 +79,7 @@
             () => (sections.appearance = !sections.appearance),
           )}
           {#if sections.appearance}
-          <div class="mt-2 grid grid-cols-2 gap-1.5">
+          <div id="drawer-section-appearance" class="mt-2 grid grid-cols-2 gap-1.5">
             {#each THEMES as t (t.id)}
               <button
                 onclick={() => app.setTheme(t.id)}
@@ -109,7 +109,7 @@
             () => (sections.behavior = !sections.behavior),
           )}
           {#if sections.behavior}
-          <div class="mt-2 space-y-0.5">
+          <div id="drawer-section-behavior" class="mt-2 space-y-0.5">
             {@render toggle(
               "Show unsupported options",
               "List recipes that don't match your detected hardware.",
@@ -147,7 +147,7 @@
             () => (sections.overlay = !sections.overlay),
           )}
           {#if sections.overlay}
-            <div class="mt-2">
+            <div id="drawer-section-mangohud-overlay" class="mt-2">
               <MangoHud />
             </div>
           {/if}
@@ -161,9 +161,12 @@
   </DialogPrimitive.Portal>
 </DialogPrimitive.Root>
 
+<!-- One fix covers all three drawer sections, since they share this snippet. -->
 {#snippet sectionHeading(Icon: Component, label: string, isOpen: boolean, onclick: () => void)}
   <button
     {onclick}
+    aria-expanded={isOpen}
+    aria-controls={`drawer-section-${label.replace(/\W+/g, "-").toLowerCase()}`}
     class="flex w-full items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted transition hover:text-subtext"
   >
     <Icon size={13} />
