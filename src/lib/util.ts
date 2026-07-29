@@ -45,6 +45,11 @@ export function irrelevance(
   return null;
 }
 
+/**
+ * @deprecated Naive substring OR — no ranking and no highlight positions.
+ * Prefer `fuzzy()` from `$lib/fuzzy` for anything user-facing. Still used by
+ * the param list until that search is reworked.
+ */
 export function matches(filter: string, haystack: string[]): boolean {
   const f = filter.trim().toLowerCase();
   if (!f) return true;

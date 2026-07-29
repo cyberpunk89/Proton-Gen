@@ -79,7 +79,11 @@ pub fn dump() -> Result<()> {
         println!("  - {:<45} ({})  [{}]", g.name, g.app_id, g.source.label());
     }
 
-    let cat = params::Catalog::load();
+    let (cat, cat_warning) = params::Catalog::load();
+    if let Some(w) = &cat_warning {
+        println!("\nWARNING: {} at {} failed to parse; using the bundled catalog.\n  {}",
+            w.file, w.path, w.error);
+    }
     println!(
         "\nCatalog: {} wrappers, {} env vars across {} categories.",
         cat.wrappers.len(),

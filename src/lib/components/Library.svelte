@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
-  import { autofocus } from "$lib/actions";
+  import { autofocus, focusTarget } from "$lib/actions";
   import { GameController, MagnifyingGlass, Terminal, Check } from "phosphor-svelte";
 
   let query = $state("");
@@ -42,6 +42,7 @@
         />
         <input
           use:autofocus
+          use:focusTarget={"library-filter"}
           bind:value={query}
           placeholder="Filter {app.games.length} games…"
           class="w-56 rounded-xl border border-border bg-surface-2 py-2 pl-9 pr-3 text-sm text-text outline-none focus:border-accent"

@@ -1,4 +1,5 @@
 import { ipc } from "./ipc";
+import { toast } from "./toast.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { emptyConfig } from "./types";
 import type {
@@ -8,6 +9,7 @@ import type {
   Hardware,
   Recipe,
   RuntimeDto,
+  ConfigWarning,
   StaleInfo,
   Store,
   UpdateInfo,
@@ -63,6 +65,8 @@ class AppStore {
   launchOptions = $state<Record<string, string>>({});
   compatTools = $state<Record<string, string>>({});
   stale = $state<StaleInfo | null>(null);
+  /** User params.toml / recipes.toml overrides that failed to parse. */
+  configWarnings = $state<ConfigWarning[]>([]);
   update = $state<UpdateInfo | null>(null);
   updating = $state(false);
   /** True while a library re-scan (rescan IPC) is in flight. */
@@ -98,11 +102,30 @@ class AppStore {
   activeSection = $state<string>("recipes");
   /** Global parameter search; when non-empty the main panel shows flat results. */
   paramQuery = $state("");
+  /** Overlay visibility. These live here rather than in Header.svelte so the
+   *  command palette and the Ctrl+, binding can open them from anywhere. */
+  showImport = $state(false);
+  showSave = $state(false);
+  showSettings = $state(false);
 
   // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
   //   undefined = not requested/loading · null = none found · string = data URL
   artCache = $state<Record<string, string | null>>({});
   private artRequested = new Set<string>();
+
+  /** Last build_command failure, rendered inline in the command bar. */
+  buildError = $state<string | null>(null);
+  /** init() failure; the app shows an error screen with Retry instead of spinning. */
+  initError = $state<string | null>(null);
+  /** Last settings-write failure, shown as a sticky banner until a save works. */
+  persistError = $state<string | null>(null);
+  /** Rate-limits the persist-failure toast; the banner carries the detail. */
+  private lastPersistToast = 0;
+
+  /** Monotonic guard so a slow earlier recompute cannot overwrite a newer one. */
+  private recomputeSeq = 0;
+  /** $effect.root must be registered exactly once, even across Retry. */
+  private effectsRegistered = false;
 
   private recomputeTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -111,6 +134,19 @@ class AppStore {
   private firstPersist = true;
 
   async init() {
+    this.initError = null;
+    try {
+      await this.load();
+    } catch (e) {
+      // Leave ready false so App renders the error screen rather than a
+      // spinner that never resolves.
+      this.initError = String(e);
+      return;
+    }
+    this.startReactivity();
+  }
+
+  private async load() {
     const b = await ipc.bootstrap();
     this.loadError = b.load_error;
     this.steamRoot = b.steam_root;
@@ -124,6 +160,7 @@ class AppStore {
     this.launchOptions = b.launch_options;
     this.compatTools = b.compat_tools;
     this.stale = b.stale;
+    this.configWarnings = b.config_warnings;
     this.store = b.store;
 
     applyTheme(b.store.theme || DEFAULT_THEME);
@@ -151,10 +188,21 @@ class AppStore {
 
     // Check for a newer release in the background; never blocks launch.
     this.checkForUpdate();
+  }
 
-    // Recompute the command + lint, and persist the session, whenever any
-    // builder input changes. Registered last so the first effect run captures
-    // the restored state rather than defaults.
+  /**
+   * Recompute the command + lint, and persist the session, whenever any
+   * builder input changes. Called after a successful load so the first effect
+   * run captures the restored state rather than defaults.
+   *
+   * Guarded because Retry calls init() again: a second $effect.root would
+   * leave two live roots, double-recomputing and double-persisting for the
+   * rest of the session.
+   */
+  private startReactivity() {
+    if (this.effectsRegistered) return;
+    this.effectsRegistered = true;
+
     $effect.root(() => {
       $effect(() => {
         const cfg = this.toConfig();
@@ -329,14 +377,41 @@ class AppStore {
 
   private scheduleRecompute(cfg: Config) {
     if (this.recomputeTimer) clearTimeout(this.recomputeTimer);
+    const seq = ++this.recomputeSeq;
     this.recomputeTimer = setTimeout(async () => {
+      const path = this.protonPath();
+
+      // Separate try/catch per call: a lint rejection must not blank an
+      // otherwise-valid command, and vice versa.
       try {
-        this.command = await ipc.buildCommand(cfg, this.protonPath());
-        this.notices = await ipc.lint(cfg);
+        const command = await ipc.buildCommand(cfg, path);
+        // Two awaits race freely, so a slower earlier invocation can resolve
+        // after a newer one. Without this guard it would overwrite the fresh
+        // command with a stale value.
+        if (seq === this.recomputeSeq) {
+          this.command = command;
+          this.buildError = null;
+        }
       } catch (e) {
-        console.error("recompute failed", e);
+        if (seq === this.recomputeSeq) {
+          // Surfaced inline in the command bar, never toasted: this fires on
+          // every keystroke while broken, and a toast storm would bury it.
+          this.buildError = String(e);
+        }
+      }
+
+      try {
+        const notices = await ipc.lint(cfg);
+        if (seq === this.recomputeSeq) this.notices = notices;
+      } catch (e) {
+        console.error("lint failed", e);
       }
     }, 60);
+  }
+
+  /** Re-run the build immediately, for the inline error's Retry. */
+  retryBuild() {
+    this.scheduleRecompute(this.toConfig());
   }
 
   /** Persist the current builder state as the "last session" (and keep the
@@ -557,12 +632,26 @@ class AppStore {
 
   // ------------------------------- updates ----------------------------------
 
-  async checkForUpdate() {
+  /**
+   * Returns what happened, so a user-initiated check can report "you're
+   * already up to date" — the silent startup check has nothing to say in
+   * that case, but someone who pressed a button is owed an answer.
+   */
+  async checkForUpdate(): Promise<"available" | "up-to-date" | "failed"> {
     try {
       const info = await ipc.checkForUpdate();
-      if (info?.available) this.update = info;
+      if (info?.available) {
+        this.update = info;
+        // A previous dismissal shouldn't suppress a check the user asked for.
+        if (this.store.dismissed_update_version === info.latest) {
+          this.store.dismissed_update_version = "";
+        }
+        return "available";
+      }
+      return "up-to-date";
     } catch (e) {
       console.error("update check failed", e);
+      return "failed";
     }
   }
 
@@ -594,9 +683,26 @@ class AppStore {
 
   persistStore() {
     // Fire and forget; the store is small.
-    ipc.saveStore($state.snapshot(this.store)).catch((e) =>
-      console.error("saveStore failed", e),
-    );
+    ipc
+      .saveStore($state.snapshot(this.store))
+      .then(() => {
+        // Recovered — drop the banner so it can't linger once writes work.
+        this.persistError = null;
+      })
+      .catch((e) => {
+        console.error("saveStore failed", e);
+        const message = String(e);
+        this.persistError = message;
+
+        // persistStore fires on a debounce during typing, so a broken config
+        // dir would otherwise produce a toast storm. The sticky banner is the
+        // durable signal; the toast just draws the eye, once per minute.
+        const now = Date.now();
+        if (now - this.lastPersistToast > 60_000) {
+          this.lastPersistToast = now;
+          toast.error("Couldn't save your settings");
+        }
+      });
   }
 }
 

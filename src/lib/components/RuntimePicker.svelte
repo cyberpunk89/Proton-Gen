@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
-  import { fly } from "svelte/transition";
+  import { fly } from "$lib/motion.svelte";
   import { clickOutside } from "$lib/actions";
   import { Cpu, CaretUpDown, Check } from "phosphor-svelte";
   import type { RuntimeDto } from "$lib/types";

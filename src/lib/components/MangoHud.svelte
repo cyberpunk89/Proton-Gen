@@ -219,14 +219,14 @@
     if (mode === "file") {
       const p = filePath.trim();
       if (!p) {
-        toast.show("Enter a config file path first");
+        toast.error("Enter a config file path first");
         return;
       }
       app.applyMangoFile(p);
-      toast.show("MangoHud config file applied");
+      toast.success("MangoHud config file applied");
     } else {
       app.applyMango(config);
-      toast.show("MangoHud overlay applied");
+      toast.success("MangoHud overlay applied");
     }
   }
 </script>

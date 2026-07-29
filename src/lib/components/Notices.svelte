@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { Warning } from "phosphor-svelte";
-  import { slide } from "svelte/transition";
+  import { slide } from "$lib/motion.svelte";
 
   let open = $state(true);
 </script>

@@ -137,6 +137,13 @@ export interface Tier {
   best: string;
 }
 
+/** A user config override that couldn't be parsed and was therefore ignored. */
+export interface ConfigWarning {
+  file: string;
+  path: string;
+  error: string;
+}
+
 export interface Bootstrap {
   steam_root: string | null;
   load_error: string | null;
@@ -151,6 +158,7 @@ export interface Bootstrap {
   compat_tools: Record<string, string>;
   requires_status: Record<string, boolean>;
   stale: StaleInfo | null;
+  config_warnings: ConfigWarning[];
 }
 
 export function emptyConfig(): Config {
