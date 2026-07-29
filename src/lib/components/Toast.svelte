@@ -49,7 +49,7 @@
       {#if item.action}
         <button
           onclick={() => toast.runAction(item.id)}
-          class="ml-1 rounded-md px-2 py-0.5 text-xs font-medium text-accent transition hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          class="ml-1 rounded-md px-2 py-0.5 text-xs font-medium text-accent transition hover:bg-surface-2"
         >
           {item.action.label}
         </button>

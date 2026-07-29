@@ -34,6 +34,7 @@
       <input
         use:focusTarget={"param-search"}
         bind:value={app.paramQuery}
+        aria-label="Search parameters"
         placeholder="Search parameters…"
         class="w-full rounded-lg border border-border bg-surface-2 py-1.5 pl-8 pr-7 text-xs text-text outline-none focus:border-accent"
       />
@@ -71,7 +72,7 @@
   {@const active = isActive(section)}
   <button
     onclick={() => app.setSection(section)}
-    class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent {active
+    class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition {active
       ? ''
       : 'text-subtext hover:bg-surface-2'}"
     style={active
@@ -87,7 +88,7 @@
   {@const active = isActive(name)}
   <button
     onclick={() => app.setSection(name)}
-    class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent {active
+    class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition {active
       ? ''
       : 'text-subtext hover:bg-surface-2'}"
     style={active

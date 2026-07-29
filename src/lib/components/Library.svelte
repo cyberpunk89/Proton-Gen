@@ -44,6 +44,7 @@
           use:autofocus
           use:focusTarget={"library-filter"}
           bind:value={query}
+          aria-label="Filter games"
           placeholder="Filter {app.games.length} games…"
           class="w-56 rounded-xl border border-border bg-surface-2 py-2 pl-9 pr-3 text-sm text-text outline-none focus:border-accent"
         />

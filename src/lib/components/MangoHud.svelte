@@ -309,6 +309,7 @@
           step="0.05"
           bind:value={bgAlpha}
           disabled={!bgAlphaOn}
+          aria-label="Background opacity value"
           class="ml-auto w-28 accent-[var(--accent)] disabled:opacity-40"
         />
         <span class="w-8 text-right font-mono text-xs text-muted">{bgAlpha}</span>
@@ -324,6 +325,7 @@
           step="0.05"
           bind:value={alpha}
           disabled={!alphaOn}
+          aria-label="Overlay opacity value"
           class="ml-auto w-28 accent-[var(--accent)] disabled:opacity-40"
         />
         <span class="w-8 text-right font-mono text-xs text-muted">{alpha}</span>
@@ -353,6 +355,7 @@
               type="color"
               bind:value={colorVal[c.key]}
               disabled={!colorOn[c.key]}
+              aria-label="{c.label} colour"
               class="h-6 w-8 cursor-pointer rounded border border-border bg-surface-2 disabled:opacity-40"
             />
           </label>

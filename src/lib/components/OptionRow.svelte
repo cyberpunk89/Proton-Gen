@@ -42,6 +42,10 @@
     onToggle: () => void;
     onValue?: (v: string) => void;
   } = $props();
+
+  // The visible title is the switch's accessible name, so it needs an id.
+  const uid = $props.id();
+  const labelId = `opt-title-${uid}`;
 </script>
 
 <div
@@ -51,9 +55,10 @@
     : ''}{dim ? 'opacity:.55' : ''}"
 >
   <div class="flex items-center gap-3">
-    <Switch checked={enabled} onchange={onToggle} label={title} />
+    <Switch checked={enabled} onchange={onToggle} labelledby={labelId} />
 
     <span
+      id={labelId}
       class="min-w-0 flex-1 truncate {mono ? 'font-mono text-[13px]' : 'text-sm'}"
       style="color: {enabled ? 'var(--text)' : 'var(--subtext)'}; font-weight: {enabled
         ? 500
@@ -65,6 +70,7 @@
     {#if valueField === "text"}
       <input
         class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 font-mono text-xs text-text outline-none focus:border-accent"
+        aria-label="{title} value"
         {placeholder}
         {value}
         oninput={(e) => onValue?.(e.currentTarget.value)}
@@ -72,6 +78,7 @@
     {:else if valueField === "select"}
       <select
         class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs text-text outline-none focus:border-accent"
+        aria-label="{title} value"
         {value}
         onchange={(e) => onValue?.(e.currentTarget.value)}
       >
@@ -82,10 +89,12 @@
     {:else if valueField === "segmented"}
       <div class="inline-flex shrink-0 overflow-hidden rounded-lg border border-border">
         {#each values as v, i (v)}
+          <!-- Inset focus offset only: the group clips with overflow-hidden, so
+               the global outward ring from app.css would be cut off. -->
           <button
             type="button"
             onclick={() => onValue?.(v)}
-            class="px-3 py-1 font-mono text-xs transition focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent {i > 0
+            class="px-3 py-1 font-mono text-xs transition focus-visible:-outline-offset-2 {i > 0
               ? 'border-l border-border'
               : ''} {value === v ? 'font-medium' : 'text-muted hover:text-subtext'}"
             style={value === v

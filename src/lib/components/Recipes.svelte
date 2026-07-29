@@ -50,6 +50,8 @@
   <button
     class="flex w-full items-center gap-2"
     onclick={() => (collapsed = !collapsed)}
+    aria-expanded={!collapsed}
+    aria-controls="recipes-body"
   >
     <Sparkle size={18} weight="fill" class="text-accent" />
     <h2 class="text-sm font-medium tracking-wide text-text">Recipes</h2>
@@ -76,7 +78,7 @@
   {/if}
 
   {#if !collapsed}
-    <div class="mt-4 space-y-4">
+    <div id="recipes-body" class="mt-4 space-y-4">
       {@render group("Profiles", profiles)}
       {@render group("Troubleshooter", fixes)}
     </div>
