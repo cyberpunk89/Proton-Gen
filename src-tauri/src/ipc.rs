@@ -2,7 +2,7 @@
 //! modules. Frontend selection state is the existing `store::Config`; the
 //! catalog / recipes / runtimes / games / hardware are sent once via `bootstrap`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -10,11 +10,14 @@ use steamlocate::SteamDir;
 use tauri::State;
 
 use crate::art;
-use crate::builder::{self, Wrapper};
+use crate::builder::Wrapper;
+use crate::compose;
+use crate::diff::{self, LaunchDiff};
+use crate::explain::{self, Token};
 use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
 use crate::lint;
-use crate::params::{self, Catalog, ConfigWarning, Options};
+use crate::params::{Catalog, ConfigWarning, Options};
 use crate::parser;
 use crate::protondb::{self, Tier};
 use crate::recipes::{self, Recipe, Recipes};
@@ -34,12 +37,21 @@ pub struct RuntimeDto {
 }
 
 /// A game/shortcut, flattened for the frontend.
+///
+/// `last_played` / `playtime_minutes` come from `localconfig.vdf`, not from the
+/// app manifest — `steamlocate::App` has no such fields. Both are `None` for a
+/// game Steam has never recorded, and always `None` for non-Steam shortcuts
+/// (Steam keeps no per-app user record for them).
 #[derive(Clone, Serialize)]
 pub struct GameDto {
     pub app_id: u32,
     pub name: String,
     pub source: String,
     pub executable: Option<String>,
+    pub installed: bool,
+    /// Unix seconds.
+    pub last_played: Option<u64>,
+    pub playtime_minutes: Option<u32>,
 }
 
 /// The "catalog refreshed for an older build" banner data.
@@ -117,8 +129,11 @@ fn scan_discovery(catalog: &Catalog) -> Discovery {
         Ok(dir) => {
             steam_root = Some(steam::root_display(&dir));
             runtimes_raw = runtime::discover(&dir);
-            games = list_games_dto(&dir);
-            launch_options = stringify_keys(steamcfg::current_launch_options(&dir));
+            // localconfig first: `list_games_dto` reads last-played/playtime out
+            // of it, so the parsed map has to exist before the games are built.
+            let app_cfgs = steamcfg::current_app_cfgs(&dir);
+            games = list_games_dto(&dir, &app_cfgs);
+            launch_options = stringify_keys(steamcfg::launch_options(&app_cfgs));
             compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
         }
         Err(e) => load_error = Some(e.to_string()),
@@ -181,18 +196,29 @@ fn runtime_dto(r: &runtime::Runtime) -> RuntimeDto {
     }
 }
 
-fn list_games_dto(dir: &SteamDir) -> Vec<GameDto> {
+fn list_games_dto(dir: &SteamDir, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> Vec<GameDto> {
     games::list_games(dir)
         .into_iter()
-        .map(|g| GameDto {
-            app_id: g.app_id,
-            name: g.name,
-            source: match g.source {
-                GameSource::Steam => "steam",
-                GameSource::NonSteam => "non-steam",
+        .map(|g| {
+            // Only Steam apps have a localconfig record; a shortcut's appid is a
+            // locally-generated hash that would collide with nothing useful.
+            let cfg = match g.source {
+                GameSource::Steam => app_cfgs.get(&g.app_id),
+                GameSource::NonSteam => None,
+            };
+            GameDto {
+                app_id: g.app_id,
+                name: g.name,
+                source: match g.source {
+                    GameSource::Steam => "steam",
+                    GameSource::NonSteam => "non-steam",
+                }
+                .to_string(),
+                executable: g.executable,
+                installed: g.installed,
+                last_played: cfg.and_then(|c| c.last_played),
+                playtime_minutes: cfg.and_then(|c| c.playtime_minutes),
             }
-            .to_string(),
-            executable: g.executable,
         })
         .collect()
 }
@@ -228,20 +254,6 @@ fn compute_stale(catalog: &Catalog, runtimes: &[runtime::Runtime]) -> Option<Sta
     } else {
         None
     }
-}
-
-/// Split the "custom env" field (`K=V K=V …`) into pairs.
-fn parse_extra_env(s: &str) -> Vec<(String, String)> {
-    s.split_whitespace()
-        .filter_map(|t| t.split_once('=').map(|(k, v)| (k.to_string(), v.to_string())))
-        .collect()
-}
-
-/// Rebuild `Options` from a `Config`'s catalog env/wrapper lists.
-fn options_from_config(catalog: &Catalog, config: &Config) -> Options {
-    let mut options = Options::from_catalog(catalog);
-    store::apply_lists(catalog, &mut options, &config.env, &config.wrappers);
-    options
 }
 
 // ----------------------------- commands -----------------------------
@@ -303,27 +315,7 @@ pub fn build_command(
     config: Config,
     proton_path: Option<String>,
 ) -> String {
-    let options = options_from_config(&state.catalog, &config);
-    let (mut env, wrappers) = params::to_spec(&state.catalog, &options);
-    env.extend(parse_extra_env(&config.extra_env));
-
-    if config.umu {
-        let wineprefix = {
-            let wp = config.umu_wineprefix.trim();
-            if wp.is_empty() { None } else { Some(wp) }
-        };
-        builder::build_umu_command(
-            &env,
-            &wrappers,
-            proton_path.as_deref().unwrap_or(""),
-            &config.umu_gameid,
-            wineprefix,
-            &config.umu_exe,
-            &config.game_args,
-        )
-    } else {
-        builder::build_command(&env, &wrappers, &config.game_args)
-    }
+    compose::assemble(&state.catalog, &config, proton_path.as_deref())
 }
 
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
@@ -361,6 +353,43 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
     }
 }
 
+/// Tokenize a launch command for the annotated preview. Stateless: tokens carry
+/// only a catalog `key`, which the frontend resolves against the already-loaded
+/// catalog.
+#[tauri::command]
+pub fn explain_command(command: String) -> Vec<Token> {
+    explain::explain(&command)
+}
+
+/// Compare a built launch command against the one Steam currently has set.
+/// Stateless and pure — see `diff.rs` for what is deliberately normalised away.
+///
+/// The *contextual* states (no game selected, non-Steam shortcut, generic
+/// command) stay out of the DTO: the frontend already holds `selectedAppId`,
+/// `game.source` and `app.umu`, and pushing them here would drag game/mode
+/// state through an otherwise trivially pure function.
+#[tauri::command]
+pub fn launch_diff(built: String, current: String) -> LaunchDiff {
+    diff::compare(&built, &current)
+}
+
+/// Applied / drifted / not-applied for every remembered game in one call, so
+/// the library grid can badge them all at a glance.
+///
+/// `launch_options` comes from the frontend rather than `AppState`: the
+/// discovery snapshot there is deliberately not refreshed by `rescan` (see
+/// above), so reading it would silently go stale after a library refresh. The
+/// frontend already holds the fresh copy as `app.launchOptions`, and passing it
+/// in keeps `diff::statuses` a pure function of its arguments.
+#[tauri::command]
+pub fn launch_statuses(
+    state: State<'_, AppState>,
+    memory: BTreeMap<String, Config>,
+    launch_options: HashMap<String, String>,
+) -> HashMap<String, diff::DiffStatus> {
+    diff::statuses(&state.catalog, &memory, &launch_options)
+}
+
 /// Merge recipe `index` onto `config`, returning the updated config.
 #[tauri::command]
 pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) -> Config {
@@ -369,7 +398,7 @@ pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) ->
         return config;
     };
 
-    let mut options = options_from_config(catalog, &config);
+    let mut options = compose::options_from_config(catalog, &config);
     let mut extra_env = config.extra_env.clone();
     recipes::apply(recipe, catalog, &mut options, &mut extra_env);
 
@@ -384,8 +413,8 @@ pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) ->
 
 /// Conflict / footgun notices for the current config.
 #[tauri::command]
-pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<String> {
-    let options = options_from_config(&state.catalog, &config);
+pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
+    let options = compose::options_from_config(&state.catalog, &config);
     lint::warnings(&state.catalog, &options, &state.hardware)
 }
 

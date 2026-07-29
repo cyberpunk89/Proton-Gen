@@ -1,6 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Bootstrap, Config, Store, Tier, UpdateInfo } from "./types";
-import { mockBootstrap, mockBuildCommand } from "./mock";
+import type {
+  Bootstrap,
+  Config,
+  DiffStatus,
+  LaunchDiff,
+  Notice,
+  Store,
+  Tier,
+  Token,
+  UpdateInfo,
+} from "./types";
+import {
+  mockBootstrap,
+  mockBuildCommand,
+  mockExplain,
+  mockLaunchDiff,
+  mockLaunchStatuses,
+  mockNotices,
+} from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -21,11 +38,34 @@ export const ipc = {
   parseCommand: (input: string) =>
     inTauri ? invoke<Config>("parse_command", { input }) : Promise.resolve(emptyParse()),
 
+  // Tokenize the preview for colouring/annotation. Tokens carry only a catalog
+  // `key`; look help/details/url up in the already-loaded catalog.
+  explainCommand: (command: string) =>
+    inTauri
+      ? invoke<Token[]>("explain_command", { command })
+      : Promise.resolve(mockExplain(command)),
+
+  // Semantic comparison of the built command against Steam's current launch
+  // options. Both sides are re-parsed, so ordering/quoting differences don't
+  // register as drift.
+  launchDiff: (built: string, current: string) =>
+    inTauri
+      ? invoke<LaunchDiff>("launch_diff", { built, current })
+      : Promise.resolve(mockLaunchDiff(built, current)),
+
+  // Batch form of launchDiff for the library grid: one status per remembered
+  // game. `launchOptions` is passed in rather than read from AppState, whose
+  // discovery snapshot goes stale after a rescan.
+  launchStatuses: (memory: Record<string, Config>, launchOptions: Record<string, string>) =>
+    inTauri
+      ? invoke<Record<string, DiffStatus>>("launch_statuses", { memory, launchOptions })
+      : Promise.resolve(mockLaunchStatuses(memory, launchOptions)),
+
   applyRecipe: (index: number, config: Config) =>
     inTauri ? invoke<Config>("apply_recipe", { index, config }) : Promise.resolve(config),
 
   lint: (config: Config) =>
-    inTauri ? invoke<string[]>("lint", { config }) : Promise.resolve([] as string[]),
+    inTauri ? invoke<Notice[]>("lint", { config }) : Promise.resolve(mockNotices),
 
   protondbUrl: (appid: number) =>
     inTauri

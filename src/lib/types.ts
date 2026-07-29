@@ -78,6 +78,10 @@ export interface GameDto {
   name: string;
   source: string; // "steam" | "non-steam"
   executable: string | null;
+  installed: boolean;
+  /** Unix seconds, from localconfig.vdf. Null when never played (or non-Steam). */
+  last_played: number | null;
+  playtime_minutes: number | null;
 }
 
 export interface StaleInfo {
@@ -127,6 +131,76 @@ export interface Store {
   protondb_auto: boolean;
   last_session: Config | null;
   last_game_appid: number | null;
+}
+
+/// Mirrors explain::TokenKind (serde rename_all = "snake_case").
+export type TokenKind =
+  | "space"
+  | "env"
+  | "wrapper"
+  | "wrapper_arg"
+  | "separator"
+  | "target"
+  | "exe"
+  | "game_arg"
+  | "unknown";
+
+/** One piece of a tokenized launch command. Concatenating every `text` in order
+ *  reproduces the command byte-for-byte — never re-join these with spaces. */
+export interface Token {
+  text: string;
+  kind: TokenKind;
+  key: string | null;
+}
+
+/// Mirrors lint::Severity (serde rename_all = "lowercase").
+export type Severity = "error" | "warning" | "info";
+
+/** A one-click remedy for a notice. Applied entirely on the frontend with the
+ *  existing toggleEnv / setEnvValue / toggleWrap helpers — there is no
+ *  apply-fix command. */
+export interface LintFix {
+  label: string;
+  /** Catalog keys (env or wrapper) to turn off. */
+  disable: string[];
+  /** Catalog env keys to turn on, with the value to set. */
+  enable: Pair[];
+}
+
+export interface Notice {
+  /** Stable rule id — usable as a list key. */
+  id: string;
+  severity: Severity;
+  message: string;
+  /** Catalog keys this notice implicates, for click-to-jump. */
+  keys: string[];
+  fix: LintFix | null;
+}
+
+/// Mirrors diff::DiffStatus (serde rename_all = "kebab-case").
+export type DiffStatus = "in-sync" | "drifted" | "not-applied" | "umu";
+
+/** One key present on both sides with a different value. `key` is an env var
+ *  name, a wrapper key, or the literal "game_args". */
+export interface Change {
+  key: string;
+  current: string;
+  built: string;
+}
+
+/** Semantic comparison of the built command against Steam's current launch
+ *  options. Env and wrapper ordering, quoting and arg whitespace are
+ *  deliberately normalised away — see diff.rs. */
+export interface LaunchDiff {
+  status: DiffStatus;
+  /** Keys in the built command that Steam does not have. */
+  added: string[];
+  /** Keys Steam has that the built command does not. */
+  removed: string[];
+  changed: Change[];
+  /** Tokens protongen cannot represent; any at all means drifted. */
+  unmodeled: string[];
+  game_args: Change | null;
 }
 
 export interface Tier {

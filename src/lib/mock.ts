@@ -1,7 +1,32 @@
 // Browser fallback data + handlers used when the app runs OUTSIDE Tauri (e.g.
 // `vite` in a plain browser for design/dev). Under Tauri this module is unused.
 
-import type { Bootstrap, Config } from "./types";
+import type {
+  Bootstrap,
+  Change,
+  Config,
+  DiffStatus,
+  LaunchDiff,
+  Notice,
+  Token,
+  TokenKind,
+} from "./types";
+
+/** A blank Config, for seeding mock per-game memory. Local rather than
+ *  `types.emptyConfig()` to keep mock.ts free of runtime imports. */
+function emptyMockConfig(): Config {
+  return {
+    umu: false,
+    runtime: null,
+    env: [],
+    wrappers: [],
+    extra_env: "",
+    umu_exe: "",
+    umu_wineprefix: "",
+    umu_gameid: "",
+    game_args: "",
+  };
+}
 
 export const mockBootstrap: Bootstrap = {
   steam_root: "/home/you/.local/share/Steam",
@@ -225,15 +250,45 @@ export const mockBootstrap: Bootstrap = {
       path: "/home/you/.local/share/Steam/compatibilitytools.d/GE-Proton11-1",
     },
   ],
+  // Deliberately covers every branch of the metadata the library grid sorts on:
+  // recently played, played a while back, uninstalled-but-previously-played, and
+  // a non-Steam shortcut Steam keeps no per-app record for (all-null).
   games: [
-    { app_id: 553850, name: "HELLDIVERS 2", source: "steam", executable: null },
-    { app_id: 1245620, name: "ELDEN RING", source: "steam", executable: null },
-    { app_id: 275850, name: "No Man's Sky", source: "steam", executable: null },
+    {
+      app_id: 553850,
+      name: "HELLDIVERS 2",
+      source: "steam",
+      executable: null,
+      installed: true,
+      last_played: 1785024000, // 2026-07-26
+      playtime_minutes: 4210,
+    },
+    {
+      app_id: 1245620,
+      name: "ELDEN RING",
+      source: "steam",
+      executable: null,
+      installed: true,
+      last_played: 1783000000, // 2026-07-02
+      playtime_minutes: 8640,
+    },
+    {
+      app_id: 275850,
+      name: "No Man's Sky",
+      source: "steam",
+      executable: null,
+      installed: false,
+      last_played: 1740000000, // 2025-02-19
+      playtime_minutes: 312,
+    },
     {
       app_id: 2001,
       name: "Heroic - Cyberpunk 2077",
       source: "non-steam",
       executable: "/games/cp2077/bin/x64/Cyberpunk2077.exe",
+      installed: true,
+      last_played: null,
+      playtime_minutes: null,
     },
   ],
   hardware: {
@@ -247,7 +302,14 @@ export const mockBootstrap: Bootstrap = {
   store: {
     theme: "mocha",
     presets: [],
-    game_memory: {},
+    // Seeded so the library grid's per-game sync badges have something to show
+    // under `pnpm dev`: 1245620 matches its launch options exactly (in-sync),
+    // 553850 does not (drifted), 275850 has none set at all (not-applied).
+    game_memory: {
+      "1245620": emptyMockConfig(),
+      "553850": { ...emptyMockConfig(), wrappers: [["mangohud", ""]] },
+      "275850": { ...emptyMockConfig(), env: [["DXVK_ASYNC", "1"]] },
+    },
     dismissed_cachyos_build: "",
     dismissed_update_version: "",
     show_irrelevant: false,
@@ -257,12 +319,46 @@ export const mockBootstrap: Bootstrap = {
     last_session: null,
     last_game_appid: null,
   },
-  launch_options: { "553850": "PROTON_USE_NTSYNC=1 mangohud %command%" },
+  // 553850 drifts against anything the builder produces; 1245620 is exactly
+  // what `mockBuildCommand` emits for a freshly-reset config, so opening it
+  // lands on the **in-sync** state with no clicks. Without that second entry
+  // in-sync is unreachable under `pnpm dev` and the UI can't be iterated. The
+  // bare "%command%" looks odd for launch options, and that is the point: it
+  // is the default build output, verbatim.
+  launch_options: {
+    "553850": "PROTON_USE_NTSYNC=1 mangohud %command%",
+    "1245620": "%command%",
+  },
   compat_tools: { "553850": "proton-cachyos-slr" },
   requires_status: { gamescope: true, gamemoderun: true, mangohud: false },
   stale: null,
   config_warnings: [],
 };
+
+// Static stand-in for lint::warnings. Two real rule ids at two severities, one
+// with a fix and one without, so the notices UI can be iterated under
+// `pnpm dev` — the browser mock has no rule engine to derive them from.
+export const mockNotices: Notice[] = [
+  {
+    id: "gplasync-anticheat",
+    severity: "error",
+    message:
+      "PROTON_DXVK_GPLASYNC can trip kernel anti-cheat — avoid it in EAC/BattlEye games.",
+    keys: ["PROTON_DXVK_GPLASYNC", "PROTON_EAC_RUNTIME"],
+    fix: {
+      label: "Disable PROTON_DXVK_GPLASYNC",
+      disable: ["PROTON_DXVK_GPLASYNC"],
+      enable: [],
+    },
+  },
+  {
+    id: "gamescope-vs-wayland",
+    severity: "warning",
+    message: "gamescope and PROTON_ENABLE_WAYLAND together can conflict — usually pick one.",
+    keys: ["gamescope", "PROTON_ENABLE_WAYLAND"],
+    fix: null,
+  },
+];
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {
   const env = config.env.map(([k, v]) => `${k}=${v}`);
@@ -278,4 +374,131 @@ export function mockBuildCommand(config: Config, protonPath: string | null): str
       .join(" ");
   }
   return [...env, ...wraps, "%command%", config.game_args].filter(Boolean).join(" ");
+}
+
+// Reduced stand-in for diff.rs::compare. Understands the same normalisations
+// (env order, quoting, wrapper order, arg whitespace) over the mock's small
+// token vocabulary; the real guarantees live in the Rust tests.
+const MOCK_WRAPPERS = ["gamemoderun", "mangohud"];
+
+function mockNormalForm(command: string): {
+  map: Record<string, string>;
+  unmodeled: string[];
+  gameArgs: string;
+} {
+  const bare = (s: string) => s.replace(/["']/g, "");
+  const toks = (command.match(/(?:"[^"]*"|'[^']*'|[^\s"'])+/g) ?? []).map(bare);
+  const isUmu = toks.includes("umu-run");
+  const at = toks.indexOf(isUmu ? "umu-run" : "%command%");
+  const pre = at === -1 ? toks : toks.slice(0, at);
+  const post = at === -1 ? [] : toks.slice(at + 1);
+
+  const map: Record<string, string> = {};
+  const unmodeled: string[] = [];
+  for (let i = 0; i < pre.length; i++) {
+    const t = pre[i];
+    if (t === "gamescope") {
+      const args: string[] = [];
+      while (++i < pre.length && pre[i] !== "--") args.push(pre[i]);
+      map.gamescope = args.join(" ");
+    } else if (MOCK_WRAPPERS.includes(t)) {
+      map[t] = "";
+    } else if (/^[A-Za-z_]\w*=/.test(t)) {
+      map[t.slice(0, t.indexOf("="))] = t.slice(t.indexOf("=") + 1);
+    } else {
+      unmodeled.push(t);
+    }
+  }
+  // In umu mode the first post-target token is the exe, not a game arg.
+  return { map, unmodeled, gameArgs: (isUmu ? post.slice(1) : post).join(" ") };
+}
+
+export function mockLaunchDiff(built: string, current: string): LaunchDiff {
+  const b = mockNormalForm(built);
+  const c = mockNormalForm(current);
+  const added = Object.keys(b.map).filter((k) => !(k in c.map)).sort();
+  const removed = Object.keys(c.map).filter((k) => !(k in b.map)).sort();
+  const changed: Change[] = Object.keys(b.map)
+    .filter((k) => k in c.map && c.map[k] !== b.map[k])
+    .sort()
+    .map((k) => ({ key: k, current: c.map[k], built: b.map[k] }));
+  const unmodeled = [...new Set([...c.unmodeled, ...b.unmodeled])].sort();
+  const game_args =
+    b.gameArgs === c.gameArgs
+      ? null
+      : { key: "game_args", current: c.gameArgs, built: b.gameArgs };
+
+  const identical =
+    !added.length && !removed.length && !changed.length && !unmodeled.length && !game_args;
+  const status = built.includes("umu-run")
+    ? "umu"
+    : !current.trim()
+      ? "not-applied"
+      : identical
+        ? "in-sync"
+        : "drifted";
+
+  return { status, added, removed, changed, unmodeled, game_args };
+}
+
+export function mockLaunchStatuses(
+  memory: Record<string, Config>,
+  launchOptions: Record<string, string>,
+): Record<string, DiffStatus> {
+  const out: Record<string, DiffStatus> = {};
+  for (const [appid, config] of Object.entries(memory)) {
+    out[appid] = config.umu
+      ? "umu"
+      : mockLaunchDiff(mockBuildCommand(config, null), launchOptions[appid] ?? "").status;
+  }
+  return out;
+}
+
+// Regex stand-in for explain.rs. Good enough for browser dev; the real
+// byte-exactness guarantee is the Rust round-trip test.
+const WORD_OR_SPACE = /\s+|(?:"[^"]*"|'[^']*'|[^\s"'])+/g;
+
+export function mockExplain(command: string): Token[] {
+  const pieces = command.match(WORD_OR_SPACE) ?? [];
+  const bare = (s: string) => s.replace(/["']/g, "");
+  const isUmu = pieces.some((p) => bare(p) === "umu-run");
+  const target = isUmu ? "umu-run" : "%command%";
+
+  let pastTarget = false;
+  let inGamescopeArgs = false;
+  let postCount = 0;
+
+  return pieces.map((text): Token => {
+    if (/^\s+$/.test(text)) return { text, kind: "space", key: null };
+    const w = bare(text);
+    let kind: TokenKind;
+    let key: string | null = null;
+
+    if (pastTarget) {
+      postCount += 1;
+      kind = isUmu && postCount === 1 ? "exe" : "game_arg";
+    } else if (w === target) {
+      pastTarget = true;
+      inGamescopeArgs = false;
+      kind = "target";
+    } else if (w === "--") {
+      inGamescopeArgs = false;
+      kind = "separator";
+    } else if (inGamescopeArgs) {
+      kind = "wrapper_arg";
+    } else if (w === "gamescope") {
+      inGamescopeArgs = true;
+      kind = "wrapper";
+      key = w;
+    } else if (w === "gamemoderun" || w === "mangohud") {
+      kind = "wrapper";
+      key = w;
+    } else if (/^[A-Za-z_]\w*=/.test(w)) {
+      kind = "env";
+      key = w.slice(0, w.indexOf("="));
+    } else {
+      kind = "unknown";
+    }
+    return { text, kind, key };
+  });
 }

@@ -14,6 +14,12 @@ pub enum ParsedMode {
 pub struct Parsed {
     pub umu: bool,
     pub env: Vec<(String, String)>,
+    /// Pre-target tokens protongen can't model (foreign wrappers like `prime-run`,
+    /// bare flags, or `PROTONPATH=` in Steam mode). Kept rather than dropped so
+    /// callers can tell "protongen built this" from "something else did".
+    /// Consumed by `diff::compare`: a non-empty `unknown` on the Steam side is
+    /// on its own enough to call a command drifted.
+    pub unknown: Vec<String>,
     pub gamescope: Option<String>,
     pub gamemoderun: bool,
     pub mangohud: bool,
@@ -47,7 +53,7 @@ impl Parsed {
 
 /// Split a command line into tokens, honoring single/double quotes (quotes are
 /// stripped from the resulting tokens).
-fn tokenize(input: &str) -> Vec<String> {
+pub fn tokenize(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut cur = String::new();
     let mut quote: Option<char> = None;
@@ -135,13 +141,20 @@ pub fn parse(input: &str) -> Parsed {
         }
         if let Some((k, v)) = tok.split_once('=') {
             match k {
-                "GAMEID" => p.umu_gameid = Some(v.to_string()),
-                "PROTONPATH" => { /* derived from runtime selection, ignore */ }
-                "WINEPREFIX" => p.umu_wineprefix = Some(v.to_string()),
+                // The umu-specific assignments only have dedicated fields in umu
+                // mode; under Steam they're ordinary env vars (and PROTONPATH is
+                // inert, but the user should still see that it's there).
+                "GAMEID" if is_umu => p.umu_gameid = Some(v.to_string()),
+                "WINEPREFIX" if is_umu => p.umu_wineprefix = Some(v.to_string()),
+                "PROTONPATH" if is_umu => { /* derived from runtime selection */ }
+                "PROTONPATH" => p.unknown.push(tok.clone()),
                 _ => p.env.push((k.to_string(), v.to_string())),
             }
+            continue;
         }
-        // bare unknown tokens before the target are ignored
+        // A bare token that isn't a wrapper we model: a foreign wrapper
+        // (`prime-run`, `strangle`, …) or a stray flag. Never drop it.
+        p.unknown.push(tok.clone());
     }
 
     if is_umu {
@@ -201,5 +214,43 @@ mod tests {
     fn gamescope_no_args() {
         let p = parse("gamescope -- %command%");
         assert_eq!(p.gamescope.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn foreign_wrapper_is_kept_as_unknown() {
+        let p = parse("DXVK_ASYNC=1 prime-run mangohud %command%");
+        assert!(p.mangohud);
+        assert_eq!(p.env, vec![("DXVK_ASYNC".to_string(), "1".to_string())]);
+        assert_eq!(p.unknown, vec!["prime-run".to_string()]);
+    }
+
+    #[test]
+    fn no_command_placeholder_still_reports_tokens() {
+        // Everything lands in `pre`; previously this parsed to an empty Config.
+        let p = parse("-novid strangle 60");
+        assert_eq!(p.mode(), ParsedMode::Steam);
+        assert_eq!(p.game_args, "");
+        assert_eq!(
+            p.unknown,
+            vec!["-novid".to_string(), "strangle".to_string(), "60".to_string()]
+        );
+    }
+
+    #[test]
+    fn steam_mode_keeps_umu_style_assignments() {
+        let p = parse("GAMEID=umu-0 PROTONPATH=/opt/proton WINEPREFIX=/home/u/pfx %command%");
+        assert!(!p.umu);
+        // GAMEID/WINEPREFIX are plain env vars without umu-run.
+        assert_eq!(
+            p.env,
+            vec![
+                ("GAMEID".to_string(), "umu-0".to_string()),
+                ("WINEPREFIX".to_string(), "/home/u/pfx".to_string()),
+            ]
+        );
+        assert_eq!(p.umu_gameid, None);
+        assert_eq!(p.umu_wineprefix, None);
+        // PROTONPATH does nothing under Steam, but it isn't silently erased.
+        assert_eq!(p.unknown, vec!["PROTONPATH=/opt/proton".to_string()]);
     }
 }

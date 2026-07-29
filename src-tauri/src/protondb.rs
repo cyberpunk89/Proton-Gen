@@ -48,3 +48,43 @@ fn parse(body: &str) -> Result<Tier, String> {
         total: v.get("total").and_then(|x| x.as_u64()).unwrap_or(0),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_full_summary() {
+        let t = parse(
+            r#"{"tier":"platinum","total":1234,"confidence":"strong",
+                "trendingTier":"gold","bestReportedTier":"platinum"}"#,
+        )
+        .expect("valid payload");
+        assert_eq!(t.tier, "platinum");
+        assert_eq!(t.total, 1234);
+        assert_eq!(t.confidence, "strong");
+        assert_eq!(t.trending, "gold");
+        assert_eq!(t.best, "platinum");
+    }
+
+    #[test]
+    fn missing_tier_is_error() {
+        // The API returns a bare object for games with no reports.
+        assert!(parse(r#"{"total":0}"#).is_err());
+    }
+
+    #[test]
+    fn optional_fields_default_to_unknown() {
+        let t = parse(r#"{"tier":"gold"}"#).expect("tier alone is enough");
+        assert_eq!(t.tier, "gold");
+        assert_eq!(t.trending, "unknown");
+        assert_eq!(t.best, "unknown");
+        assert_eq!(t.confidence, "unknown");
+        assert_eq!(t.total, 0);
+    }
+
+    #[test]
+    fn malformed_json_is_error() {
+        assert!(parse("<html>404</html>").is_err());
+    }
+}

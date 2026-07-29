@@ -269,6 +269,21 @@ mod tests {
     }
 }
 
+/// Env keys in a `Config`'s catalog list that the catalog no longer knows.
+///
+/// **[`apply_lists`] silently drops these**, so a command assembled from such a
+/// config is missing them. That happens for real: `params.toml` is refreshed by
+/// the `update-proton-params` skill, and a remembered per-game config or a saved
+/// preset written before a rename keeps naming the old key. Any caller that
+/// makes a *claim* about the assembled command — the in-sync verdict in
+/// `diff::statuses`, for one — has to consult this rather than trust the build.
+pub fn dropped_env_keys(catalog: &Catalog, env: &[(String, String)]) -> Vec<String> {
+    env.iter()
+        .filter(|(k, _)| !catalog.envs.iter().any(|e| &e.key == k))
+        .map(|(k, _)| k.clone())
+        .collect()
+}
+
 /// Env pairs from a parsed/imported command that are NOT in the catalog,
 /// rendered as a space-separated `K=V` string for the "custom env" field.
 pub fn unknown_env_string(catalog: &Catalog, env: &[(String, String)]) -> String {

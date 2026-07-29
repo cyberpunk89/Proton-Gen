@@ -5,8 +5,10 @@ import { emptyConfig } from "./types";
 import type {
   Catalog,
   Config,
+  DiffStatus,
   GameDto,
   Hardware,
+  Notice,
   Recipe,
   RuntimeDto,
   ConfigWarning,
@@ -63,6 +65,9 @@ class AppStore {
   });
   requiresStatus = $state<Record<string, boolean>>({});
   launchOptions = $state<Record<string, string>>({});
+  /** appid -> whether Steam already has the remembered command. Only games with
+   *  a remembered config appear; the grid shows nothing for the rest. */
+  launchStatuses = $state<Record<string, DiffStatus>>({});
   compatTools = $state<Record<string, string>>({});
   stale = $state<StaleInfo | null>(null);
   /** User params.toml / recipes.toml overrides that failed to parse. */
@@ -88,7 +93,7 @@ class AppStore {
 
   // ---- derived/live ----
   command = $state("");
-  notices = $state<string[]>([]);
+  notices = $state<Notice[]>([]);
   /** Briefly true right after the session is written to disk (trust cue). */
   saved = $state(false);
 
@@ -186,6 +191,10 @@ class AppStore {
 
     this.ready = true;
 
+    // Badge the library grid. After `ready` so the first paint isn't waiting on
+    // it — the grid renders unbadged and fills in.
+    this.refreshLaunchStatuses();
+
     // Check for a newer release in the background; never blocks launch.
     this.checkForUpdate();
   }
@@ -261,6 +270,26 @@ class AppStore {
       }
     } finally {
       this.refreshing = false;
+    }
+    // launchOptions just changed, so every badge is potentially stale.
+    this.refreshLaunchStatuses();
+  }
+
+  /** Recompute the per-game applied/drifted badges for the library grid.
+   *
+   *  Deliberately *not* wired into `persistStore`: that fires on a 500 ms
+   *  debounce while the user types in the builder, when the grid isn't even on
+   *  screen. Keeping `save_store` fire-and-forget avoids entangling persistence
+   *  with status. The three call sites — startup, library refresh, and
+   *  returning to the grid — are the moments the badges are about to be seen. */
+  async refreshLaunchStatuses() {
+    try {
+      this.launchStatuses = await ipc.launchStatuses(
+        $state.snapshot(this.store.game_memory),
+        $state.snapshot(this.launchOptions),
+      );
+    } catch (e) {
+      console.error("launchStatuses failed", e);
     }
   }
 
@@ -456,6 +485,14 @@ class AppStore {
   /** Return to the cover-art library grid, keeping the current selection. */
   backToLibrary() {
     this.view = "library";
+    // Flush the config just edited into memory before badging, the same way
+    // `selectGame` does on the way out — the debounced session persist may not
+    // have fired yet, and a badge computed from the previous config would be
+    // wrong exactly when the user looks at it.
+    if (this.selectedAppId != null) {
+      this.store.game_memory[String(this.selectedAppId)] = this.toConfig();
+    }
+    this.refreshLaunchStatuses();
   }
 
   // ------------------------------- game memory ------------------------------

@@ -9,6 +9,9 @@
 
 mod art;
 mod builder;
+mod compose;
+mod diff;
+mod explain;
 mod games;
 mod hardware;
 mod ipc;
@@ -38,6 +41,9 @@ pub fn run() {
             ipc::rescan,
             ipc::build_command,
             ipc::parse_command,
+            ipc::explain_command,
+            ipc::launch_diff,
+            ipc::launch_statuses,
             ipc::apply_recipe,
             ipc::lint,
             ipc::protondb_url,
@@ -70,13 +76,25 @@ pub fn dump() -> Result<()> {
 
     println!("\nDetected hardware: {}", hardware::detect().summary());
 
-    let current = steamcfg::current_launch_options(&dir);
+    let app_cfgs = steamcfg::current_app_cfgs(&dir);
+    let current = steamcfg::launch_options(&app_cfgs);
     println!("Games with existing launch options set: {}", current.len());
+    println!(
+        "Games with a recorded last-played time: {}",
+        app_cfgs.values().filter(|c| c.last_played.is_some()).count()
+    );
 
     let games = games::list_games(&dir);
     println!("\nGames + shortcuts ({}):", games.len());
     for g in &games {
-        println!("  - {:<45} ({})  [{}]", g.name, g.app_id, g.source.label());
+        let state = if g.installed { "" } else { "  (not installed)" };
+        println!(
+            "  - {:<45} ({})  [{}]{}",
+            g.name,
+            g.app_id,
+            g.source.label(),
+            state
+        );
     }
 
     let (cat, cat_warning) = params::Catalog::load();

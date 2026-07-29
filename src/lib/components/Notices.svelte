@@ -31,8 +31,11 @@
         class="mt-2 space-y-1 pl-6 text-xs text-subtext"
         transition:slide={{ duration: 120 }}
       >
-        {#each app.notices as n (n)}
-          <li class="list-disc">{n}</li>
+        <!-- Message only, for now. Severity, the implicated keys and the
+             one-click fix ride along on each Notice; surfacing them is the
+             Notices rewrite in #48. -->
+        {#each app.notices as n (n.id)}
+          <li class="list-disc">{n.message}</li>
         {/each}
       </ul>
     {/if}
