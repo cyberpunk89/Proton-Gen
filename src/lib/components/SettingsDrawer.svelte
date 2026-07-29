@@ -157,11 +157,12 @@
 {/snippet}
 
 {#snippet toggle(title: string, desc: string, checked: boolean, onchange: () => void)}
+  {@const id = `setting-${title.replace(/\W+/g, "-").toLowerCase()}`}
   <div class="flex items-center gap-3 rounded-lg px-1 py-1.5">
     <div class="min-w-0 flex-1">
-      <p class="text-sm text-subtext">{title}</p>
+      <p {id} class="text-sm text-subtext">{title}</p>
       <p class="text-[11px] leading-snug text-muted">{desc}</p>
     </div>
-    <Switch {checked} {onchange} label={title} />
+    <Switch {checked} {onchange} labelledby={id} />
   </div>
 {/snippet}

@@ -42,6 +42,10 @@
     onToggle: () => void;
     onValue?: (v: string) => void;
   } = $props();
+
+  // The visible title is the switch's accessible name, so it needs an id.
+  const uid = $props.id();
+  const labelId = `opt-title-${uid}`;
 </script>
 
 <div
@@ -51,9 +55,10 @@
     : ''}{dim ? 'opacity:.55' : ''}"
 >
   <div class="flex items-center gap-3">
-    <Switch checked={enabled} onchange={onToggle} label={title} />
+    <Switch checked={enabled} onchange={onToggle} labelledby={labelId} />
 
     <span
+      id={labelId}
       class="min-w-0 flex-1 truncate {mono ? 'font-mono text-[13px]' : 'text-sm'}"
       style="color: {enabled ? 'var(--text)' : 'var(--subtext)'}; font-weight: {enabled
         ? 500
