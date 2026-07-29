@@ -158,6 +158,7 @@
 >
   <textarea
     bind:value={importText}
+    aria-label="Command to import"
     rows="3"
     placeholder="PROTON_USE_NTSYNC=1 mangohud %command%"
     class="w-full rounded-lg border border-border bg-surface-2 p-2.5 font-mono text-xs text-text outline-none focus:border-accent"
@@ -178,6 +179,7 @@
   <input
     use:autofocus
     bind:value={saveName}
+    aria-label="Preset name"
     placeholder="preset name"
     onkeydown={(e) => e.key === "Enter" && doSave()}
     class="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text outline-none focus:border-accent"

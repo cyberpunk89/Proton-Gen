@@ -34,6 +34,7 @@
       <input
         use:focusTarget={"param-search"}
         bind:value={app.paramQuery}
+        aria-label="Search parameters"
         placeholder="Search parameters…"
         class="w-full rounded-lg border border-border bg-surface-2 py-1.5 pl-8 pr-7 text-xs text-text outline-none focus:border-accent"
       />

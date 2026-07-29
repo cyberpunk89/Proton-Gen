@@ -70,6 +70,7 @@
     {#if valueField === "text"}
       <input
         class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 font-mono text-xs text-text outline-none focus:border-accent"
+        aria-label="{title} value"
         {placeholder}
         {value}
         oninput={(e) => onValue?.(e.currentTarget.value)}
@@ -77,6 +78,7 @@
     {:else if valueField === "select"}
       <select
         class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs text-text outline-none focus:border-accent"
+        aria-label="{title} value"
         {value}
         onchange={(e) => onValue?.(e.currentTarget.value)}
       >
