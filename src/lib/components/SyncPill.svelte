@@ -30,6 +30,18 @@
     return `${n} ${n === 1 ? "change" : "changes"} not pasted`;
   });
 
+  /** Compact form for a tight toolbar — the full wording costs ~148px, which is
+   *  most of what the command bar has to spare. The glyph already carries the
+   *  severity, the popover carries the detail, and `title`/`aria-label` keep the
+   *  full sentence for hover and assistive tech. */
+  let shortLabel = $derived.by(() => {
+    if (state === "in-sync") return "Synced";
+    if (state === "not-applied") return "Not set";
+    const n = app.driftCount;
+    // Keeps the noun: a bare "6" next to a warning glyph reads as a mystery.
+    return `${n} ${n === 1 ? "change" : "changes"}`;
+  });
+
   async function loadCurrent() {
     const current = app.currentLaunchOptions;
     if (!current) return;
@@ -45,15 +57,18 @@
       <button
         {...props}
         type="button"
-        class="inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition hover:brightness-110 {open
+        title={label}
+        aria-label={label}
+        class="inline-flex min-w-0 shrink items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition hover:brightness-110 {open
           ? 'brightness-110'
           : ''}"
         style="border-color: color-mix(in srgb, {l.colour} 35%, transparent);
                background: color-mix(in srgb, {l.colour} 12%, transparent);
                color: {l.colour}"
       >
-        <l.icon size={13} weight="fill" />
-        {label}
+        <l.icon size={13} weight="fill" class="shrink-0" />
+        <span class="truncate @xl:hidden">{shortLabel}</span>
+        <span class="hidden truncate @xl:inline">{label}</span>
       </button>
     {/snippet}
 

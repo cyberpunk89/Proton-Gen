@@ -58,14 +58,32 @@
   });
 </script>
 
+<!--
+  `@container`, not viewport breakpoints: this card sits beside a fixed 240px
+  NavRail inside a max-w-4xl column, so viewport width overstates the room by a
+  constant that a `md:`/`lg:` guess would have to hard-code. Querying the card's
+  own width is both correct and stable if the shell layout changes.
+
+  With every label showing the row wants ~730px of content box, and the card's
+  content box tops out at 862px, so the full set only has slack on a wide window.
+  The tiers shed the least useful text first: the section heading (the Steam/umu
+  toggle above already says which mode this is), then the button words, keeping
+  Copy's label since it is the primary action.
+
+  Breakpoints are content-box widths, not card widths — a query container is
+  measured on its content box, so the card's p-4 costs 32px against every
+  threshold. @3xl here means a ~1080px window; @2xl a ~985px one.
+-->
 <div
-  class="relative overflow-hidden rounded-2xl border p-4"
+  class="@container relative overflow-hidden rounded-2xl border p-4"
   style="border-color: color-mix(in srgb, var(--accent) 30%, transparent);
          background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, var(--mantle)), var(--mantle));"
 >
   <div class="mb-2 flex items-center gap-2">
-    <Terminal size={15} class="text-accent" />
-    <span class="text-[11px] font-medium uppercase tracking-wider text-muted">
+    <Terminal size={15} class="shrink-0 text-accent" />
+    <span
+      class="hidden shrink-0 text-[11px] font-medium uppercase tracking-wider text-muted @3xl:inline"
+    >
       {app.umu ? "umu-launcher command" : "Steam launch options"}
     </span>
 
@@ -76,14 +94,14 @@
     {#if app.saved}
       <span
         transition:fade={{ duration: 200 }}
-        class="text-[11px] text-muted"
+        class="hidden shrink-0 text-[11px] text-muted @xl:inline"
         aria-live="polite"
       >
         Saved
       </span>
     {/if}
 
-    <div class="ml-auto flex items-center gap-1.5">
+    <div class="ml-auto flex shrink-0 items-center gap-1.5">
       <!-- Naming the specific action is what makes a stack legible: a disabled
            button with a generic tooltip tells you nothing about where you are. -->
       <button
@@ -107,16 +125,19 @@
 
       <!-- Copy, then land on the dialog you paste into. Hides itself when a
            deep link would be meaningless. -->
-      <OpenInSteam />
+      <OpenInSteam collapsible />
       <button
         onclick={reset}
-        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 active:scale-95"
+        title="Reset the command to defaults"
+        aria-label="Reset the command to defaults"
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2 py-1.5 text-xs text-subtext transition hover:border-accent/50 active:scale-95 @2xl:px-2.5"
       >
-        <ArrowCounterClockwise size={14} /> Reset
+        <ArrowCounterClockwise size={14} />
+        <span class="hidden @2xl:inline">Reset</span>
       </button>
       <button
         onclick={copy}
-        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95"
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95"
         style="background: var(--accent); color: var(--on-accent)"
       >
         <Copy size={14} weight="bold" /> Copy

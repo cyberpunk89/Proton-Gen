@@ -29,7 +29,10 @@
   }
 </script>
 
-<section class="card space-y-4 p-4">
+<!-- `@container` so the SyncPill's responsive label has a container to query here
+     too. Without one the query never matches and the pill would be stuck in its
+     compact form in a panel that has plenty of room for the full sentence. -->
+<section class="@container card space-y-4 p-4">
   <div class="flex items-center gap-2">
     <Cpu size={18} class="text-accent" />
     <h2 class="text-sm font-medium tracking-wide text-text">Game &amp; runtime</h2>
