@@ -67,13 +67,24 @@
     </div>
   {/if}
 
+  <!--
+    These two are `value` + `oninput` rather than `bind:value`, so the handler
+    can both assign and name the undo entry. Do not "simplify" to `bind:value`
+    with a separate `oninput`: Svelte compiles that oninput to a *delegated*
+    handler which never fires once bind_value owns the element's input
+    listener, so the history entry silently degrades to the generic "edit".
+  -->
   <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
     <label class="block">
       <span class="mb-1 block text-[11px] uppercase tracking-wider text-muted"
         >Game arguments</span
       >
       <input
-        bind:value={app.gameArgs}
+        value={app.gameArgs}
+        oninput={(e) => {
+          app.gameArgs = e.currentTarget.value;
+          app.noteEdit("set game arguments");
+        }}
         placeholder="-windowed -novid"
         class="w-full rounded-lg border border-border bg-surface-2 px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-accent"
       />
@@ -83,7 +94,11 @@
         >Custom env</span
       >
       <input
-        bind:value={app.extraEnv}
+        value={app.extraEnv}
+        oninput={(e) => {
+          app.extraEnv = e.currentTarget.value;
+          app.noteEdit("set custom env");
+        }}
         placeholder="KEY=VALUE KEY2=VALUE2"
         class="w-full rounded-lg border border-border bg-surface-2 px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-accent"
       />

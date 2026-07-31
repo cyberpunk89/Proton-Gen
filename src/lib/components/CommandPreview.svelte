@@ -11,9 +11,12 @@
   }
 
   function reset() {
-    const prev = app.resetCommand();
+    app.resetCommand();
+    // The action now routes through the real stack, so it is no longer the only
+    // way back — Ctrl+Z still works after this toast expires. Undo/redo buttons
+    // land with the command-bar rewrite (#37).
     toast.success("Command reset", {
-      action: { label: "Undo", onClick: () => app.loadConfig(prev) },
+      action: { label: "Undo", onClick: () => app.undo() },
     });
   }
 </script>

@@ -20,7 +20,7 @@
 
   function onValueChange(next: string) {
     const r = app.runtimes.find((x) => x.path === next);
-    if (r) app.selectedRuntime = r;
+    if (r) app.setRuntime(r);
   }
 </script>
 

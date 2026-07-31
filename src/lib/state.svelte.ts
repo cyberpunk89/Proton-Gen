@@ -1,5 +1,7 @@
 import { ipc } from "./ipc";
 import { toast } from "./toast.svelte";
+import { history } from "./history.svelte";
+import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { emptyConfig } from "./types";
 import type {
@@ -189,6 +191,10 @@ class AppStore {
       this.resetOptions();
     }
 
+    // Seed the undo baseline with the state the user is actually looking at, so
+    // restoring a session isn't itself the first undo entry.
+    history.reset(this.snapshot());
+
     this.ready = true;
 
     // Badge the library grid. After `ready` so the first paint isn't waiting on
@@ -215,6 +221,15 @@ class AppStore {
     $effect.root(() => {
       $effect(() => {
         const cfg = this.toConfig();
+        // Every mutation path funnels through here, so history cannot miss one.
+        // The extra reads (appId/gameName/preset) are what make a game switch
+        // undoable — toConfig() alone wouldn't see it.
+        history.observe({
+          config: cfg,
+          appId: this.selectedAppId,
+          gameName: this.selectedGameName,
+          activePresetName: this.activePresetName,
+        });
         this.scheduleRecompute(cfg);
         this.scheduleSessionPersist();
       });
@@ -323,19 +338,42 @@ class AppStore {
 
   toggleEnv(key: string) {
     const s = this.env[key];
-    if (s) s.enabled = !s.enabled;
+    if (!s) return;
+    s.enabled = !s.enabled;
+    this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setEnvValue(key: string, value: string) {
     const s = this.env[key];
-    if (s) s.value = value;
+    if (!s) return;
+    s.value = value;
+    // Typing coalesces into one entry; note() just gives it a real name.
+    history.note(`set ${key}`);
   }
   toggleWrap(key: string) {
     const s = this.wrap[key];
-    if (s) s.enabled = !s.enabled;
+    if (!s) return;
+    s.enabled = !s.enabled;
+    this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setWrapValue(key: string, value: string) {
     const s = this.wrap[key];
-    if (s) s.value = value;
+    if (!s) return;
+    s.value = value;
+    history.note(`set ${key}`);
+  }
+
+  /** Steam vs umu mode. A setter rather than a bare assignment from the toggle
+   *  so the history entry gets a label. */
+  setUmu(v: boolean) {
+    if (this.umu === v) return;
+    this.umu = v;
+    this.mark(v ? "switch to umu mode" : "switch to Steam mode");
+  }
+
+  setRuntime(r: RuntimeDto) {
+    if (this.selectedRuntime?.path === r.path) return;
+    this.selectedRuntime = r;
+    this.mark(`select ${r.display_name}`);
   }
 
   enabledCountInCategory(category: string): number {
@@ -386,10 +424,10 @@ class AppStore {
     }
   }
 
-  /** Reset the command back to defaults, keeping the selected game. Returns the
-   *  prior config so the caller can offer an undo. */
-  resetCommand(): Config {
-    const prev = this.toConfig();
+  /** Reset the command back to defaults, keeping the selected game. Just another
+   *  undoable action now — the old "returns the prior config so the caller can
+   *  offer a 2-second undo" contract is gone, replaced by the real stack. */
+  resetCommand() {
     this.resetOptions();
     this.umu = false;
     this.umuExe = "";
@@ -397,7 +435,57 @@ class AppStore {
     this.umuGameid = "";
     this.activePresetName = null;
     this.selectedRuntime = this.defaultRuntime();
-    return prev;
+    this.mark("reset command");
+  }
+
+  // -------------------------------- history ---------------------------------
+
+  /** Everything undo has to restore, as history sees it. */
+  private snapshot(): Snapshot {
+    return {
+      config: this.toConfig(),
+      appId: this.selectedAppId,
+      gameName: this.selectedGameName,
+      activePresetName: this.activePresetName,
+    };
+  }
+
+  /** Land a history entry now, labelled, instead of waiting out the coalescing
+   *  timer. Call at the *end* of a discrete mutator, once state has settled. */
+  private mark(label: string) {
+    history.flush(label, this.snapshot());
+  }
+
+  /** Name the coalescing burst a free-text field is producing, for fields bound
+   *  directly with `bind:value` (there is no mutator to label it from). Purely
+   *  cosmetic: the entry lands either way, this just stops it reading "edit". */
+  noteEdit(label: string) {
+    history.note(label);
+  }
+
+  undo() {
+    const e = history.undo();
+    if (!e) return;
+    this.applyEntry(e);
+    toast.info(`Undid: ${e.label}`);
+  }
+
+  redo() {
+    const e = history.redo();
+    if (!e) return;
+    this.applyEntry(e);
+    toast.info(`Redid: ${e.label}`);
+  }
+
+  /** Restore a history entry. Sets the game fields *directly* rather than going
+   *  through selectGame(), which would persist and then re-read that game's
+   *  memory — undoing a game switch would land on the memory instead of the
+   *  state we recorded. */
+  private applyEntry(e: Entry) {
+    this.selectedAppId = e.appId;
+    this.selectedGameName = e.gameName;
+    this.loadConfig(e.config);
+    this.activePresetName = e.activePresetName;
   }
 
   private protonPath(): string | null {
@@ -507,6 +595,7 @@ class AppStore {
     if (!game) {
       this.selectedAppId = null;
       this.selectedGameName = null;
+      this.mark("switch to no game");
       return;
     }
 
@@ -522,6 +611,10 @@ class AppStore {
     } else {
       this.resetOptions();
     }
+
+    // Undoable on purpose: "I switched games and lost my tuning" is exactly the
+    // trust failure the stack exists to fix.
+    this.mark(`open ${game.name}`);
   }
 
   // ------------------------------- presets ----------------------------------
@@ -545,6 +638,7 @@ class AppStore {
     if (!p) return;
     this.loadConfig(p.config);
     this.activePresetName = name;
+    this.mark(`load preset "${name}"`);
   }
 
   deletePreset(name: string) {
@@ -558,6 +652,7 @@ class AppStore {
   async importCommand(text: string) {
     const cfg = await ipc.parseCommand(text);
     this.loadConfig(cfg);
+    this.mark("import command");
   }
 
   // ------------------------------- mangohud ---------------------------------
@@ -572,6 +667,7 @@ class AppStore {
     // The in-app string shouldn't compete with a stale config-file path.
     if (this.env["MANGOHUD_CONFIGFILE"]) this.env["MANGOHUD_CONFIGFILE"].enabled = false;
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
+    this.mark("apply MangoHud preset");
   }
 
   applyMangoFile(path: string) {
@@ -585,6 +681,7 @@ class AppStore {
     // file's settings actually take effect.
     if (this.env["MANGOHUD_CONFIG"]) this.env["MANGOHUD_CONFIG"].enabled = false;
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
+    this.mark("use MangoHud config file");
   }
 
   // ------------------------------- recipes ----------------------------------
@@ -592,6 +689,9 @@ class AppStore {
   async applyRecipe(index: number) {
     const cfg = await ipc.applyRecipe(index, this.toConfig());
     this.loadConfig(cfg);
+    // The most destructive action in the app: recipes.rs is additive-only, so
+    // stacking them accumulates with no way back short of a reset.
+    this.mark(`apply "${this.recipes[index]?.name ?? "recipe"}"`);
   }
 
   // ------------------------------- theme/store ------------------------------
