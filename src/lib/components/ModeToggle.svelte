@@ -11,7 +11,7 @@
 <div class="inline-flex rounded-xl border border-border bg-surface-2/60 p-1">
   {#each modes as m (m.label)}
     <button
-      onclick={() => (app.umu = m.umu)}
+      onclick={() => app.setUmu(m.umu)}
       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition"
       style={app.umu === m.umu
         ? "background: var(--accent); color: var(--on-accent)"

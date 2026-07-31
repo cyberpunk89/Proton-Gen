@@ -12,6 +12,13 @@
     "opener:default",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "steam://gameproperties/*" },
+        { "url": "steam://nav/*" }
+      ]
+    }
   ]
 }

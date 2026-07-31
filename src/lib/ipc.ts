@@ -20,7 +20,9 @@ import {
 } from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
-const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+// Exported because a few features exist only in the real shell (custom URL
+// schemes, the native file dialog) and have to say so rather than no-op.
+export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export const ipc = {
   bootstrap: () =>

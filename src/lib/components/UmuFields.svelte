@@ -47,7 +47,10 @@
     <div class="flex gap-2">
       <input
         value={app.umuExe}
-        oninput={(e) => (app.umuExe = e.currentTarget.value)}
+        oninput={(e) => {
+          app.umuExe = e.currentTarget.value;
+          app.noteEdit("set the umu executable");
+        }}
         placeholder={exePlaceholder}
         class="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-accent"
       />
@@ -88,7 +91,10 @@
     <span class="mb-1 block text-[11px] uppercase tracking-wider text-muted">{label}</span>
     <input
       value={app[key]}
-      oninput={(e) => (app[key] = e.currentTarget.value)}
+      oninput={(e) => {
+        app[key] = e.currentTarget.value;
+        app.noteEdit(`set ${label}`);
+      }}
       {placeholder}
       class="w-full rounded-lg border border-border bg-surface-2 px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-accent"
     />

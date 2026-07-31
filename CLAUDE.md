@@ -86,7 +86,11 @@ extra `--` into cargo).
   `SettingsDrawer.svelte` toggle. (Hidden options stay revealable via "Show all".)
 - **Minimal Tauri capabilities** (`capabilities/default.json`): core, opener, clipboard,
   dialog. Adding a plugin = `Cargo.toml` dep + `.plugin(...)` in `lib.rs` + a capability
-  permission + the JS `@tauri-apps/plugin-*` package.
+  permission + the JS `@tauri-apps/plugin-*` package. `opener:default` only scopes
+  `mailto:`/`tel:`/`http(s):`, so the `steam://` deep links carry an explicit
+  `opener:allow-open-url` entry — deliberately narrowed to `steam://gameproperties/*`
+  and `steam://nav/*`. Never widen it to `steam://*`: that would also permit mutating
+  verbs like `steam://uninstall/<id>`, against the read-only invariant.
 - **umu / Proton GE.** umu mode emits `PROTONPATH=<runtime path>`. A synthetic
   "GE-Proton (latest · umu auto-download)" runtime uses `path="GE-Proton"` (the codename
   umu resolves & auto-downloads), so it always targets the newest GE-Proton with no version

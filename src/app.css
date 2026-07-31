@@ -40,6 +40,18 @@
   --color-blue: var(--blue);
   --color-mauve: var(--mauve);
 
+  /* Command-token colours. Indirection so `latte` can darken them for contrast
+     without touching the shared palette — see the block below the themes. */
+  --color-tok-env: var(--tok-env);
+  --color-tok-value: var(--tok-value);
+  --color-tok-wrapper: var(--tok-wrapper);
+  --color-tok-wrapper-arg: var(--tok-wrapper-arg);
+  --color-tok-separator: var(--tok-separator);
+  --color-tok-target: var(--tok-target);
+  --color-tok-exe: var(--tok-exe);
+  --color-tok-arg: var(--tok-arg);
+  --color-tok-unknown: var(--tok-unknown);
+
   --radius-card: 16px;
 }
 
@@ -254,6 +266,99 @@
   --peach: #d19a66;
   --blue: #61afef;
   --mauve: #c678dd;
+}
+
+/* -------------------------------------------------- command-token colours */
+/*
+ * The tokenized command body (CommandBody.svelte) paints 13px mono text inside
+ * the CommandPreview card. That is body text, so it needs 4.5:1 to clear WCAG
+ * AA — and the palette accents were never picked against that bar. Nine of the
+ * ten themes had at least one token colour below it, latte worst (six of nine,
+ * down to 2.45:1) but `--muted` failing on most of the dark themes too.
+ *
+ * These variables are the fix, and the indirection is the point. The offenders
+ * are shared tokens — `--muted`, `--peach`, `--accent`, `--blue`, `--mauve` —
+ * used app-wide at other sizes and on other backgrounds, where correcting them
+ * would ripple far past the command bar. Nothing outside CommandBody reads
+ * `--tok-*`, so a per-theme override here moves the command body and nothing
+ * else.
+ *
+ * Defaults are the palette, so every token already clearing the bar keeps its
+ * theme's exact colour; only the overrides below differ, and none by much.
+ */
+:root {
+  --tok-env: var(--blue);
+  --tok-value: var(--text);
+  --tok-wrapper: var(--mauve);
+  --tok-wrapper-arg: var(--subtext);
+  --tok-separator: var(--muted);
+  --tok-target: var(--accent);
+  --tok-exe: var(--green);
+  --tok-arg: var(--peach);
+  --tok-unknown: var(--subtext);
+}
+
+/*
+ * Every value below is its palette colour moved in OKLCH at constant hue, with
+ * chroma never above the original, by the smallest lightness step that reaches
+ * the target — so each still reads as the theme's own colour rather than a
+ * generic accessible substitute. None of these palettes ships a ramp that would
+ * have supplied the value directly, latte least of all.
+ *
+ * The reference background is not bare `--mantle`: the card is painted with
+ * `linear-gradient(180deg, color-mix(accent 7%, mantle), mantle)`, and the body
+ * starts about a third of the way down it, so ~5% of the accent tint is still
+ * there. Everything below clears 4.6:1 against that, which leaves ≥4.8:1 on
+ * `--mantle` itself.
+ */
+[data-theme="mocha"] {
+  --tok-separator: #8289a4;
+}
+[data-theme="macchiato"] {
+  --tok-separator: #8990ab;
+}
+[data-theme="frappe"] {
+  --tok-separator: #949db9;
+}
+[data-theme="nord"] {
+  --tok-wrapper: #b790b0;
+  --tok-separator: #8f9db6;
+  --tok-arg: #d38a73;
+}
+[data-theme="tokyo-night"] {
+  --tok-separator: #7b85b1;
+}
+[data-theme="gruvbox"] {
+  --tok-separator: #9a8b7c;
+}
+[data-theme="rose-pine"] {
+  /* rose-pine's `--blue` is a dark teal — 2.89:1, the worst non-latte failure. */
+  --tok-env: #5597b3;
+}
+[data-theme="one-dark"] {
+  --tok-separator: #8b93a1;
+}
+/* dracula needs nothing: its palette already clears the bar on every token. */
+
+/*
+ * latte is the light theme and the only one needing more than a nudge. These
+ * were solved against the *full* 7% tint at the very top of the gradient rather
+ * than the ~5% the body sees, so they clear 4.6:1 even there, and 4.89:1 on
+ * `--mantle`.
+ *
+ * `--tok-wrapper-arg` and `--tok-value` stay on the palette: `--subtext`
+ * (5.14:1) and `--text` (6.57:1) already pass. That does compress the gap
+ * between the separator grey and the wrapper-arg grey, because AA leaves only a
+ * narrow band above a light `--mantle` and both greys are now pinned into it.
+ * The ordering still holds, and separators still read as the quietest token.
+ */
+[data-theme="latte"] {
+  --tok-env: #0d57e5;
+  --tok-wrapper: #8230e7;
+  --tok-separator: #606273;
+  --tok-target: #4a58c9;
+  --tok-exe: #1c7300;
+  --tok-arg: #ad4000;
 }
 
 /* ----------------------------------------------------------- base styles */

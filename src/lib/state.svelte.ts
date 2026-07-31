@@ -1,5 +1,7 @@
 import { ipc } from "./ipc";
 import { toast } from "./toast.svelte";
+import { history } from "./history.svelte";
+import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { emptyConfig } from "./types";
 import type {
@@ -9,11 +11,14 @@ import type {
   GameDto,
   Hardware,
   Notice,
+  LaunchDiff,
   Recipe,
   RuntimeDto,
   ConfigWarning,
   StaleInfo,
   Store,
+  SyncState,
+  Token,
   UpdateInfo,
 } from "./types";
 
@@ -94,6 +99,12 @@ class AppStore {
   // ---- derived/live ----
   command = $state("");
   notices = $state<Notice[]>([]);
+  /** The command split into coloured/annotatable pieces. Concatenating every
+   *  `text` reproduces `command` byte-for-byte — never re-join with spaces. */
+  tokens = $state<Token[]>([]);
+  /** Semantic comparison against Steam's current launch options. Null when
+   *  there is nothing to compare (see `currentLaunchOptions`). */
+  launchDiff = $state<LaunchDiff | null>(null);
   /** Briefly true right after the session is written to disk (trust cue). */
   saved = $state(false);
 
@@ -189,6 +200,10 @@ class AppStore {
       this.resetOptions();
     }
 
+    // Seed the undo baseline with the state the user is actually looking at, so
+    // restoring a session isn't itself the first undo entry.
+    history.reset(this.snapshot());
+
     this.ready = true;
 
     // Badge the library grid. After `ready` so the first paint isn't waiting on
@@ -215,6 +230,19 @@ class AppStore {
     $effect.root(() => {
       $effect(() => {
         const cfg = this.toConfig();
+        // Read so that a rescan — which rewrites launchOptions and games — also
+        // re-runs the sync diff. Otherwise the pill would keep asserting a
+        // verdict from before the rescan.
+        void this.currentLaunchOptions;
+        // Every mutation path funnels through here, so history cannot miss one.
+        // The extra reads (appId/gameName/preset) are what make a game switch
+        // undoable — toConfig() alone wouldn't see it.
+        history.observe({
+          config: cfg,
+          appId: this.selectedAppId,
+          gameName: this.selectedGameName,
+          activePresetName: this.activePresetName,
+        });
         this.scheduleRecompute(cfg);
         this.scheduleSessionPersist();
       });
@@ -323,19 +351,42 @@ class AppStore {
 
   toggleEnv(key: string) {
     const s = this.env[key];
-    if (s) s.enabled = !s.enabled;
+    if (!s) return;
+    s.enabled = !s.enabled;
+    this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setEnvValue(key: string, value: string) {
     const s = this.env[key];
-    if (s) s.value = value;
+    if (!s) return;
+    s.value = value;
+    // Typing coalesces into one entry; note() just gives it a real name.
+    history.note(`set ${key}`);
   }
   toggleWrap(key: string) {
     const s = this.wrap[key];
-    if (s) s.enabled = !s.enabled;
+    if (!s) return;
+    s.enabled = !s.enabled;
+    this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setWrapValue(key: string, value: string) {
     const s = this.wrap[key];
-    if (s) s.value = value;
+    if (!s) return;
+    s.value = value;
+    history.note(`set ${key}`);
+  }
+
+  /** Steam vs umu mode. A setter rather than a bare assignment from the toggle
+   *  so the history entry gets a label. */
+  setUmu(v: boolean) {
+    if (this.umu === v) return;
+    this.umu = v;
+    this.mark(v ? "switch to umu mode" : "switch to Steam mode");
+  }
+
+  setRuntime(r: RuntimeDto) {
+    if (this.selectedRuntime?.path === r.path) return;
+    this.selectedRuntime = r;
+    this.mark(`select ${r.display_name}`);
   }
 
   enabledCountInCategory(category: string): number {
@@ -386,10 +437,10 @@ class AppStore {
     }
   }
 
-  /** Reset the command back to defaults, keeping the selected game. Returns the
-   *  prior config so the caller can offer an undo. */
-  resetCommand(): Config {
-    const prev = this.toConfig();
+  /** Reset the command back to defaults, keeping the selected game. Just another
+   *  undoable action now — the old "returns the prior config so the caller can
+   *  offer a 2-second undo" contract is gone, replaced by the real stack. */
+  resetCommand() {
     this.resetOptions();
     this.umu = false;
     this.umuExe = "";
@@ -397,7 +448,57 @@ class AppStore {
     this.umuGameid = "";
     this.activePresetName = null;
     this.selectedRuntime = this.defaultRuntime();
-    return prev;
+    this.mark("reset command");
+  }
+
+  // -------------------------------- history ---------------------------------
+
+  /** Everything undo has to restore, as history sees it. */
+  private snapshot(): Snapshot {
+    return {
+      config: this.toConfig(),
+      appId: this.selectedAppId,
+      gameName: this.selectedGameName,
+      activePresetName: this.activePresetName,
+    };
+  }
+
+  /** Land a history entry now, labelled, instead of waiting out the coalescing
+   *  timer. Call at the *end* of a discrete mutator, once state has settled. */
+  private mark(label: string) {
+    history.flush(label, this.snapshot());
+  }
+
+  /** Name the coalescing burst a free-text field is producing, for fields bound
+   *  directly with `bind:value` (there is no mutator to label it from). Purely
+   *  cosmetic: the entry lands either way, this just stops it reading "edit". */
+  noteEdit(label: string) {
+    history.note(label);
+  }
+
+  undo() {
+    const e = history.undo();
+    if (!e) return;
+    this.applyEntry(e);
+    toast.info(`Undid: ${e.label}`);
+  }
+
+  redo() {
+    const e = history.redo();
+    if (!e) return;
+    this.applyEntry(e);
+    toast.info(`Redid: ${e.label}`);
+  }
+
+  /** Restore a history entry. Sets the game fields *directly* rather than going
+   *  through selectGame(), which would persist and then re-read that game's
+   *  memory — undoing a game switch would land on the memory instead of the
+   *  state we recorded. */
+  private applyEntry(e: Entry) {
+    this.selectedAppId = e.appId;
+    this.selectedGameName = e.gameName;
+    this.loadConfig(e.config);
+    this.activePresetName = e.activePresetName;
   }
 
   private protonPath(): string | null {
@@ -412,8 +513,10 @@ class AppStore {
 
       // Separate try/catch per call: a lint rejection must not blank an
       // otherwise-valid command, and vice versa.
+      let built: string | null = null;
       try {
         const command = await ipc.buildCommand(cfg, path);
+        built = command;
         // Two awaits race freely, so a slower earlier invocation can resolve
         // after a newer one. Without this guard it would overwrite the fresh
         // command with a stale value.
@@ -429,11 +532,46 @@ class AppStore {
         }
       }
 
+      // Tokenize for the coloured preview. Only meaningful if the build worked;
+      // on failure the old tokens are left alone, matching how the stale command
+      // string stays visible with a warning rather than blanking.
+      if (built !== null) {
+        try {
+          const tokens = await ipc.explainCommand(built);
+          if (seq === this.recomputeSeq) this.tokens = tokens;
+        } catch (e) {
+          console.error("explainCommand failed", e);
+          // Fall back to one opaque token so the body still renders the exact
+          // command rather than going blank.
+          if (seq === this.recomputeSeq) {
+            this.tokens = [{ text: built, kind: "unknown", key: null }];
+          }
+        }
+      }
+
       try {
         const notices = await ipc.lint(cfg);
         if (seq === this.recomputeSeq) this.notices = notices;
       } catch (e) {
         console.error("lint failed", e);
+      }
+
+      // Third await in the existing debounce rather than a timer of its own.
+      // Skipped entirely when there is nothing to compare against, which is the
+      // common case (generic builds, shortcuts, umu).
+      const current = this.currentLaunchOptions;
+      if (built !== null && current !== null) {
+        try {
+          const diff = await ipc.launchDiff(built, current);
+          if (seq === this.recomputeSeq) this.launchDiff = diff;
+        } catch (e) {
+          console.error("launchDiff failed", e);
+          // Better to show no pill than a stale verdict about whether the user's
+          // Steam config matches.
+          if (seq === this.recomputeSeq) this.launchDiff = null;
+        }
+      } else if (seq === this.recomputeSeq) {
+        this.launchDiff = null;
       }
     }, 60);
   }
@@ -495,6 +633,90 @@ class AppStore {
     this.refreshLaunchStatuses();
   }
 
+  /** The selected game, resolved against the discovery list. */
+  get selectedGame(): GameDto | null {
+    if (this.selectedAppId == null) return null;
+    return this.games.find((g) => g.app_id === this.selectedAppId) ?? null;
+  }
+
+  /**
+   * The appid a `steam://` deep link can address, or null when one would be
+   * meaningless — no game, a non-Steam shortcut (whose appid is a synthetic
+   * shortcut id that Steam's verbs know nothing about), or no Steam install
+   * found at all.
+   */
+  get steamAppId(): number | null {
+    if (this.steamRoot == null) return null;
+    const g = this.selectedGame;
+    return g && g.source === "steam" ? g.app_id : null;
+  }
+
+  // --------------------------- sync with Steam ------------------------------
+
+  /**
+   * Steam's current launch options for the selected game, or null when there is
+   * nothing to compare against.
+   *
+   * `steamAppId` carries the hard gate: a non-Steam shortcut returns null, so an
+   * absent entry can never be mistaken for "Steam has no launch options". For a
+   * real Steam game an absent entry genuinely does mean none are set.
+   */
+  get currentLaunchOptions(): string | null {
+    const id = this.steamAppId;
+    if (id == null) return null;
+    return this.launchOptions[String(id)] ?? "";
+  }
+
+  /** What the pill should say, or "hidden" when it must not appear. */
+  get syncState(): SyncState {
+    if (this.umu) return "hidden";
+    if (this.currentLaunchOptions === null) return "hidden";
+    const s = this.launchDiff?.status;
+    return s === "in-sync" || s === "drifted" || s === "not-applied" ? s : "hidden";
+  }
+
+  /** How many concrete differences there are, for "N changes not pasted". */
+  get driftCount(): number {
+    const d = this.launchDiff;
+    if (!d) return 0;
+    return (
+      d.added.length +
+      d.removed.length +
+      d.changed.length +
+      d.unmodeled.length +
+      (d.game_args ? 1 : 0)
+    );
+  }
+
+  /**
+   * Whether Steam's compat-tool mapping can be meaningfully compared to the
+   * selected runtime. `valve` and `auto` runtimes carry placeholder internal
+   * names (runtime.rs) that can never match a `config.vdf` mapping, so
+   * comparing them would always read as a mismatch.
+   */
+  get runtimeComparable(): boolean {
+    const r = this.selectedRuntime;
+    return (
+      this.steamAppId != null && r != null && r.kind !== "valve" && r.kind !== "auto"
+    );
+  }
+
+  /**
+   * Steam's Proton dropdown disagrees with the selected runtime. `steam` is ""
+   * when Steam has no mapping at all — still a disagreement worth reporting,
+   * just phrased as an instruction rather than a correction.
+   *
+   * Deliberately *not* folded into the drift verdict: the compat tool is a
+   * separate Steam control with its own paste target, so folding it in would
+   * make "drifted" un-actionable from a library tile (#41).
+   */
+  get runtimeMismatch(): { steam: string; wanted: string } | null {
+    if (!this.runtimeComparable) return null;
+    const steam = this.compatTools[String(this.steamAppId)] ?? "";
+    const r = this.selectedRuntime!;
+    return steam === r.internal_name ? null : { steam, wanted: r.display_name };
+  }
+
   // ------------------------------- game memory ------------------------------
 
   selectGame(game: GameDto | null) {
@@ -507,6 +729,7 @@ class AppStore {
     if (!game) {
       this.selectedAppId = null;
       this.selectedGameName = null;
+      this.mark("switch to no game");
       return;
     }
 
@@ -522,6 +745,10 @@ class AppStore {
     } else {
       this.resetOptions();
     }
+
+    // Undoable on purpose: "I switched games and lost my tuning" is exactly the
+    // trust failure the stack exists to fix.
+    this.mark(`open ${game.name}`);
   }
 
   // ------------------------------- presets ----------------------------------
@@ -545,6 +772,7 @@ class AppStore {
     if (!p) return;
     this.loadConfig(p.config);
     this.activePresetName = name;
+    this.mark(`load preset "${name}"`);
   }
 
   deletePreset(name: string) {
@@ -558,6 +786,7 @@ class AppStore {
   async importCommand(text: string) {
     const cfg = await ipc.parseCommand(text);
     this.loadConfig(cfg);
+    this.mark("import command");
   }
 
   // ------------------------------- mangohud ---------------------------------
@@ -572,6 +801,7 @@ class AppStore {
     // The in-app string shouldn't compete with a stale config-file path.
     if (this.env["MANGOHUD_CONFIGFILE"]) this.env["MANGOHUD_CONFIGFILE"].enabled = false;
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
+    this.mark("apply MangoHud preset");
   }
 
   applyMangoFile(path: string) {
@@ -585,6 +815,7 @@ class AppStore {
     // file's settings actually take effect.
     if (this.env["MANGOHUD_CONFIG"]) this.env["MANGOHUD_CONFIG"].enabled = false;
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
+    this.mark("use MangoHud config file");
   }
 
   // ------------------------------- recipes ----------------------------------
@@ -592,6 +823,9 @@ class AppStore {
   async applyRecipe(index: number) {
     const cfg = await ipc.applyRecipe(index, this.toConfig());
     this.loadConfig(cfg);
+    // The most destructive action in the app: recipes.rs is additive-only, so
+    // stacking them accumulates with no way back short of a reset.
+    this.mark(`apply "${this.recipes[index]?.name ?? "recipe"}"`);
   }
 
   // ------------------------------- theme/store ------------------------------
