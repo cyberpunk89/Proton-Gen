@@ -60,17 +60,26 @@
   let keyed = $derived(toks.map((t, i) => (t.key ? i : -1)).filter((i) => i >= 0));
   let roving = $derived(keyed.length ? Math.min(rovingRaw, keyed.length - 1) : 0);
 
-  // Colour only — never anything that changes `display`. See rule 2.
+  /**
+   * Colour only — never anything that changes `display`. See rule 2.
+   *
+   * These name the `--tok-*` layer rather than the palette accents directly.
+   * 13px mono is body text and needs 4.5:1, which the accents were never chosen
+   * against — `--muted` misses on most themes and `latte` misses on six tokens.
+   * The indirection lets a theme correct its command-token colours without
+   * moving the shared tokens the rest of the app draws from; each one defaults
+   * to its palette accent. See the command-token block in `app.css`.
+   */
   const KIND_CLASS: Record<TokenKind, string> = {
     space: "",
-    env: "text-blue",
-    wrapper: "text-mauve",
-    wrapper_arg: "text-subtext",
-    separator: "text-muted",
-    target: "text-accent font-medium",
-    exe: "text-green",
-    game_arg: "text-peach",
-    unknown: "text-subtext",
+    env: "text-tok-env",
+    wrapper: "text-tok-wrapper",
+    wrapper_arg: "text-tok-wrapper-arg",
+    separator: "text-tok-separator",
+    target: "text-tok-target font-medium",
+    exe: "text-tok-exe",
+    game_arg: "text-tok-arg",
+    unknown: "text-tok-unknown",
   };
 
   const KIND_LABEL: Record<TokenKind, string> = {
@@ -294,7 +303,7 @@
   onfocusout={onFocusOut}
   class="block w-full cursor-copy select-text text-left font-mono text-[13px] leading-relaxed text-text focus-visible:outline-none"
   style="word-break: break-word"
->{#each toks as t, i (i)}{#if t.kind === "space"}{t.text}{:else}<span {...tokAttrs(t, i)}>{#if t.kind === "env"}{@const p = envParts(t.text)}<span>{p[0]}</span><span class="text-muted">{p[1]}</span><span class="text-text">{p[2]}</span>{:else}{t.text}{/if}</span>{/if}{/each}</div>
+>{#each toks as t, i (i)}{#if t.kind === "space"}{t.text}{:else}<span {...tokAttrs(t, i)}>{#if t.kind === "env"}{@const p = envParts(t.text)}<span>{p[0]}</span><span class="text-tok-separator">{p[1]}</span><span class="text-tok-value">{p[2]}</span>{:else}{t.text}{/if}</span>{/if}{/each}</div>
 
 <!--
   Inspector strip: one fixed-height row, not a popover per token. No positioning
