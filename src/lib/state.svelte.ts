@@ -11,11 +11,14 @@ import type {
   GameDto,
   Hardware,
   Notice,
+  LaunchDiff,
   Recipe,
   RuntimeDto,
   ConfigWarning,
   StaleInfo,
   Store,
+  SyncState,
+  Token,
   UpdateInfo,
 } from "./types";
 
@@ -96,6 +99,12 @@ class AppStore {
   // ---- derived/live ----
   command = $state("");
   notices = $state<Notice[]>([]);
+  /** The command split into coloured/annotatable pieces. Concatenating every
+   *  `text` reproduces `command` byte-for-byte — never re-join with spaces. */
+  tokens = $state<Token[]>([]);
+  /** Semantic comparison against Steam's current launch options. Null when
+   *  there is nothing to compare (see `currentLaunchOptions`). */
+  launchDiff = $state<LaunchDiff | null>(null);
   /** Briefly true right after the session is written to disk (trust cue). */
   saved = $state(false);
 
@@ -221,6 +230,10 @@ class AppStore {
     $effect.root(() => {
       $effect(() => {
         const cfg = this.toConfig();
+        // Read so that a rescan — which rewrites launchOptions and games — also
+        // re-runs the sync diff. Otherwise the pill would keep asserting a
+        // verdict from before the rescan.
+        void this.currentLaunchOptions;
         // Every mutation path funnels through here, so history cannot miss one.
         // The extra reads (appId/gameName/preset) are what make a game switch
         // undoable — toConfig() alone wouldn't see it.
@@ -500,8 +513,10 @@ class AppStore {
 
       // Separate try/catch per call: a lint rejection must not blank an
       // otherwise-valid command, and vice versa.
+      let built: string | null = null;
       try {
         const command = await ipc.buildCommand(cfg, path);
+        built = command;
         // Two awaits race freely, so a slower earlier invocation can resolve
         // after a newer one. Without this guard it would overwrite the fresh
         // command with a stale value.
@@ -517,11 +532,46 @@ class AppStore {
         }
       }
 
+      // Tokenize for the coloured preview. Only meaningful if the build worked;
+      // on failure the old tokens are left alone, matching how the stale command
+      // string stays visible with a warning rather than blanking.
+      if (built !== null) {
+        try {
+          const tokens = await ipc.explainCommand(built);
+          if (seq === this.recomputeSeq) this.tokens = tokens;
+        } catch (e) {
+          console.error("explainCommand failed", e);
+          // Fall back to one opaque token so the body still renders the exact
+          // command rather than going blank.
+          if (seq === this.recomputeSeq) {
+            this.tokens = [{ text: built, kind: "unknown", key: null }];
+          }
+        }
+      }
+
       try {
         const notices = await ipc.lint(cfg);
         if (seq === this.recomputeSeq) this.notices = notices;
       } catch (e) {
         console.error("lint failed", e);
+      }
+
+      // Third await in the existing debounce rather than a timer of its own.
+      // Skipped entirely when there is nothing to compare against, which is the
+      // common case (generic builds, shortcuts, umu).
+      const current = this.currentLaunchOptions;
+      if (built !== null && current !== null) {
+        try {
+          const diff = await ipc.launchDiff(built, current);
+          if (seq === this.recomputeSeq) this.launchDiff = diff;
+        } catch (e) {
+          console.error("launchDiff failed", e);
+          // Better to show no pill than a stale verdict about whether the user's
+          // Steam config matches.
+          if (seq === this.recomputeSeq) this.launchDiff = null;
+        }
+      } else if (seq === this.recomputeSeq) {
+        this.launchDiff = null;
       }
     }, 60);
   }
@@ -599,6 +649,72 @@ class AppStore {
     if (this.steamRoot == null) return null;
     const g = this.selectedGame;
     return g && g.source === "steam" ? g.app_id : null;
+  }
+
+  // --------------------------- sync with Steam ------------------------------
+
+  /**
+   * Steam's current launch options for the selected game, or null when there is
+   * nothing to compare against.
+   *
+   * `steamAppId` carries the hard gate: a non-Steam shortcut returns null, so an
+   * absent entry can never be mistaken for "Steam has no launch options". For a
+   * real Steam game an absent entry genuinely does mean none are set.
+   */
+  get currentLaunchOptions(): string | null {
+    const id = this.steamAppId;
+    if (id == null) return null;
+    return this.launchOptions[String(id)] ?? "";
+  }
+
+  /** What the pill should say, or "hidden" when it must not appear. */
+  get syncState(): SyncState {
+    if (this.umu) return "hidden";
+    if (this.currentLaunchOptions === null) return "hidden";
+    const s = this.launchDiff?.status;
+    return s === "in-sync" || s === "drifted" || s === "not-applied" ? s : "hidden";
+  }
+
+  /** How many concrete differences there are, for "N changes not pasted". */
+  get driftCount(): number {
+    const d = this.launchDiff;
+    if (!d) return 0;
+    return (
+      d.added.length +
+      d.removed.length +
+      d.changed.length +
+      d.unmodeled.length +
+      (d.game_args ? 1 : 0)
+    );
+  }
+
+  /**
+   * Whether Steam's compat-tool mapping can be meaningfully compared to the
+   * selected runtime. `valve` and `auto` runtimes carry placeholder internal
+   * names (runtime.rs) that can never match a `config.vdf` mapping, so
+   * comparing them would always read as a mismatch.
+   */
+  get runtimeComparable(): boolean {
+    const r = this.selectedRuntime;
+    return (
+      this.steamAppId != null && r != null && r.kind !== "valve" && r.kind !== "auto"
+    );
+  }
+
+  /**
+   * Steam's Proton dropdown disagrees with the selected runtime. `steam` is ""
+   * when Steam has no mapping at all — still a disagreement worth reporting,
+   * just phrased as an instruction rather than a correction.
+   *
+   * Deliberately *not* folded into the drift verdict: the compat tool is a
+   * separate Steam control with its own paste target, so folding it in would
+   * make "drifted" un-actionable from a library tile (#41).
+   */
+  get runtimeMismatch(): { steam: string; wanted: string } | null {
+    if (!this.runtimeComparable) return null;
+    const steam = this.compatTools[String(this.steamAppId)] ?? "";
+    const r = this.selectedRuntime!;
+    return steam === r.internal_name ? null : { steam, wanted: r.display_name };
   }
 
   // ------------------------------- game memory ------------------------------

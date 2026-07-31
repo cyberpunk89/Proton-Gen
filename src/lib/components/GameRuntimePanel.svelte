@@ -4,9 +4,12 @@
   import RuntimePicker from "./RuntimePicker.svelte";
   import UmuFields from "./UmuFields.svelte";
   import ProtonDbChip from "./ProtonDbChip.svelte";
-  import { DownloadSimple, Cpu } from "phosphor-svelte";
+  import SyncPill from "./SyncPill.svelte";
+  import OpenInSteam from "./OpenInSteam.svelte";
+  import { DownloadSimple, Cpu, CheckCircle, WarningCircle } from "phosphor-svelte";
 
   let isSteam = $derived(app.selectedGame?.source === "steam");
+  let mismatch = $derived(app.runtimeMismatch);
 
   let currentOpts = $derived(
     isSteam && app.selectedAppId != null
@@ -41,24 +44,63 @@
   {#if isSteam}
     <div class="flex flex-wrap items-center gap-3">
       <ProtonDbChip />
-      {#if currentOpts || currentTool}
-        <div class="ml-auto flex items-center gap-2 text-xs text-muted">
-          {#if currentTool}
-            <span class="font-mono">Proton={currentTool}</span>
-          {/if}
-          {#if currentOpts}
-            <span class="max-w-[280px] truncate font-mono" title={currentOpts}
-              >{currentOpts}</span
-            >
-            <button
-              onclick={loadCurrent}
-              class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/60 px-2.5 py-1.5 text-subtext transition hover:border-accent/50"
-            >
-              <DownloadSimple size={13} /> Load current
-            </button>
-          {/if}
-        </div>
+      <div class="ml-auto"><SyncPill /></div>
+    </div>
+
+    <!--
+      What Steam has right now. Was a 280px-truncated span with only a `title`
+      tooltip, which made a long launch string unreadable exactly when you needed
+      to read it — hence the wrapping <pre>.
+    -->
+    <div class="space-y-2 rounded-xl border border-border/60 bg-surface-2/40 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wider text-muted">
+        Currently in Steam
+      </p>
+
+      {#if currentOpts}
+        <pre
+          class="whitespace-pre-wrap break-words font-mono text-xs text-subtext">{currentOpts}</pre>
+      {:else}
+        <p class="text-xs text-muted">No launch options set.</p>
       {/if}
+
+      <!-- Agreement or disagreement, not a bare echo of a value. -->
+      <p class="flex items-start gap-1.5 text-xs">
+        {#if !app.runtimeComparable}
+          <span class="text-muted">
+            Proton: <code class="font-mono">{currentTool || "not set"}</code>
+          </span>
+        {:else if mismatch}
+          <WarningCircle size={13} weight="fill" class="mt-0.5 shrink-0 text-peach" />
+          <span class="text-subtext">
+            {#if mismatch.steam}
+              Steam is set to <code class="font-mono text-text">{mismatch.steam}</code>
+              — change it to <code class="font-mono text-text">{mismatch.wanted}</code>.
+            {:else}
+              Steam has no Proton set — choose
+              <code class="font-mono text-text">{mismatch.wanted}</code>.
+            {/if}
+          </span>
+        {:else}
+          <CheckCircle size={13} weight="fill" class="mt-0.5 shrink-0 text-green" />
+          <span class="text-subtext">
+            Steam is already set to
+            <code class="font-mono text-text">{currentTool}</code>.
+          </span>
+        {/if}
+      </p>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <OpenInSteam />
+        {#if currentOpts}
+          <button
+            onclick={loadCurrent}
+            class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/60 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+          >
+            <DownloadSimple size={13} /> Load current
+          </button>
+        {/if}
+      </div>
     </div>
   {/if}
 

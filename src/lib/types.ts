@@ -180,6 +180,14 @@ export interface Notice {
 /// Mirrors diff::DiffStatus (serde rename_all = "kebab-case").
 export type DiffStatus = "in-sync" | "drifted" | "not-applied" | "umu";
 
+/**
+ * Frontend-only. `DiffStatus` folded together with every case where the sync
+ * pill must not appear at all: no game selected, a non-Steam shortcut (which has
+ * no launch options to compare — an absent entry means *untracked*, never
+ * "not applied"), umu mode, or a diff that hasn't been computed yet.
+ */
+export type SyncState = "in-sync" | "drifted" | "not-applied" | "hidden";
+
 /** One key present on both sides with a different value. `key` is an env var
  *  name, a wrapper key, or the literal "game_args". */
 export interface Change {

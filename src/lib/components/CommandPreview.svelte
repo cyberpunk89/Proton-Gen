@@ -1,11 +1,26 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { history } from "$lib/history.svelte";
   import { copyText } from "$lib/util";
   import { toast } from "$lib/toast.svelte";
-  import { ArrowCounterClockwise, Copy, Terminal, WarningCircle } from "phosphor-svelte";
+  import {
+    ArrowCounterClockwise,
+    ArrowUUpLeft,
+    ArrowUUpRight,
+    CheckCircle,
+    Copy,
+    Terminal,
+    WarningCircle,
+  } from "phosphor-svelte";
   import { fade } from "$lib/motion.svelte";
+  import CommandBody from "./CommandBody.svelte";
   import OpenInSteam from "./OpenInSteam.svelte";
+  import SyncPill from "./SyncPill.svelte";
 
+  /** Always the store's string, never the DOM. Even if a selection quirk ever
+   *  survives in the tokenized body, the primary copy path stays exact by
+   *  construction — the worst case is a slightly-off manual drag-select, not a
+   *  wrong pasted command. */
   async function copy() {
     await copyText(app.command);
     toast.success("Command copied");
@@ -13,13 +28,34 @@
 
   function reset() {
     app.resetCommand();
-    // The action now routes through the real stack, so it is no longer the only
-    // way back — Ctrl+Z still works after this toast expires. Undo/redo buttons
-    // land with the command-bar rewrite (#37).
     toast.success("Command reset", {
       action: { label: "Undo", onClick: () => app.undo() },
     });
   }
+
+  /**
+   * The runtime hint, stated as fact when we can check it and as an instruction
+   * when we can't. A game whose compat tool already matches should not be nagged
+   * to "change the dropdown" it has already set.
+   */
+  let runtimeHint = $derived.by(() => {
+    const r = app.selectedRuntime;
+    if (app.umu || !r) return null;
+    if (!app.runtimeComparable) {
+      // Generic build, a shortcut, or a valve/auto runtime whose placeholder
+      // internal name can never match a config.vdf mapping. Nothing to compare,
+      // so the instruction stands unqualified.
+      return { done: false, text: `Then set Steam's Proton dropdown to ${r.display_name}` };
+    }
+    const m = app.runtimeMismatch;
+    if (!m) return { done: true, text: `Steam's Proton is already set to ${r.display_name}` };
+    return {
+      done: false,
+      text: m.steam
+        ? `Steam's Proton is set to ${m.steam} — change it to ${r.display_name}`
+        : `Then set Steam's Proton dropdown to ${r.display_name}`,
+    };
+  });
 </script>
 
 <div
@@ -32,6 +68,11 @@
     <span class="text-[11px] font-medium uppercase tracking-wider text-muted">
       {app.umu ? "umu-launcher command" : "Steam launch options"}
     </span>
+
+    <!-- "Is what I built actually live in Steam?", answered in place. Hides
+         itself for umu, shortcuts and no-game. -->
+    <SyncPill />
+
     {#if app.saved}
       <span
         transition:fade={{ duration: 200 }}
@@ -41,7 +82,29 @@
         Saved
       </span>
     {/if}
+
     <div class="ml-auto flex items-center gap-1.5">
+      <!-- Naming the specific action is what makes a stack legible: a disabled
+           button with a generic tooltip tells you nothing about where you are. -->
+      <button
+        onclick={() => app.undo()}
+        disabled={!history.canUndo}
+        title={history.undoLabel ? `Undo: ${history.undoLabel}` : "Nothing to undo"}
+        aria-label={history.undoLabel ? `Undo: ${history.undoLabel}` : "Nothing to undo"}
+        class="grid size-7 place-items-center rounded-lg border border-border bg-surface-2/50 text-subtext transition hover:border-accent/50 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+      >
+        <ArrowUUpLeft size={14} />
+      </button>
+      <button
+        onclick={() => app.redo()}
+        disabled={!history.canRedo}
+        title={history.redoLabel ? `Redo: ${history.redoLabel}` : "Nothing to redo"}
+        aria-label={history.redoLabel ? `Redo: ${history.redoLabel}` : "Nothing to redo"}
+        class="grid size-7 place-items-center rounded-lg border border-border bg-surface-2/50 text-subtext transition hover:border-accent/50 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+      >
+        <ArrowUUpRight size={14} />
+      </button>
+
       <!-- Copy, then land on the dialog you paste into. Hides itself when a
            deep link would be meaningless. -->
       <OpenInSteam />
@@ -61,13 +124,7 @@
     </div>
   </div>
 
-  <button
-    onclick={copy}
-    class="block w-full cursor-copy select-text text-left font-mono text-[13px] leading-relaxed text-text"
-    style="word-break: break-word"
-  >
-    {app.command || "%command%"}
-  </button>
+  <CommandBody {copy} />
 
   {#if app.buildError}
     <!-- Inline rather than a toast: this re-fires on every keystroke while
@@ -93,10 +150,16 @@
     </div>
   {/if}
 
-  {#if !app.umu && app.selectedRuntime}
-    <p class="mt-3 border-t border-border/50 pt-2 text-xs text-muted">
-      Then set Steam's Proton dropdown to
-      <span class="font-medium text-subtext">{app.selectedRuntime.display_name}</span>
+  {#if runtimeHint}
+    <p
+      class="mt-3 flex items-center gap-1.5 border-t border-border/50 pt-2 text-xs"
+      class:text-muted={!runtimeHint.done}
+      class:text-green={runtimeHint.done}
+    >
+      {#if runtimeHint.done}
+        <CheckCircle size={13} weight="fill" class="shrink-0" />
+      {/if}
+      <span>{runtimeHint.text}</span>
     </p>
   {/if}
 </div>
