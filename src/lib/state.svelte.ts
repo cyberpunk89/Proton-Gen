@@ -583,6 +583,24 @@ class AppStore {
     this.refreshLaunchStatuses();
   }
 
+  /** The selected game, resolved against the discovery list. */
+  get selectedGame(): GameDto | null {
+    if (this.selectedAppId == null) return null;
+    return this.games.find((g) => g.app_id === this.selectedAppId) ?? null;
+  }
+
+  /**
+   * The appid a `steam://` deep link can address, or null when one would be
+   * meaningless — no game, a non-Steam shortcut (whose appid is a synthetic
+   * shortcut id that Steam's verbs know nothing about), or no Steam install
+   * found at all.
+   */
+  get steamAppId(): number | null {
+    if (this.steamRoot == null) return null;
+    const g = this.selectedGame;
+    return g && g.source === "steam" ? g.app_id : null;
+  }
+
   // ------------------------------- game memory ------------------------------
 
   selectGame(game: GameDto | null) {

@@ -6,12 +6,7 @@
   import ProtonDbChip from "./ProtonDbChip.svelte";
   import { DownloadSimple, Cpu } from "phosphor-svelte";
 
-  let selectedGame = $derived(
-    app.selectedAppId == null
-      ? null
-      : app.games.find((g) => g.app_id === app.selectedAppId) ?? null,
-  );
-  let isSteam = $derived(selectedGame?.source === "steam");
+  let isSteam = $derived(app.selectedGame?.source === "steam");
 
   let currentOpts = $derived(
     isSteam && app.selectedAppId != null

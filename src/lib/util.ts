@@ -1,5 +1,6 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
+import { inTauri } from "./ipc";
 import type { Hardware } from "./types";
 
 export async function copyText(text: string) {
@@ -16,6 +17,45 @@ export async function openUrl(url: string) {
     await openExternal(url);
   } catch {
     window.open(url, "_blank");
+  }
+}
+
+/**
+ * Steam's Properties dialog for a game. Its General tab holds Launch Options —
+ * the exact place the built command gets pasted.
+ *
+ * If Valve has renamed this verb (they have changed protocol verbs before),
+ * swapping this for `steamLibraryUrl` is the one-line fix: the library page is
+ * two clicks from Properties and far less likely to have moved.
+ */
+export function steamPropertiesUrl(appId: number): string {
+  return `steam://gameproperties/${appId}`;
+}
+
+/** A game's library page. The conservative fallback for the above. */
+export function steamLibraryUrl(appId: number): string {
+  return `steam://nav/games/details/${appId}`;
+}
+
+/**
+ * Hand a `steam://` URL to the system handler. Returns false when it could not
+ * be handed off, so the caller can explain instead of appearing to do nothing.
+ *
+ * Deliberately does *not* fall back to `window.open` the way `openUrl` does: a
+ * custom scheme in a dev browser either throws or silently no-ops, and "silently
+ * no-ops" is the one outcome worth avoiding. `open::that_detached` on the Rust
+ * side spawns without waiting, so a handler that starts and then fails is
+ * invisible to us — this only catches a rejected invoke (missing handler, or a
+ * capability-scope regression).
+ */
+export async function openSteamUrl(url: string): Promise<boolean> {
+  if (!inTauri) return false;
+  try {
+    await openExternal(url);
+    return true;
+  } catch (e) {
+    console.error("openSteamUrl failed", url, e);
+    return false;
   }
 }
 

@@ -4,6 +4,7 @@
   import { toast } from "$lib/toast.svelte";
   import { ArrowCounterClockwise, Copy, Terminal, WarningCircle } from "phosphor-svelte";
   import { fade } from "$lib/motion.svelte";
+  import OpenInSteam from "./OpenInSteam.svelte";
 
   async function copy() {
     await copyText(app.command);
@@ -41,6 +42,9 @@
       </span>
     {/if}
     <div class="ml-auto flex items-center gap-1.5">
+      <!-- Copy, then land on the dialog you paste into. Hides itself when a
+           deep link would be meaningless. -->
+      <OpenInSteam />
       <button
         onclick={reset}
         class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 active:scale-95"
