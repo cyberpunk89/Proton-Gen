@@ -43,9 +43,17 @@ const EMPTY_STORE: Store = {
   hdr: false,
   fsr4: false,
   protondb_auto: false,
+  favorites: [],
+  library_sort: "",
   last_session: null,
   last_game_appid: null,
 };
+
+/** Library sort ids. Kept here because both the toolbar and the comparator in
+ *  `Library.svelte` need to agree on them, and the persisted value is a bare
+ *  string that may predate any of them. */
+export type LibrarySort = "recent" | "alpha" | "tuned";
+export const DEFAULT_LIBRARY_SORT: LibrarySort = "recent";
 
 export type ArtKind = "portrait" | "hero" | "header";
 
@@ -861,6 +869,34 @@ class AppStore {
   }
   setProtondbAuto(v: boolean) {
     this.store.protondb_auto = v;
+    this.persistStore();
+  }
+
+  // ------------------------------ library view ------------------------------
+
+  isFavorite(appId: number): boolean {
+    return this.store.favorites.includes(appId);
+  }
+
+  toggleFavorite(appId: number) {
+    // Mirrors a Rust BTreeSet: no duplicates, and kept sorted so the persisted
+    // TOML stays stable rather than reordering on every toggle.
+    const next = this.store.favorites.filter((id) => id !== appId);
+    if (next.length === this.store.favorites.length) next.push(appId);
+    next.sort((a, b) => a - b);
+    this.store.favorites = next;
+    this.persistStore();
+  }
+
+  /** The persisted sort, falling back when the stored string is empty (first
+   *  run) or an id written by a newer build. */
+  get librarySort(): LibrarySort {
+    const s = this.store.library_sort;
+    return s === "recent" || s === "alpha" || s === "tuned" ? s : DEFAULT_LIBRARY_SORT;
+  }
+
+  setLibrarySort(s: LibrarySort) {
+    this.store.library_sort = s;
     this.persistStore();
   }
 

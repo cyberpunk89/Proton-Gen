@@ -1,7 +1,7 @@
 //! Persisted state: chosen theme, named presets, and per-game memory.
 //! Stored as TOML at `$XDG_CONFIG_HOME/protongen/state.toml`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +68,15 @@ pub struct Store {
     /// Auto-fetch the ProtonDB tier when a Steam game is selected.
     #[serde(default)]
     pub protondb_auto: bool,
+    /// Games pinned to the top of the library grid, under every sort. A
+    /// `BTreeSet` for the same reason `game_memory` is a `BTreeMap`: stable,
+    /// diffable TOML output rather than whatever order the frontend sent.
+    #[serde(default)]
+    pub favorites: BTreeSet<u32>,
+    /// Last-used library sort ("recent" | "alpha" | "tuned"). Persisted as
+    /// last-used-wins rather than surfaced as an explicit setting.
+    #[serde(default)]
+    pub library_sort: String,
     /// The exact builder state on screen when the app last closed, restored on
     /// next launch so the user reopens where they left off.
     #[serde(default)]
@@ -207,6 +216,9 @@ mod tests {
             extra_env: "FOO=bar".into(),
             ..Default::default()
         });
+        s.favorites.insert(553850);
+        s.favorites.insert(275850);
+        s.library_sort = "recent".into();
         let text = toml::to_string_pretty(&s).unwrap();
         let back: Store = toml::from_str(&text).unwrap();
         assert_eq!(back.theme, "Dracula");
@@ -217,6 +229,26 @@ mod tests {
         let sess = back.last_session.expect("last_session round-trips");
         assert!(sess.umu);
         assert_eq!(sess.extra_env, "FOO=bar");
+        // A BTreeSet so the TOML is stable and diffable, not insertion-ordered.
+        assert_eq!(back.favorites.iter().copied().collect::<Vec<_>>(), vec![275850, 553850]);
+        assert_eq!(back.library_sort, "recent");
+    }
+
+    /// Every `Store` field is `#[serde(default)]` so that a `state.toml` written
+    /// by an older build keeps loading after new fields are added. Without this
+    /// the first launch after an upgrade would reset the user's whole config.
+    #[test]
+    fn a_state_file_predating_the_new_fields_still_loads() {
+        let old = r#"
+theme = "Dracula"
+show_irrelevant = true
+[game_memory]
+"#;
+        let s: Store = toml::from_str(old).expect("an older state.toml still parses");
+        assert_eq!(s.theme, "Dracula");
+        assert!(s.show_irrelevant);
+        assert!(s.favorites.is_empty());
+        assert_eq!(s.library_sort, "");
     }
 
     #[test]

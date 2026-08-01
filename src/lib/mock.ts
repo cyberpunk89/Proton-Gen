@@ -316,6 +316,10 @@ export const mockBootstrap: Bootstrap = {
     hdr: false,
     fsr4: false,
     protondb_auto: false,
+    // One favourite so the pin-to-top behaviour is visible under `pnpm dev`
+    // without having to click a star first.
+    favorites: [275850],
+    library_sort: "",
     last_session: null,
     last_game_appid: null,
   },
