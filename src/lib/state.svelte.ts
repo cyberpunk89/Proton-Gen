@@ -3,6 +3,7 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
+import { irrelevance, splitExtraEnv, tokenizeEnv } from "./util";
 import { emptyConfig } from "./types";
 import type {
   Catalog,
@@ -369,18 +370,24 @@ class AppStore {
     this.wrap = wrap;
     this.extraEnv = "";
     this.gameArgs = "";
+    // Attribution describes how the *current* values were reached, so it cannot
+    // outlive them. This also covers undo and preset/game loads, which all funnel
+    // through loadConfig → resetOptions.
+    this.recipeOrigin = {};
   }
 
   toggleEnv(key: string) {
     const s = this.env[key];
     if (!s) return;
     s.enabled = !s.enabled;
+    this.disownParam(key);
     this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setEnvValue(key: string, value: string) {
     const s = this.env[key];
     if (!s) return;
     s.value = value;
+    this.disownParam(key);
     // Typing coalesces into one entry; note() just gives it a real name.
     history.note(`set ${key}`);
   }
@@ -388,13 +395,29 @@ class AppStore {
     const s = this.wrap[key];
     if (!s) return;
     s.enabled = !s.enabled;
+    this.disownParam(key);
     this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setWrapValue(key: string, value: string) {
     const s = this.wrap[key];
     if (!s) return;
     s.value = value;
+    this.disownParam(key);
     history.note(`set ${key}`);
+  }
+
+  /**
+   * Which recipe set each parameter, so a row can say where its value came from.
+   * Apply two recipes and there is otherwise no way to attribute any setting.
+   *
+   * Not persisted: it describes how the current state was *reached*, which stops
+   * being true the moment a remembered config is loaded from disk.
+   */
+  recipeOrigin = $state<Record<string, string>>({});
+
+  /** Editing a row by hand makes the attribution false, so drop it. */
+  private disownParam(key: string) {
+    if (this.recipeOrigin[key]) delete this.recipeOrigin[key];
   }
 
   /** Steam vs umu mode. A setter rather than a bare assignment from the toggle
@@ -409,6 +432,20 @@ class AppStore {
     if (this.selectedRuntime?.path === r.path) return;
     this.selectedRuntime = r;
     this.mark(`select ${r.display_name}`);
+  }
+
+  /** Everything the user has turned on, for the nav badge and the Active view. */
+  get activeCount(): number {
+    const envs = this.catalog.envs.filter((e) => this.env[e.key]?.enabled).length;
+    const wraps = this.catalog.wrappers.filter((w) => this.wrap[w.key]?.enabled).length;
+    return envs + wraps + splitExtraEnv(this.extraEnv).length;
+  }
+
+  /** Drop one `K=V` token from the custom-env string, keeping the rest verbatim. */
+  removeExtraEnv(raw: string) {
+    const kept = tokenizeEnv(this.extraEnv).filter((t) => t !== raw);
+    this.extraEnv = kept.join(" ");
+    this.mark(`remove ${raw.split("=")[0]}`);
   }
 
   enabledCountInCategory(category: string): number {
@@ -843,8 +880,15 @@ class AppStore {
   // ------------------------------- recipes ----------------------------------
 
   async applyRecipe(index: number) {
+    const recipe = this.recipes[index];
     const cfg = await ipc.applyRecipe(index, this.toConfig());
     this.loadConfig(cfg);
+    // loadConfig → resetOptions clears the map, so attribute after, not before.
+    if (recipe) {
+      for (const [key] of [...recipe.env, ...recipe.wrappers]) {
+        this.recipeOrigin[key] = recipe.name;
+      }
+    }
     // The most destructive action in the app: recipes.rs is additive-only, so
     // stacking them accumulates with no way back short of a reset.
     this.mark(`apply "${this.recipes[index]?.name ?? "recipe"}"`);
@@ -862,6 +906,44 @@ class AppStore {
   setSection(section: string) {
     this.activeSection = section;
     this.paramQuery = "";
+  }
+
+  /**
+   * The row `revealParam` last asked for. `OptionRow` watches this and scrolls,
+   * focuses and flashes itself on a match.
+   *
+   * The nonce is load-bearing: a bare `string | null` would not change when the
+   * same key is requested twice, so clicking the same lint notice a second time
+   * would silently do nothing.
+   */
+  focusParam = $state<{ key: string; nonce: number } | null>(null);
+  private focusNonce = 0;
+
+  /**
+   * Navigate to, scroll to and focus a parameter by catalog key. Built once here
+   * because lint click-to-jump (#48) and the command palette (#54) both need it.
+   *
+   * Returns false when the key isn't in the catalog at all, so a caller can say
+   * so rather than appearing to do nothing.
+   */
+  revealParam(key: string): boolean {
+    const env = this.catalog.envs.find((e) => e.key === key);
+    const wrapper = env ? null : this.catalog.wrappers.find((w) => w.key === key);
+    const def = env ?? wrapper;
+    if (!def) return false;
+
+    // The relevance guard, and the non-obvious part of this whole primitive:
+    // MainPanel filters hardware-irrelevant rows out entirely, so jumping to one
+    // would land on nothing. Not hypothetical — the nvapi-without-nvidia notice
+    // is *precisely* about a hardware-irrelevant option, so its jump link would
+    // fail exactly when it matters most.
+    if (!this.store.show_irrelevant && irrelevance(this.hwCaps, def.gpu, def.needs)) {
+      this.setShowIrrelevant(true);
+    }
+
+    this.setSection(env ? env.category : "Wrappers");
+    this.focusParam = { key, nonce: ++this.focusNonce };
+    return true;
   }
 
   /** Hardware facts plus the opt-in HDR/FSR capabilities, for relevance filtering. */

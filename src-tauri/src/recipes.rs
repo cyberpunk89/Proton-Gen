@@ -121,6 +121,106 @@ pub fn apply(recipe: &Recipe, catalog: &Catalog, options: &mut Options, extra_en
     }
 }
 
+/// What applying a recipe would do to one key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeKind {
+    /// Currently off; applying turns it on.
+    Enable,
+    /// Already on, but with a different value.
+    ValueChange,
+    /// Already on with this exact value — applying changes nothing.
+    NoOp,
+    /// Not in the catalog, so it lands in the custom-env string.
+    ExtraEnv,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RecipeChange {
+    pub key: String,
+    pub kind: ChangeKind,
+    /// The current value, when there is one to replace.
+    pub from: Option<String>,
+    pub to: String,
+    pub is_wrapper: bool,
+}
+
+/// What `apply` *would* change, without changing it.
+///
+/// Implemented by cloning and calling `apply`, deliberately: that keeps `apply`
+/// the single source of merge truth. Re-deriving the merge here would drift, and
+/// a naive pair-diff could not tell "this key went to extra_env because the
+/// catalog no longer has it" from "the user typed it into extra_env themselves".
+pub fn diff(
+    recipe: &Recipe,
+    catalog: &Catalog,
+    options: &Options,
+    extra_env: &str,
+) -> Vec<RecipeChange> {
+    let mut after = options.clone();
+    let mut after_extra = extra_env.to_string();
+    apply(recipe, catalog, &mut after, &mut after_extra);
+
+    let mut out = Vec::new();
+
+    for (k, _) in &recipe.wrappers {
+        let Some(i) = catalog.wrappers.iter().position(|w| &w.key == k) else {
+            continue;
+        };
+        let (before, now) = (&options.wrappers[i], &after.wrappers[i]);
+        let kind = if !before.enabled {
+            ChangeKind::Enable
+        } else if before.value != now.value {
+            ChangeKind::ValueChange
+        } else {
+            ChangeKind::NoOp
+        };
+        out.push(RecipeChange {
+            key: k.clone(),
+            kind,
+            from: before.enabled.then(|| before.value.clone()),
+            to: now.value.clone(),
+            is_wrapper: true,
+        });
+    }
+
+    for (k, v) in &recipe.env {
+        match catalog.envs.iter().position(|e| &e.key == k) {
+            Some(i) => {
+                let (before, now) = (&options.envs[i], &after.envs[i]);
+                let kind = if !before.enabled {
+                    ChangeKind::Enable
+                } else if before.value != now.value {
+                    ChangeKind::ValueChange
+                } else {
+                    ChangeKind::NoOp
+                };
+                out.push(RecipeChange {
+                    key: k.clone(),
+                    kind,
+                    from: before.enabled.then(|| before.value.clone()),
+                    to: now.value.clone(),
+                    is_wrapper: false,
+                });
+            }
+            None => {
+                // Already present in extra_env means apply() would skip it.
+                let pair = format!("{k}={v}");
+                let already = extra_env.split_whitespace().any(|t| t == pair);
+                out.push(RecipeChange {
+                    key: k.clone(),
+                    kind: if already { ChangeKind::NoOp } else { ChangeKind::ExtraEnv },
+                    from: None,
+                    to: v.clone(),
+                    is_wrapper: false,
+                });
+            }
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +234,81 @@ mod tests {
         for (_, rec) in r.by_kind(RecipeKind::Fix) {
             assert!(rec.symptom.is_some(), "fix '{}' missing symptom", rec.name);
         }
+    }
+
+    fn low_latency() -> Recipe {
+        Recipes::bundled()
+            .recipes
+            .into_iter()
+            .find(|r| r.name == "Low-latency competitive")
+            .unwrap()
+    }
+
+    #[test]
+    fn diff_on_a_fresh_config_is_all_enables() {
+        let cat = Catalog::bundled();
+        let opts = Options::from_catalog(&cat);
+        let changes = diff(&low_latency(), &cat, &opts, "");
+
+        assert!(!changes.is_empty());
+        assert!(
+            changes.iter().all(|c| c.kind == ChangeKind::Enable),
+            "nothing is on yet, so every listed key must read as Enable: {changes:?}"
+        );
+        assert!(changes.iter().all(|c| c.from.is_none()));
+    }
+
+    #[test]
+    fn diff_after_applying_is_all_noop() {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        let mut extra = String::new();
+        let recipe = low_latency();
+        apply(&recipe, &cat, &mut opts, &mut extra);
+
+        let changes = diff(&recipe, &cat, &opts, &extra);
+        assert!(
+            changes.iter().all(|c| c.kind == ChangeKind::NoOp),
+            "applying twice must be a no-op — this is what makes the preview \
+             honest about additive-only stacking: {changes:?}"
+        );
+    }
+
+    #[test]
+    fn diff_reports_a_value_change_when_the_key_is_already_on() {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        let recipe = low_latency();
+
+        // Turn one of the recipe's env keys on with a deliberately wrong value.
+        let (key, wanted) = recipe.env.first().expect("recipe sets at least one env");
+        let i = cat.envs.iter().position(|e| &e.key == key).expect("key is in the catalog");
+        opts.envs[i].enabled = true;
+        opts.envs[i].value = format!("{wanted}-not");
+
+        let changes = diff(&recipe, &cat, &opts, "");
+        let c = changes.iter().find(|c| &c.key == key).unwrap();
+        assert_eq!(c.kind, ChangeKind::ValueChange);
+        assert_eq!(c.from.as_deref(), Some(format!("{wanted}-not").as_str()));
+        assert_eq!(&c.to, wanted);
+    }
+
+    #[test]
+    fn diff_routes_an_uncatalogued_key_to_extra_env() {
+        let cat = Catalog::bundled();
+        let opts = Options::from_catalog(&cat);
+        let mut recipe = low_latency();
+        recipe.env = vec![("NOT_IN_THE_CATALOG".into(), "1".into())];
+        recipe.wrappers.clear();
+
+        let changes = diff(&recipe, &cat, &opts, "");
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, ChangeKind::ExtraEnv);
+        assert_eq!(changes[0].to, "1");
+
+        // And once it is already in extra_env, applying again would do nothing.
+        let again = diff(&recipe, &cat, &opts, "NOT_IN_THE_CATALOG=1");
+        assert_eq!(again[0].kind, ChangeKind::NoOp);
     }
 
     #[test]

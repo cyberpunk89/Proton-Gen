@@ -8,6 +8,7 @@ import type {
   DiffStatus,
   LaunchDiff,
   Notice,
+  RecipeChange,
   Token,
   TokenKind,
 } from "./types";
@@ -339,9 +340,15 @@ export const mockBootstrap: Bootstrap = {
   config_warnings: [],
 };
 
-// Static stand-in for lint::warnings. Two real rule ids at two severities, one
-// with a fix and one without, so the notices UI can be iterated under
-// `pnpm dev` — the browser mock has no rule engine to derive them from.
+// Static stand-in for lint::warnings. Three real rule ids across three
+// severities, two with a fix and one without, so the notices UI can be iterated
+// under `pnpm dev` — the browser mock has no rule engine to derive them from.
+//
+// `hdr-needs-presentation` earns its place beyond severity coverage: DXVK_HDR is
+// gated behind the opt-in `hdr` capability, so under the mock hardware it is
+// filtered out of the panel. That makes it the one notice here whose jump link
+// exercises revealParam's relevance guard — the case where a jump would
+// otherwise land on a row that isn't rendered.
 export const mockNotices: Notice[] = [
   {
     id: "gplasync-anticheat",
@@ -362,7 +369,73 @@ export const mockNotices: Notice[] = [
     keys: ["gamescope", "PROTON_ENABLE_WAYLAND"],
     fix: null,
   },
+  {
+    id: "hdr-needs-presentation",
+    severity: "info",
+    message: "HDR needs PROTON_ENABLE_WAYLAND=1 or gamescope with --hdr-enabled to take effect.",
+    keys: ["DXVK_HDR"],
+    fix: {
+      label: "Enable PROTON_ENABLE_WAYLAND=1",
+      disable: [],
+      enable: [["PROTON_ENABLE_WAYLAND", "1"]],
+    },
+  },
 ];
+
+/**
+ * Stand-in for `recipes::diff`. Unlike `applyRecipe` (a no-op stub, since the
+ * merge itself lives in Rust), this one computes a real answer from the mock
+ * catalog — the preview chip is pure presentation of this data, so a stub would
+ * make it unreviewable under `pnpm dev`.
+ *
+ * Mirrors the Rust classification: off → enable, on with a different value →
+ * value_change, on with the same value → no_op, absent from the catalog →
+ * extra_env (or no_op when already present in the custom-env string).
+ */
+export function mockPreviewRecipe(index: number, config: Config): RecipeChange[] {
+  const recipe = mockBootstrap.recipes[index];
+  if (!recipe) return [];
+
+  const envOn = new Map(config.env);
+  const wrapOn = new Map(config.wrappers);
+  const extra = config.extra_env.split(/\s+/).filter(Boolean);
+  const out: RecipeChange[] = [];
+
+  for (const [key, value] of recipe.wrappers) {
+    if (!mockBootstrap.catalog.wrappers.some((w) => w.key === key)) continue;
+    const from = wrapOn.get(key);
+    out.push({
+      key,
+      kind: from === undefined ? "enable" : value && from !== value ? "value_change" : "no_op",
+      from: from ?? null,
+      to: value || (from ?? ""),
+      is_wrapper: true,
+    });
+  }
+
+  for (const [key, value] of recipe.env) {
+    if (!mockBootstrap.catalog.envs.some((e) => e.key === key)) {
+      out.push({
+        key,
+        kind: extra.includes(`${key}=${value}`) ? "no_op" : "extra_env",
+        from: null,
+        to: value,
+        is_wrapper: false,
+      });
+      continue;
+    }
+    const from = envOn.get(key);
+    out.push({
+      key,
+      kind: from === undefined ? "enable" : from !== value ? "value_change" : "no_op",
+      from: from ?? null,
+      to: value,
+      is_wrapper: false,
+    });
+  }
+
+  return out;
+}
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {
   const env = config.env.map(([k, v]) => `${k}=${v}`);

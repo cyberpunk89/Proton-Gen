@@ -12,6 +12,7 @@
     ShieldCheck,
     FilmSlate,
   } from "phosphor-svelte";
+  import RecipePreview from "./RecipePreview.svelte";
   import type { Recipe } from "$lib/types";
 
   const ICONS: Record<string, typeof Sparkle> = {
@@ -129,6 +130,7 @@
               {#if dim}
                 <span class="text-[10px] text-peach">{dim}</span>
               {/if}
+              <RecipePreview index={i} {accent} />
               <button
                 onclick={() => apply(i, r.name)}
                 class="ml-auto rounded-lg px-2.5 py-1 text-xs font-medium transition active:scale-95"

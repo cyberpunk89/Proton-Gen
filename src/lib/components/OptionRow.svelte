@@ -2,8 +2,13 @@
   import Switch from "./Switch.svelte";
   import Badges from "./Badges.svelte";
   import InfoPopover from "./InfoPopover.svelte";
+  import { app } from "$lib/state.svelte";
+  import { prefersReducedMotion } from "$lib/motion.svelte";
+  import { Sparkle } from "phosphor-svelte";
 
   let {
+    /** Catalog key. Distinct from `title`, which for wrappers is the label. */
+    paramKey = "",
     enabled = false,
     title,
     mono = false,
@@ -20,9 +25,13 @@
     gpu = null,
     needs = [],
     dim = false,
+    appliedBy = null,
+    titleRanges = [],
+    helpRanges = [],
     onToggle,
     onValue,
   }: {
+    paramKey?: string;
     enabled?: boolean;
     title: string;
     mono?: boolean;
@@ -39,17 +48,78 @@
     gpu?: string | null;
     needs?: string[];
     dim?: boolean;
+    /** Name of the recipe that set this row, if any. */
+    appliedBy?: string | null;
+    /** Half-open [start, end) spans to highlight, from the fuzzy matcher. */
+    titleRanges?: [number, number][];
+    helpRanges?: [number, number][];
     onToggle: () => void;
     onValue?: (v: string) => void;
   } = $props();
 
+  /**
+   * Slice a string into plain/highlighted alternating parts.
+   *
+   * Deliberately not `{@html}` with <mark> injected: params.toml is overridable
+   * from $XDG_CONFIG_HOME, so help text is untrusted-ish input and must never be
+   * parsed as markup.
+   */
+  function segments(text: string, ranges: [number, number][]) {
+    if (!ranges.length) return [{ text, hit: false }];
+    const out: { text: string; hit: boolean }[] = [];
+    let at = 0;
+    for (const [start, end] of ranges) {
+      if (start >= text.length) break;
+      const s = Math.max(at, start);
+      const e = Math.min(text.length, end);
+      if (s > at) out.push({ text: text.slice(at, s), hit: false });
+      if (e > s) out.push({ text: text.slice(s, e), hit: true });
+      at = Math.max(at, e);
+    }
+    if (at < text.length) out.push({ text: text.slice(at), hit: false });
+    return out;
+  }
+
   // The visible title is the switch's accessible name, so it needs an id.
   const uid = $props.id();
   const labelId = `opt-title-${uid}`;
+
+  let row = $state<HTMLDivElement | null>(null);
+  let flash = $state(false);
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Respond to `app.revealParam`. Reads the nonce so a repeat jump to the same
+   * key re-fires; without it the second click on a lint notice would do nothing.
+   *
+   * After `setSection` the target row mounts in the same tick, so this fires
+   * correctly even when the jump crossed a category.
+   */
+  $effect(() => {
+    const target = app.focusParam;
+    if (!target || !paramKey || target.key !== paramKey || !row) return;
+    void target.nonce;
+
+    row.scrollIntoView({
+      block: "center",
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
+    // Focus the switch rather than the row: it is the thing you came here to
+    // operate, and it is already the row's labelled control.
+    row.querySelector<HTMLElement>('[role="switch"]')?.focus();
+
+    flash = true;
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => (flash = false), 1200);
+  });
 </script>
 
 <div
-  class="rounded-xl px-3 py-2 transition-colors {enabled ? '' : 'hover:bg-surface-2/40'}"
+  bind:this={row}
+  id={paramKey ? `param-${paramKey}` : undefined}
+  class="rounded-xl px-3 py-2 transition-colors {enabled
+    ? ''
+    : 'hover:bg-surface-2/40'} {flash ? 'ring-2 ring-accent' : ''}"
   style="{enabled
     ? 'background: color-mix(in srgb, var(--accent) 9%, transparent);'
     : ''}{dim ? 'opacity:.55' : ''}"
@@ -64,7 +134,11 @@
         ? 500
         : 400}"
     >
-      {title}
+      {#each segments(title, titleRanges) as seg, i (i)}{#if seg.hit}<mark
+            class="rounded-[3px] bg-transparent text-inherit"
+            style="background: color-mix(in srgb, var(--accent) 25%, transparent)"
+            >{seg.text}</mark
+          >{:else}{seg.text}{/if}{/each}
     </span>
 
     {#if valueField === "text"}
@@ -108,12 +182,30 @@
     {/if}
 
     <div class="flex items-center gap-1.5">
+      {#if appliedBy}
+        <!-- Cleared as soon as the row is edited by hand (see disownParam), so
+             the chip never claims a recipe owns a value the user has changed. -->
+        <span
+          class="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]"
+          style="background: color-mix(in srgb, var(--mauve) 16%, transparent); color: var(--mauve)"
+          title="Set by the “{appliedBy}” recipe"
+        >
+          <Sparkle size={9} weight="fill" />
+          {appliedBy}
+        </span>
+      {/if}
       <Badges {requires} {gpu} {needs} />
       <InfoPopover {details} {example} {url} {defaultValue} {values} />
     </div>
   </div>
 
   {#if help}
-    <p class="mt-1 pl-[50px] text-xs leading-snug text-muted">{help}</p>
+    <p class="mt-1 pl-[50px] text-xs leading-snug text-muted">
+      {#each segments(help, helpRanges) as seg, i (i)}{#if seg.hit}<mark
+            class="rounded-[3px] bg-transparent text-inherit"
+            style="background: color-mix(in srgb, var(--accent) 25%, transparent)"
+            >{seg.text}</mark
+          >{:else}{seg.text}{/if}{/each}
+    </p>
   {/if}
 </div>

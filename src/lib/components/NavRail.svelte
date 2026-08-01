@@ -9,6 +9,7 @@
     MagnifyingGlass,
     X,
     Faders,
+    ListChecks,
   } from "phosphor-svelte";
 
   let wrapCount = $derived(
@@ -51,6 +52,10 @@
   </div>
 
   <nav class="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
+    <!-- The count renders regardless of isActive(): during a search the active
+         pill is suppressed, but "how many have I turned on" is exactly the thing
+         you still want visible while hunting for one more. -->
+    {@render navItem("@active", "Active options", ListChecks, app.activeCount)}
     {@render navItem("recipes", "Recipes", Sparkle)}
 
     <p class="px-2 pb-1 pt-3 text-[10px] font-medium uppercase tracking-wider text-muted">
@@ -68,7 +73,7 @@
   </nav>
 </aside>
 
-{#snippet navItem(section: string, label: string, Icon: typeof Sparkle)}
+{#snippet navItem(section: string, label: string, Icon: typeof Sparkle, count = 0)}
   {@const active = isActive(section)}
   <button
     onclick={() => app.setSection(section)}
@@ -80,7 +85,16 @@
       : ""}
   >
     <Icon size={16} weight={active ? "fill" : "regular"} class="shrink-0" />
-    <span class="truncate">{label}</span>
+    <span class="min-w-0 flex-1 truncate">{label}</span>
+    {#if count > 0}
+      <span
+        class="shrink-0 rounded-full px-1.5 text-[10px]"
+        style={active
+          ? "background: color-mix(in srgb, var(--accent) 22%, transparent)"
+          : "background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent)"}
+        >{count}</span
+      >
+    {/if}
   </button>
 {/snippet}
 

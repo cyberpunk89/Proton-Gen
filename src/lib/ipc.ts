@@ -5,6 +5,7 @@ import type {
   DiffStatus,
   LaunchDiff,
   Notice,
+  RecipeChange,
   Store,
   Tier,
   Token,
@@ -17,6 +18,7 @@ import {
   mockLaunchDiff,
   mockLaunchStatuses,
   mockNotices,
+  mockPreviewRecipe,
 } from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
@@ -65,6 +67,12 @@ export const ipc = {
 
   applyRecipe: (index: number, config: Config) =>
     inTauri ? invoke<Config>("apply_recipe", { index, config }) : Promise.resolve(config),
+
+  // What applying a recipe would change, without changing it.
+  previewRecipe: (index: number, config: Config) =>
+    inTauri
+      ? invoke<RecipeChange[]>("preview_recipe", { index, config })
+      : Promise.resolve(mockPreviewRecipe(index, config)),
 
   lint: (config: Config) =>
     inTauri ? invoke<Notice[]>("lint", { config }) : Promise.resolve(mockNotices),
