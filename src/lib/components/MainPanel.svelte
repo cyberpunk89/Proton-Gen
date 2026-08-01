@@ -268,6 +268,7 @@
       gpu={w.gpu}
       needs={w.needs}
       dim={h.hidden}
+      appliedBy={app.recipeOrigin[h.key] ?? null}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       onToggle={() => app.toggleWrap(w.key)}
@@ -293,6 +294,7 @@
       gpu={e.gpu}
       needs={e.needs}
       dim={h.hidden}
+      appliedBy={app.recipeOrigin[h.key] ?? null}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       onToggle={() => app.toggleEnv(e.key)}

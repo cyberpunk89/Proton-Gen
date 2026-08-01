@@ -4,6 +4,7 @@
   import InfoPopover from "./InfoPopover.svelte";
   import { app } from "$lib/state.svelte";
   import { prefersReducedMotion } from "$lib/motion.svelte";
+  import { Sparkle } from "phosphor-svelte";
 
   let {
     /** Catalog key. Distinct from `title`, which for wrappers is the label. */
@@ -24,6 +25,7 @@
     gpu = null,
     needs = [],
     dim = false,
+    appliedBy = null,
     titleRanges = [],
     helpRanges = [],
     onToggle,
@@ -46,6 +48,8 @@
     gpu?: string | null;
     needs?: string[];
     dim?: boolean;
+    /** Name of the recipe that set this row, if any. */
+    appliedBy?: string | null;
     /** Half-open [start, end) spans to highlight, from the fuzzy matcher. */
     titleRanges?: [number, number][];
     helpRanges?: [number, number][];
@@ -178,6 +182,18 @@
     {/if}
 
     <div class="flex items-center gap-1.5">
+      {#if appliedBy}
+        <!-- Cleared as soon as the row is edited by hand (see disownParam), so
+             the chip never claims a recipe owns a value the user has changed. -->
+        <span
+          class="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]"
+          style="background: color-mix(in srgb, var(--mauve) 16%, transparent); color: var(--mauve)"
+          title="Set by the “{appliedBy}” recipe"
+        >
+          <Sparkle size={9} weight="fill" />
+          {appliedBy}
+        </span>
+      {/if}
       <Badges {requires} {gpu} {needs} />
       <InfoPopover {details} {example} {url} {defaultValue} {values} />
     </div>

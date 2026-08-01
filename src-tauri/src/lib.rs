@@ -45,6 +45,7 @@ pub fn run() {
             ipc::launch_diff,
             ipc::launch_statuses,
             ipc::apply_recipe,
+            ipc::preview_recipe,
             ipc::lint,
             ipc::protondb_url,
             ipc::protondb_fetch,

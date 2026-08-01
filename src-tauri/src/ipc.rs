@@ -411,6 +411,21 @@ pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) ->
     }
 }
 
+/// What applying recipe `index` to `config` would change, without changing it.
+#[tauri::command]
+pub fn preview_recipe(
+    state: State<'_, AppState>,
+    index: usize,
+    config: Config,
+) -> Vec<recipes::RecipeChange> {
+    let catalog = &state.catalog;
+    let Some(recipe) = state.recipes.recipes.get(index) else {
+        return Vec::new();
+    };
+    let options = compose::options_from_config(catalog, &config);
+    recipes::diff(recipe, catalog, &options, &config.extra_env)
+}
+
 /// Conflict / footgun notices for the current config.
 #[tauri::command]
 pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {

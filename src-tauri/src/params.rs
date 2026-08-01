@@ -226,6 +226,10 @@ pub struct OptionState {
 }
 
 /// All option states, parallel to `wrappers` then `envs`.
+///
+/// `Clone` so `recipes::diff` can apply a recipe to a throwaway copy and compare,
+/// keeping `recipes::apply` the single definition of the merge.
+#[derive(Clone, Debug)]
 pub struct Options {
     pub wrappers: Vec<OptionState>,
     pub envs: Vec<OptionState>,

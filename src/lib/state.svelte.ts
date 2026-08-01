@@ -370,18 +370,24 @@ class AppStore {
     this.wrap = wrap;
     this.extraEnv = "";
     this.gameArgs = "";
+    // Attribution describes how the *current* values were reached, so it cannot
+    // outlive them. This also covers undo and preset/game loads, which all funnel
+    // through loadConfig → resetOptions.
+    this.recipeOrigin = {};
   }
 
   toggleEnv(key: string) {
     const s = this.env[key];
     if (!s) return;
     s.enabled = !s.enabled;
+    this.disownParam(key);
     this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setEnvValue(key: string, value: string) {
     const s = this.env[key];
     if (!s) return;
     s.value = value;
+    this.disownParam(key);
     // Typing coalesces into one entry; note() just gives it a real name.
     history.note(`set ${key}`);
   }
@@ -389,13 +395,29 @@ class AppStore {
     const s = this.wrap[key];
     if (!s) return;
     s.enabled = !s.enabled;
+    this.disownParam(key);
     this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
   }
   setWrapValue(key: string, value: string) {
     const s = this.wrap[key];
     if (!s) return;
     s.value = value;
+    this.disownParam(key);
     history.note(`set ${key}`);
+  }
+
+  /**
+   * Which recipe set each parameter, so a row can say where its value came from.
+   * Apply two recipes and there is otherwise no way to attribute any setting.
+   *
+   * Not persisted: it describes how the current state was *reached*, which stops
+   * being true the moment a remembered config is loaded from disk.
+   */
+  recipeOrigin = $state<Record<string, string>>({});
+
+  /** Editing a row by hand makes the attribution false, so drop it. */
+  private disownParam(key: string) {
+    if (this.recipeOrigin[key]) delete this.recipeOrigin[key];
   }
 
   /** Steam vs umu mode. A setter rather than a bare assignment from the toggle
@@ -858,8 +880,15 @@ class AppStore {
   // ------------------------------- recipes ----------------------------------
 
   async applyRecipe(index: number) {
+    const recipe = this.recipes[index];
     const cfg = await ipc.applyRecipe(index, this.toConfig());
     this.loadConfig(cfg);
+    // loadConfig → resetOptions clears the map, so attribute after, not before.
+    if (recipe) {
+      for (const [key] of [...recipe.env, ...recipe.wrappers]) {
+        this.recipeOrigin[key] = recipe.name;
+      }
+    }
     // The most destructive action in the app: recipes.rs is additive-only, so
     // stacking them accumulates with no way back short of a reset.
     this.mark(`apply "${this.recipes[index]?.name ?? "recipe"}"`);

@@ -8,6 +8,7 @@ import type {
   DiffStatus,
   LaunchDiff,
   Notice,
+  RecipeChange,
   Token,
   TokenKind,
 } from "./types";
@@ -380,6 +381,61 @@ export const mockNotices: Notice[] = [
     },
   },
 ];
+
+/**
+ * Stand-in for `recipes::diff`. Unlike `applyRecipe` (a no-op stub, since the
+ * merge itself lives in Rust), this one computes a real answer from the mock
+ * catalog — the preview chip is pure presentation of this data, so a stub would
+ * make it unreviewable under `pnpm dev`.
+ *
+ * Mirrors the Rust classification: off → enable, on with a different value →
+ * value_change, on with the same value → no_op, absent from the catalog →
+ * extra_env (or no_op when already present in the custom-env string).
+ */
+export function mockPreviewRecipe(index: number, config: Config): RecipeChange[] {
+  const recipe = mockBootstrap.recipes[index];
+  if (!recipe) return [];
+
+  const envOn = new Map(config.env);
+  const wrapOn = new Map(config.wrappers);
+  const extra = config.extra_env.split(/\s+/).filter(Boolean);
+  const out: RecipeChange[] = [];
+
+  for (const [key, value] of recipe.wrappers) {
+    if (!mockBootstrap.catalog.wrappers.some((w) => w.key === key)) continue;
+    const from = wrapOn.get(key);
+    out.push({
+      key,
+      kind: from === undefined ? "enable" : value && from !== value ? "value_change" : "no_op",
+      from: from ?? null,
+      to: value || (from ?? ""),
+      is_wrapper: true,
+    });
+  }
+
+  for (const [key, value] of recipe.env) {
+    if (!mockBootstrap.catalog.envs.some((e) => e.key === key)) {
+      out.push({
+        key,
+        kind: extra.includes(`${key}=${value}`) ? "no_op" : "extra_env",
+        from: null,
+        to: value,
+        is_wrapper: false,
+      });
+      continue;
+    }
+    const from = envOn.get(key);
+    out.push({
+      key,
+      kind: from === undefined ? "enable" : from !== value ? "value_change" : "no_op",
+      from: from ?? null,
+      to: value,
+      is_wrapper: false,
+    });
+  }
+
+  return out;
+}
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {
   const env = config.env.map(([k, v]) => `${k}=${v}`);

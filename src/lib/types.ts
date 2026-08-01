@@ -183,6 +183,19 @@ export interface Notice {
   fix: LintFix | null;
 }
 
+/// Mirrors recipes::ChangeKind (serde rename_all = "snake_case").
+export type ChangeKind = "enable" | "value_change" | "no_op" | "extra_env";
+
+/** One key a recipe would touch. `from` is null when the key is currently off
+ *  or lands in custom env. Mirrors recipes::RecipeChange. */
+export interface RecipeChange {
+  key: string;
+  kind: ChangeKind;
+  from: string | null;
+  to: string;
+  is_wrapper: boolean;
+}
+
 /// Mirrors diff::DiffStatus (serde rename_all = "kebab-case").
 export type DiffStatus = "in-sync" | "drifted" | "not-applied" | "umu";
 
