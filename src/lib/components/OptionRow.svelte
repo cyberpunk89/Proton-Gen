@@ -2,8 +2,12 @@
   import Switch from "./Switch.svelte";
   import Badges from "./Badges.svelte";
   import InfoPopover from "./InfoPopover.svelte";
+  import { app } from "$lib/state.svelte";
+  import { prefersReducedMotion } from "$lib/motion.svelte";
 
   let {
+    /** Catalog key. Distinct from `title`, which for wrappers is the label. */
+    paramKey = "",
     enabled = false,
     title,
     mono = false,
@@ -23,6 +27,7 @@
     onToggle,
     onValue,
   }: {
+    paramKey?: string;
     enabled?: boolean;
     title: string;
     mono?: boolean;
@@ -46,10 +51,43 @@
   // The visible title is the switch's accessible name, so it needs an id.
   const uid = $props.id();
   const labelId = `opt-title-${uid}`;
+
+  let row = $state<HTMLDivElement | null>(null);
+  let flash = $state(false);
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Respond to `app.revealParam`. Reads the nonce so a repeat jump to the same
+   * key re-fires; without it the second click on a lint notice would do nothing.
+   *
+   * After `setSection` the target row mounts in the same tick, so this fires
+   * correctly even when the jump crossed a category.
+   */
+  $effect(() => {
+    const target = app.focusParam;
+    if (!target || !paramKey || target.key !== paramKey || !row) return;
+    void target.nonce;
+
+    row.scrollIntoView({
+      block: "center",
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
+    // Focus the switch rather than the row: it is the thing you came here to
+    // operate, and it is already the row's labelled control.
+    row.querySelector<HTMLElement>('[role="switch"]')?.focus();
+
+    flash = true;
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => (flash = false), 1200);
+  });
 </script>
 
 <div
-  class="rounded-xl px-3 py-2 transition-colors {enabled ? '' : 'hover:bg-surface-2/40'}"
+  bind:this={row}
+  id={paramKey ? `param-${paramKey}` : undefined}
+  class="rounded-xl px-3 py-2 transition-colors {enabled
+    ? ''
+    : 'hover:bg-surface-2/40'} {flash ? 'ring-2 ring-accent' : ''}"
   style="{enabled
     ? 'background: color-mix(in srgb, var(--accent) 9%, transparent);'
     : ''}{dim ? 'opacity:.55' : ''}"

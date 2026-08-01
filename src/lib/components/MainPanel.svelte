@@ -131,6 +131,7 @@
       <div class="space-y-0.5">
         {#each wraps as w (w.key)}
           <OptionRow
+            paramKey={w.key}
             enabled={app.wrap[w.key]?.enabled ?? false}
             title={w.label ?? w.key}
             help={w.help}
@@ -151,6 +152,7 @@
         {/each}
         {#each envs as e (e.key)}
           <OptionRow
+            paramKey={e.key}
             enabled={app.env[e.key]?.enabled ?? false}
             title={e.key}
             mono

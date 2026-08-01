@@ -339,9 +339,15 @@ export const mockBootstrap: Bootstrap = {
   config_warnings: [],
 };
 
-// Static stand-in for lint::warnings. Two real rule ids at two severities, one
-// with a fix and one without, so the notices UI can be iterated under
-// `pnpm dev` — the browser mock has no rule engine to derive them from.
+// Static stand-in for lint::warnings. Three real rule ids across three
+// severities, two with a fix and one without, so the notices UI can be iterated
+// under `pnpm dev` — the browser mock has no rule engine to derive them from.
+//
+// `hdr-needs-presentation` earns its place beyond severity coverage: DXVK_HDR is
+// gated behind the opt-in `hdr` capability, so under the mock hardware it is
+// filtered out of the panel. That makes it the one notice here whose jump link
+// exercises revealParam's relevance guard — the case where a jump would
+// otherwise land on a row that isn't rendered.
 export const mockNotices: Notice[] = [
   {
     id: "gplasync-anticheat",
@@ -361,6 +367,17 @@ export const mockNotices: Notice[] = [
     message: "gamescope and PROTON_ENABLE_WAYLAND together can conflict — usually pick one.",
     keys: ["gamescope", "PROTON_ENABLE_WAYLAND"],
     fix: null,
+  },
+  {
+    id: "hdr-needs-presentation",
+    severity: "info",
+    message: "HDR needs PROTON_ENABLE_WAYLAND=1 or gamescope with --hdr-enabled to take effect.",
+    keys: ["DXVK_HDR"],
+    fix: {
+      label: "Enable PROTON_ENABLE_WAYLAND=1",
+      disable: [],
+      enable: [["PROTON_ENABLE_WAYLAND", "1"]],
+    },
   },
 ];
 

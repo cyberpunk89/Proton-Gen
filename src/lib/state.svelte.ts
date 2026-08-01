@@ -3,6 +3,7 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
+import { irrelevance } from "./util";
 import { emptyConfig } from "./types";
 import type {
   Catalog,
@@ -862,6 +863,44 @@ class AppStore {
   setSection(section: string) {
     this.activeSection = section;
     this.paramQuery = "";
+  }
+
+  /**
+   * The row `revealParam` last asked for. `OptionRow` watches this and scrolls,
+   * focuses and flashes itself on a match.
+   *
+   * The nonce is load-bearing: a bare `string | null` would not change when the
+   * same key is requested twice, so clicking the same lint notice a second time
+   * would silently do nothing.
+   */
+  focusParam = $state<{ key: string; nonce: number } | null>(null);
+  private focusNonce = 0;
+
+  /**
+   * Navigate to, scroll to and focus a parameter by catalog key. Built once here
+   * because lint click-to-jump (#48) and the command palette (#54) both need it.
+   *
+   * Returns false when the key isn't in the catalog at all, so a caller can say
+   * so rather than appearing to do nothing.
+   */
+  revealParam(key: string): boolean {
+    const env = this.catalog.envs.find((e) => e.key === key);
+    const wrapper = env ? null : this.catalog.wrappers.find((w) => w.key === key);
+    const def = env ?? wrapper;
+    if (!def) return false;
+
+    // The relevance guard, and the non-obvious part of this whole primitive:
+    // MainPanel filters hardware-irrelevant rows out entirely, so jumping to one
+    // would land on nothing. Not hypothetical — the nvapi-without-nvidia notice
+    // is *precisely* about a hardware-irrelevant option, so its jump link would
+    // fail exactly when it matters most.
+    if (!this.store.show_irrelevant && irrelevance(this.hwCaps, def.gpu, def.needs)) {
+      this.setShowIrrelevant(true);
+    }
+
+    this.setSection(env ? env.category : "Wrappers");
+    this.focusParam = { key, nonce: ++this.focusNonce };
+    return true;
   }
 
   /** Hardware facts plus the opt-in HDR/FSR capabilities, for relevance filtering. */
