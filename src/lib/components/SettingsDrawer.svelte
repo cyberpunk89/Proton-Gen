@@ -5,16 +5,7 @@
   import { fly, fade } from "$lib/motion.svelte";
   import { Dialog as DialogPrimitive } from "bits-ui";
   import Switch from "./Switch.svelte";
-  import MangoHud from "./MangoHud.svelte";
-  import {
-    GearSix,
-    Palette,
-    Gauge,
-    SlidersHorizontal,
-    Check,
-    X,
-    CaretDown,
-  } from "phosphor-svelte";
+  import { GearSix, Palette, SlidersHorizontal, Check, X, CaretDown } from "phosphor-svelte";
   import type { Component } from "svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -26,9 +17,8 @@
     return () => keys.popOverlay();
   });
 
-  // Sections are collapsible; all start collapsed to keep the (now larger)
-  // drawer tidy.
-  let sections = $state({ appearance: false, behavior: false, overlay: false });
+  // Sections are collapsible; all start collapsed to keep the drawer tidy.
+  let sections = $state({ appearance: false, behavior: false });
 </script>
 
 <!--
@@ -143,21 +133,6 @@
               () => app.setProtondbAuto(!app.store.protondb_auto),
             )}
           </div>
-          {/if}
-        </section>
-
-        <!-- Overlay -->
-        <section>
-          {@render sectionHeading(
-            Gauge,
-            "MangoHud overlay",
-            sections.overlay,
-            () => (sections.overlay = !sections.overlay),
-          )}
-          {#if sections.overlay}
-            <div id="drawer-section-mangohud-overlay" class="mt-2">
-              <MangoHud />
-            </div>
           {/if}
         </section>
       </div>

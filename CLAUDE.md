@@ -23,7 +23,8 @@ src/                     FRONTEND (Svelte 5 + TS + Tailwind)
   lib/state.svelte.ts    single reactive store (runes) — the source of truth
   lib/ipc.ts + mock.ts   typed Tauri invoke + browser-dev mock fallback
   lib/types.ts           TS DTOs that MIRROR the Rust serde structs in ipc.rs
-  lib/util.ts            irrelevance() (mirrors hardware.rs), matches(), helpers
+  lib/util.ts            irrelevance() (mirrors hardware.rs), matches(), tier colours
+  lib/mangohud.ts        pure MANGOHUD_CONFIG parse/build for the overlay builder
   lib/components/*.svelte Hero, GamePicker, RuntimePicker, UmuFields, Parameters, …
   app.css + lib/themes.ts design tokens + 10 themes
 src-tauri/               BACKEND (Rust / Tauri)

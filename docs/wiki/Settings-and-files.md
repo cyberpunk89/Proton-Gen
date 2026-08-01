@@ -30,7 +30,7 @@ Two ways to pull settings in rather than building them up:
 
 ## Settings
 
-Open with the gear in the header. Three collapsible sections.
+Open with the gear in the header. Two collapsible sections.
 
 ### Appearance
 
@@ -50,9 +50,13 @@ instantly and the choice persists. Latte is the only light theme.
 The two hardware declarations are explained in
 [Recipes and troubleshooting](Recipes-and-troubleshooting#the-two-things-it-cant-detect).
 
-### MangoHud overlay
+## The MangoHud overlay builder
 
 A builder for the MangoHud on-screen overlay, with a live preview of what it'll look like.
+
+Open it with **Configure overlay…** — the button sits on the `mangohud` row under *Wrappers*
+and on the `MANGOHUD_CONFIG` row under *Logging / Debug*, whichever you reach first. (It used
+to live inside the settings drawer, two levels away from the toggle it controls.)
 
 Two modes:
 
@@ -64,7 +68,7 @@ Two modes:
 
 Either way it also switches on the `mangohud` wrapper for you. The builder reads an existing
 config back in, so loading a preset or importing a command repopulates the controls rather than
-starting blank.
+starting blank — including while it's open, so an undo is reflected immediately.
 
 ## Where things are stored
 

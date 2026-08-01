@@ -69,7 +69,10 @@
                 <X size={16} />
               </DialogPrimitive.Close>
             </div>
-            <div class="mt-4">
+            <!-- The body scrolls, not the page: `pt-[12vh]` above means an
+                 over-tall dialog would otherwise run off the bottom of the
+                 viewport with no way to reach its footer. -->
+            <div class="mt-4 max-h-[70vh] overflow-y-auto">
               {@render children()}
             </div>
           </div>

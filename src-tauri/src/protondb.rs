@@ -12,7 +12,9 @@ pub struct Tier {
     pub tier: String,
     pub total: u64,
     pub confidence: String,
-    /// Parsed from the API; surfaced in the chip hover.
+    /// Rendered beside the overall tier when they disagree with it — a
+    /// trending tier below `tier` is a recent regression, which is exactly the
+    /// thing worth knowing before you tune launch options.
     pub trending: String,
     pub best: String,
 }
