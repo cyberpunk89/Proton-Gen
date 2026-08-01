@@ -85,11 +85,14 @@ export const ipc = {
   protondbFetch: (appid: number) =>
     inTauri
       ? invoke<Tier>("protondb_fetch", { appid })
-      : Promise.resolve<Tier>({
+      : // Deliberately a game that has regressed: trending below the overall
+        // tier and a better best-reported, so the dev path exercises both of
+        // the chip's secondary readouts.
+        Promise.resolve<Tier>({
           tier: "gold",
           total: 421,
           confidence: "strong",
-          trending: "gold",
+          trending: "silver",
           best: "platinum",
         }),
 
