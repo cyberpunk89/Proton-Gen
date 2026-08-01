@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
-  import { matches, irrelevance } from "$lib/util";
+  import { irrelevance } from "$lib/util";
+  import { fuzzy } from "$lib/fuzzy";
   import OptionRow from "./OptionRow.svelte";
   import Recipes from "./Recipes.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
@@ -25,52 +26,135 @@
     return "select";
   }
 
-  // ---- the parameters shown for the current view (a category, or search) ----
-  let envs = $derived(
-    searching
-      ? app.catalog.envs.filter(
-          (e) =>
-            matches(q, [e.key, e.help, e.details ?? "", e.category]) &&
-            (showAll || !reason(e)),
-        )
-      : app.activeSection === "Wrappers"
-        ? []
-        : app.catalog.envs.filter(
-            (e) =>
-              e.category === app.activeSection && (showAll || !reason(e)),
-          ),
-  );
-  let wraps = $derived(
-    searching
-      ? app.catalog.wrappers.filter(
-          (w) =>
-            matches(q, [w.key, w.label ?? "", w.help, w.details ?? ""]) &&
-            (showAll || !reason(w)),
-        )
-      : app.activeSection === "Wrappers"
-        ? app.catalog.wrappers.filter((w) => showAll || !reason(w))
-        : [],
-  );
+  /** One entry per catalog item that survives the current view's filter. */
+  interface Hit {
+    kind: "env" | "wrap";
+    def: EnvDef | WrapperDef;
+    key: string;
+    /** The visible label: the env key, or a wrapper's label. */
+    label: string;
+    group: string;
+    score: number;
+    titleRanges: [number, number][];
+    helpRanges: [number, number][];
+    /** Filtered out by hardware relevance unless "Show all" is on. */
+    hidden: boolean;
+  }
 
-  let anyShown = $derived(envs.length + wraps.length > 0);
-  let title = $derived(
-    searching ? `Results for “${q.trim()}”` : app.activeSection,
-  );
+  /**
+   * A single traversal of the catalog, replacing four independent passes that
+   * each re-ran the same predicate over all 87 items on every keystroke — `envs`,
+   * `wraps` and `hiddenCount` (twice) all derived it separately.
+   *
+   * Emits everything downstream needs: matches, scores, highlight ranges, and the
+   * hidden flag, so `hiddenCount` is a filter over this array rather than another
+   * two traversals.
+   */
+  let hits = $derived.by((): Hit[] => {
+    const out: Hit[] = [];
+    const query = q.trim();
 
-  // Options hidden by hardware relevance in this view (drives the show-all line).
-  let hiddenCount = $derived.by(() => {
-    const wf = (w: WrapperDef) =>
-      searching
-        ? matches(q, [w.key, w.label ?? "", w.help, w.details ?? ""])
-        : app.activeSection === "Wrappers";
-    const ef = (e: EnvDef) =>
-      searching
-        ? matches(q, [e.key, e.help, e.details ?? "", e.category])
-        : e.category === app.activeSection;
-    const w = app.catalog.wrappers.filter((it) => wf(it) && !!reason(it)).length;
-    const e = app.catalog.envs.filter((it) => ef(it) && !!reason(it)).length;
-    return w + e;
+    for (const e of app.catalog.envs) {
+      if (!searching && e.category !== app.activeSection) continue;
+      if (searching) {
+        const t = fuzzy(e.key, query, [e.category]);
+        const h = fuzzy(e.help, query);
+        if (!t && !h) continue;
+        out.push({
+          kind: "env",
+          def: e,
+          key: e.key,
+          label: e.key,
+          group: e.category,
+          // A title hit is worth more than a help hit: people search for the
+          // variable they half-remember, not for prose about it.
+          score: (t?.score ?? 0) * 2 + (h?.score ?? 0),
+          titleRanges: t?.ranges ?? [],
+          helpRanges: h?.ranges ?? [],
+          hidden: !!reason(e),
+        });
+      } else {
+        out.push({
+          kind: "env",
+          def: e,
+          key: e.key,
+          label: e.key,
+          group: e.category,
+          score: 0,
+          titleRanges: [],
+          helpRanges: [],
+          hidden: !!reason(e),
+        });
+      }
+    }
+
+    for (const w of app.catalog.wrappers) {
+      if (!searching && app.activeSection !== "Wrappers") continue;
+      const label = w.label ?? w.key;
+      if (searching) {
+        const t = fuzzy(label, query, [w.key, "wrappers"]);
+        const h = fuzzy(w.help, query);
+        if (!t && !h) continue;
+        out.push({
+          kind: "wrap",
+          def: w,
+          key: w.key,
+          label,
+          group: "Wrappers",
+          score: (t?.score ?? 0) * 2 + (h?.score ?? 0),
+          titleRanges: t?.ranges ?? [],
+          helpRanges: h?.ranges ?? [],
+          hidden: !!reason(w),
+        });
+      } else {
+        out.push({
+          kind: "wrap",
+          def: w,
+          key: w.key,
+          label,
+          group: "Wrappers",
+          score: 0,
+          titleRanges: [],
+          helpRanges: [],
+          hidden: !!reason(w),
+        });
+      }
+    }
+    return out;
   });
+
+  let visible = $derived(hits.filter((h) => showAll || !h.hidden));
+  let hiddenCount = $derived(hits.filter((h) => h.hidden).length);
+  let anyShown = $derived(visible.length > 0);
+
+  /** Search results grouped by category, groups ordered by their best member. */
+  let groups = $derived.by(() => {
+    if (!searching) return [];
+    const by = new Map<string, Hit[]>();
+    for (const h of visible) {
+      const list = by.get(h.group);
+      if (list) list.push(h);
+      else by.set(h.group, [h]);
+    }
+    return [...by.entries()]
+      .map(([name, items]) => ({
+        name,
+        items: [...items].sort((a, b) => b.score - a.score),
+        best: Math.max(...items.map((i) => i.score)),
+      }))
+      .sort((a, b) => b.best - a.best);
+  });
+
+  let title = $derived(searching ? `Results for “${q.trim()}”` : app.activeSection);
+  let resultSummary = $derived(
+    `${visible.length} match${visible.length === 1 ? "" : "es"} in ${groups.length} categor${
+      groups.length === 1 ? "y" : "ies"
+    }`,
+  );
+
+  /** Wrappers first in a category view, matching the previous ordering. */
+  let sectionWraps = $derived(visible.filter((h) => h.kind === "wrap"));
+  let sectionEnvs = $derived(visible.filter((h) => h.kind === "env"));
 </script>
 
 {#if searching}
@@ -92,6 +176,9 @@
         <Faders size={18} class="text-accent" />
       {/if}
       <h2 class="text-sm font-medium tracking-wide text-text">{title}</h2>
+      {#if searching}
+        <span class="text-xs text-muted">· {resultSummary}</span>
+      {/if}
     </div>
 
     {#if hiddenCount > 0}
@@ -127,53 +214,84 @@
           >
         {/if}
       </div>
+    {:else if searching}
+      <!-- Grouped so a 40-result query reads as a map of the catalog rather than
+           a flat wall. Groups ordered by their best member, items by score. -->
+      <div class="space-y-4">
+        {#each groups as g (g.name)}
+          <div>
+            <p class="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted">
+              {g.name}
+            </p>
+            <div class="space-y-0.5">
+              {#each g.items as h (h.kind + h.key)}
+                {@render row(h)}
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
     {:else}
       <div class="space-y-0.5">
-        {#each wraps as w (w.key)}
-          <OptionRow
-            paramKey={w.key}
-            enabled={app.wrap[w.key]?.enabled ?? false}
-            title={w.label ?? w.key}
-            help={w.help}
-            details={w.details}
-            example={w.example}
-            url={w.url}
-            defaultValue={w.default_value}
-            valueField={w.kind === "gamescope" ? "text" : "none"}
-            value={app.wrap[w.key]?.value ?? ""}
-            placeholder="-W 2560 -H 1440 -f"
-            requires={w.requires}
-            gpu={w.gpu}
-            needs={w.needs}
-            dim={!!reason(w)}
-            onToggle={() => app.toggleWrap(w.key)}
-            onValue={(v) => app.setWrapValue(w.key, v)}
-          />
+        {#each sectionWraps as h (h.key)}
+          {@render row(h)}
         {/each}
-        {#each envs as e (e.key)}
-          <OptionRow
-            paramKey={e.key}
-            enabled={app.env[e.key]?.enabled ?? false}
-            title={e.key}
-            mono
-            help={e.help}
-            details={e.details}
-            example={e.example}
-            url={e.url}
-            defaultValue={e.default_value}
-            values={e.values}
-            valueField={envValueField(e.values.length)}
-            value={app.env[e.key]?.value ?? ""}
-            placeholder={e.default_value || "value"}
-            requires={e.requires}
-            gpu={e.gpu}
-            needs={e.needs}
-            dim={!!reason(e)}
-            onToggle={() => app.toggleEnv(e.key)}
-            onValue={(v) => app.setEnvValue(e.key, v)}
-          />
+        {#each sectionEnvs as h (h.key)}
+          {@render row(h)}
         {/each}
       </div>
     {/if}
   </section>
+{/snippet}
+
+{#snippet row(h: Hit)}
+  {#if h.kind === "wrap"}
+    {@const w = h.def as WrapperDef}
+    <OptionRow
+      paramKey={w.key}
+      enabled={app.wrap[w.key]?.enabled ?? false}
+      title={h.label}
+      help={w.help}
+      details={w.details}
+      example={w.example}
+      url={w.url}
+      defaultValue={w.default_value}
+      valueField={w.kind === "gamescope" ? "text" : "none"}
+      value={app.wrap[w.key]?.value ?? ""}
+      placeholder="-W 2560 -H 1440 -f"
+      requires={w.requires}
+      gpu={w.gpu}
+      needs={w.needs}
+      dim={h.hidden}
+      titleRanges={h.titleRanges}
+      helpRanges={h.helpRanges}
+      onToggle={() => app.toggleWrap(w.key)}
+      onValue={(v) => app.setWrapValue(w.key, v)}
+    />
+  {:else}
+    {@const e = h.def as EnvDef}
+    <OptionRow
+      paramKey={e.key}
+      enabled={app.env[e.key]?.enabled ?? false}
+      title={e.key}
+      mono
+      help={e.help}
+      details={e.details}
+      example={e.example}
+      url={e.url}
+      defaultValue={e.default_value}
+      values={e.values}
+      valueField={envValueField(e.values.length)}
+      value={app.env[e.key]?.value ?? ""}
+      placeholder={e.default_value || "value"}
+      requires={e.requires}
+      gpu={e.gpu}
+      needs={e.needs}
+      dim={h.hidden}
+      titleRanges={h.titleRanges}
+      helpRanges={h.helpRanges}
+      onToggle={() => app.toggleEnv(e.key)}
+      onValue={(v) => app.setEnvValue(e.key, v)}
+    />
+  {/if}
 {/snippet}

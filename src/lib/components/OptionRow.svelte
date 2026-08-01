@@ -24,6 +24,8 @@
     gpu = null,
     needs = [],
     dim = false,
+    titleRanges = [],
+    helpRanges = [],
     onToggle,
     onValue,
   }: {
@@ -44,9 +46,35 @@
     gpu?: string | null;
     needs?: string[];
     dim?: boolean;
+    /** Half-open [start, end) spans to highlight, from the fuzzy matcher. */
+    titleRanges?: [number, number][];
+    helpRanges?: [number, number][];
     onToggle: () => void;
     onValue?: (v: string) => void;
   } = $props();
+
+  /**
+   * Slice a string into plain/highlighted alternating parts.
+   *
+   * Deliberately not `{@html}` with <mark> injected: params.toml is overridable
+   * from $XDG_CONFIG_HOME, so help text is untrusted-ish input and must never be
+   * parsed as markup.
+   */
+  function segments(text: string, ranges: [number, number][]) {
+    if (!ranges.length) return [{ text, hit: false }];
+    const out: { text: string; hit: boolean }[] = [];
+    let at = 0;
+    for (const [start, end] of ranges) {
+      if (start >= text.length) break;
+      const s = Math.max(at, start);
+      const e = Math.min(text.length, end);
+      if (s > at) out.push({ text: text.slice(at, s), hit: false });
+      if (e > s) out.push({ text: text.slice(s, e), hit: true });
+      at = Math.max(at, e);
+    }
+    if (at < text.length) out.push({ text: text.slice(at), hit: false });
+    return out;
+  }
 
   // The visible title is the switch's accessible name, so it needs an id.
   const uid = $props.id();
@@ -102,7 +130,11 @@
         ? 500
         : 400}"
     >
-      {title}
+      {#each segments(title, titleRanges) as seg, i (i)}{#if seg.hit}<mark
+            class="rounded-[3px] bg-transparent text-inherit"
+            style="background: color-mix(in srgb, var(--accent) 25%, transparent)"
+            >{seg.text}</mark
+          >{:else}{seg.text}{/if}{/each}
     </span>
 
     {#if valueField === "text"}
@@ -152,6 +184,12 @@
   </div>
 
   {#if help}
-    <p class="mt-1 pl-[50px] text-xs leading-snug text-muted">{help}</p>
+    <p class="mt-1 pl-[50px] text-xs leading-snug text-muted">
+      {#each segments(help, helpRanges) as seg, i (i)}{#if seg.hit}<mark
+            class="rounded-[3px] bg-transparent text-inherit"
+            style="background: color-mix(in srgb, var(--accent) 25%, transparent)"
+            >{seg.text}</mark
+          >{:else}{seg.text}{/if}{/each}
+    </p>
   {/if}
 </div>
