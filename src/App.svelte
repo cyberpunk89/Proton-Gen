@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { fade } from "$lib/motion.svelte";
   import { app } from "$lib/state.svelte";
+  import { keys } from "$lib/keys.svelte";
   import Header from "$lib/components/Header.svelte";
   import NavRail from "$lib/components/NavRail.svelte";
   import MainPanel from "$lib/components/MainPanel.svelte";
@@ -11,6 +12,8 @@
   import StaleBanner from "$lib/components/StaleBanner.svelte";
   import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import Toast from "$lib/components/Toast.svelte";
+  import ShortcutsSheet from "$lib/components/ShortcutsSheet.svelte";
+  import CommandPalette from "$lib/components/CommandPalette.svelte";
   import { CircleNotch, WarningCircle, ArrowsClockwise, Copy } from "phosphor-svelte";
   import { copyText } from "$lib/util";
 
@@ -18,35 +21,9 @@
     app.init();
   });
 
-  /**
-   * Undo/redo bindings. A deliberate stopgap: Epic 7's keys.svelte.ts (#53)
-   * owns the single key-handling layer and absorbs this.
-   *
-   * Scoped to the builder because that is where the state it rewinds is
-   * visible; rewinding invisibly from the library grid would be a magic trick.
-   */
-  function onKeydown(e: KeyboardEvent) {
-    if (!app.ready || app.view !== "builder") return;
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-
-    // Native undo owns text fields, and it is the better answer there.
-    const t = e.target;
-    if (t instanceof HTMLElement && t.closest("input, textarea, [contenteditable]")) {
-      return;
-    }
-
-    const k = e.key.toLowerCase();
-    if (k === "z" && !e.shiftKey) {
-      e.preventDefault();
-      app.undo();
-    } else if ((k === "z" && e.shiftKey) || k === "y") {
-      e.preventDefault();
-      app.redo();
-    }
-  }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={keys.handle} />
 
 {#snippet loadErrorBanner()}
   {#if app.loadError}
@@ -167,4 +144,6 @@
   </div>
 {/if}
 
+<ShortcutsSheet />
+<CommandPalette />
 <Toast />

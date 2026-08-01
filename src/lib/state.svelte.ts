@@ -137,6 +137,8 @@ class AppStore {
   showImport = $state(false);
   showSave = $state(false);
   showSettings = $state(false);
+  showPalette = $state(false);
+  showShortcuts = $state(false);
 
   // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
   //   undefined = not requested/loading · null = none found · string = data URL
