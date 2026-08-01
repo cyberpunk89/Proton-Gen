@@ -129,6 +129,12 @@ export interface Store {
   hdr: boolean;
   fsr4: boolean;
   protondb_auto: boolean;
+  /** Appids pinned to the top of the library under every sort. A Rust
+   *  `BTreeSet<u32>`, so it arrives sorted and must be sent back without
+   *  duplicates. */
+  favorites: number[];
+  /** Last-used library sort: "recent" | "alpha" | "tuned" ("" before first use). */
+  library_sort: string;
   last_session: Config | null;
   last_game_appid: number | null;
 }

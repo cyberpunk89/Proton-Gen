@@ -18,6 +18,7 @@ import type {
   StaleInfo,
   Store,
   SyncState,
+  Tier,
   Token,
   UpdateInfo,
 } from "./types";
@@ -43,11 +44,23 @@ const EMPTY_STORE: Store = {
   hdr: false,
   fsr4: false,
   protondb_auto: false,
+  favorites: [],
+  library_sort: "",
   last_session: null,
   last_game_appid: null,
 };
 
+/** Library sort ids. Kept here because both the toolbar and the comparator in
+ *  `Library.svelte` need to agree on them, and the persisted value is a bare
+ *  string that may predate any of them. */
+export type LibrarySort = "recent" | "alpha" | "tuned";
+export const DEFAULT_LIBRARY_SORT: LibrarySort = "recent";
+
 export type ArtKind = "portrait" | "hero" | "header";
+
+/** Simultaneous art lookups. Bounded because the grid now requests art for
+ *  every tile that scrolls near the viewport instead of a fixed first-N. */
+const ART_CONCURRENCY = 12;
 
 /** Single source of truth for the whole UI, backed by Svelte 5 runes. */
 class AppStore {
@@ -128,6 +141,12 @@ class AppStore {
   //   undefined = not requested/loading · null = none found · string = data URL
   artCache = $state<Record<string, string | null>>({});
   private artRequested = new Set<string>();
+  /** Art fetches currently awaiting IPC, and the backlog behind them. Each call
+   *  is a Tauri round-trip returning a base64 data URL, so scrolling fast through
+   *  a few thousand tiles would otherwise fan out into thousands of concurrent
+   *  requests. */
+  private artInFlight = 0;
+  private artQueue: Array<() => void> = [];
 
   /** Last build_command failure, rendered inline in the command bar. */
   buildError = $state<string | null>(null);
@@ -299,6 +318,9 @@ class AppStore {
     } finally {
       this.refreshing = false;
     }
+    // A refresh is the user asking for a fresh look, so give art that came back
+    // empty another chance rather than leaving those tiles blank all session.
+    this.retryFailedArt();
     // launchOptions just changed, so every badge is potentially stale.
     this.refreshLaunchStatuses();
   }
@@ -864,6 +886,34 @@ class AppStore {
     this.persistStore();
   }
 
+  // ------------------------------ library view ------------------------------
+
+  isFavorite(appId: number): boolean {
+    return this.store.favorites.includes(appId);
+  }
+
+  toggleFavorite(appId: number) {
+    // Mirrors a Rust BTreeSet: no duplicates, and kept sorted so the persisted
+    // TOML stays stable rather than reordering on every toggle.
+    const next = this.store.favorites.filter((id) => id !== appId);
+    if (next.length === this.store.favorites.length) next.push(appId);
+    next.sort((a, b) => a - b);
+    this.store.favorites = next;
+    this.persistStore();
+  }
+
+  /** The persisted sort, falling back when the stored string is empty (first
+   *  run) or an id written by a newer build. */
+  get librarySort(): LibrarySort {
+    const s = this.store.library_sort;
+    return s === "recent" || s === "alpha" || s === "tuned" ? s : DEFAULT_LIBRARY_SORT;
+  }
+
+  setLibrarySort(s: LibrarySort) {
+    this.store.library_sort = s;
+    this.persistStore();
+  }
+
   // -------------------------------- game art --------------------------------
 
   private artKey(appId: number, source: string, kind: ArtKind): string {
@@ -880,11 +930,85 @@ class AppStore {
     const key = this.artKey(appId, source, kind);
     if (this.artRequested.has(key)) return;
     this.artRequested.add(key);
+
     // "Local + online fallback" per the user's choice: allow the CDN backstop.
+    const run = () => {
+      this.artInFlight++;
+      ipc
+        .gameArt(appId, source, kind, true)
+        .then((url) => (this.artCache[key] = url))
+        .catch(() => (this.artCache[key] = null))
+        .finally(() => {
+          this.artInFlight--;
+          this.artQueue.shift()?.();
+        });
+    };
+
+    if (this.artInFlight < ART_CONCURRENCY) run();
+    else this.artQueue.push(run);
+  }
+
+  /**
+   * Retry art that previously came back empty.
+   *
+   * `artRequested` is a permanent "don't ask twice" set, which is right for the
+   * steady state but means a lookup that failed once stays blank for the rest of
+   * the session. A library refresh is the natural moment to try again — but only
+   * for the failures: successes stay cached so a refresh doesn't re-fetch every
+   * tile the user can already see.
+   */
+  private retryFailedArt() {
+    for (const [key, value] of Object.entries(this.artCache)) {
+      if (value === null) {
+        delete this.artCache[key];
+        this.artRequested.delete(key);
+      }
+    }
+    // Anything still queued was scheduled against the pre-refresh library.
+    this.artQueue.length = 0;
+  }
+
+  // ------------------------------- protondb ---------------------------------
+
+  /**
+   * Session cache for ProtonDB tiers, mirroring the art cache above: switching
+   * between two games used to refetch both every time, which is needless load on
+   * an unofficial third-party API of unknown rate limits.
+   *
+   * Session-only on purpose. A persisted TTL cache needs a `Store` field, a
+   * clock, an eviction policy and `Tier: Deserialize` — worth measuring for
+   * first, and it would have to respect the wholesale-overwrite hazard in #43.
+   */
+  tierCache = $state<Record<string, Tier | null>>({});
+  private tierRequested = new Set<number>();
+  /** Appids with a fetch in flight, so the chip can show a spinner. */
+  tierLoading = $state<Record<string, boolean>>({});
+
+  /** Cached tier, `null` if the lookup failed, `undefined` if never requested. */
+  tierFor(appId: number): Tier | null | undefined {
+    return this.tierCache[String(appId)];
+  }
+
+  /** Fetch a tier at most once per session. Safe to call repeatedly. */
+  requestTier(appId: number) {
+    if (this.tierRequested.has(appId)) return;
+    this.tierRequested.add(appId);
+    this.tierLoading[String(appId)] = true;
     ipc
-      .gameArt(appId, source, kind, true)
-      .then((url) => (this.artCache[key] = url))
-      .catch(() => (this.artCache[key] = null));
+      .protondbFetch(appId)
+      .then((t) => (this.tierCache[String(appId)] = t))
+      .catch((e) => {
+        console.error("protondbFetch failed", appId, e);
+        this.tierCache[String(appId)] = null;
+      })
+      .finally(() => (this.tierLoading[String(appId)] = false));
+  }
+
+  /** Drop a failed lookup so the chip's Retry can try again. */
+  retryTier(appId: number) {
+    this.tierRequested.delete(appId);
+    delete this.tierCache[String(appId)];
+    this.requestTier(appId);
   }
 
   dismissStale() {
