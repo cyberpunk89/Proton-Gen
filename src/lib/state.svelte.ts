@@ -58,6 +58,10 @@ export const DEFAULT_LIBRARY_SORT: LibrarySort = "recent";
 
 export type ArtKind = "portrait" | "hero" | "header";
 
+/** Simultaneous art lookups. Bounded because the grid now requests art for
+ *  every tile that scrolls near the viewport instead of a fixed first-N. */
+const ART_CONCURRENCY = 12;
+
 /** Single source of truth for the whole UI, backed by Svelte 5 runes. */
 class AppStore {
   // ---- bootstrap data (mostly immutable) ----
@@ -137,6 +141,12 @@ class AppStore {
   //   undefined = not requested/loading · null = none found · string = data URL
   artCache = $state<Record<string, string | null>>({});
   private artRequested = new Set<string>();
+  /** Art fetches currently awaiting IPC, and the backlog behind them. Each call
+   *  is a Tauri round-trip returning a base64 data URL, so scrolling fast through
+   *  a few thousand tiles would otherwise fan out into thousands of concurrent
+   *  requests. */
+  private artInFlight = 0;
+  private artQueue: Array<() => void> = [];
 
   /** Last build_command failure, rendered inline in the command bar. */
   buildError = $state<string | null>(null);
@@ -308,6 +318,9 @@ class AppStore {
     } finally {
       this.refreshing = false;
     }
+    // A refresh is the user asking for a fresh look, so give art that came back
+    // empty another chance rather than leaving those tiles blank all session.
+    this.retryFailedArt();
     // launchOptions just changed, so every badge is potentially stale.
     this.refreshLaunchStatuses();
   }
@@ -917,11 +930,42 @@ class AppStore {
     const key = this.artKey(appId, source, kind);
     if (this.artRequested.has(key)) return;
     this.artRequested.add(key);
+
     // "Local + online fallback" per the user's choice: allow the CDN backstop.
-    ipc
-      .gameArt(appId, source, kind, true)
-      .then((url) => (this.artCache[key] = url))
-      .catch(() => (this.artCache[key] = null));
+    const run = () => {
+      this.artInFlight++;
+      ipc
+        .gameArt(appId, source, kind, true)
+        .then((url) => (this.artCache[key] = url))
+        .catch(() => (this.artCache[key] = null))
+        .finally(() => {
+          this.artInFlight--;
+          this.artQueue.shift()?.();
+        });
+    };
+
+    if (this.artInFlight < ART_CONCURRENCY) run();
+    else this.artQueue.push(run);
+  }
+
+  /**
+   * Retry art that previously came back empty.
+   *
+   * `artRequested` is a permanent "don't ask twice" set, which is right for the
+   * steady state but means a lookup that failed once stays blank for the rest of
+   * the session. A library refresh is the natural moment to try again — but only
+   * for the failures: successes stay cached so a refresh doesn't re-fetch every
+   * tile the user can already see.
+   */
+  private retryFailedArt() {
+    for (const [key, value] of Object.entries(this.artCache)) {
+      if (value === null) {
+        delete this.artCache[key];
+        this.artRequested.delete(key);
+      }
+    }
+    // Anything still queued was scheduled against the pre-refresh library.
+    this.artQueue.length = 0;
   }
 
   // ------------------------------- protondb ---------------------------------
