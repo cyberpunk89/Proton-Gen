@@ -407,7 +407,7 @@ frontend side.
 | Shell | `Header`, `StaleBanner`, `Toast` | Top bar (import/save/settings), staleness banner, transient toasts. |
 | Hero builder | `Hero`, `GamePicker`, `RuntimePicker`, `ModeToggle`, `UmuFields`, `CommandPreview`, `ProtonDbChip` | The searchable game picker, Proton dropdown, Steam⇄umu toggle, live copyable preview, ProtonDB chip. "Advanced" (runtime/args/custom-env) stays collapsed until needed or auto-opened in umu mode / when populated. |
 | Discovery | `Recipes`, `Parameters`, `OptionRow`, `InfoPopover`, `Badges` | Recipe cards (profiles + troubleshooter), collapsible searchable parameter categories, per-row toggle/value with ⓘ popover and installed/missing badges. |
-| Helpers | `MangoHud`, `SettingsDrawer`, `Notices`, `Switch`, `Dialog`, `Popover` | MangoHud config builder, settings drawer (theme/relevance/HDR/ProtonDB), conflict notices, primitives. |
+| Helpers | `MangoHud`, `SettingsDrawer`, `Notices`, `Switch`, `Dialog`, `Popover` | MangoHud config builder — opened as a dialog from the `mangohud` / `MANGOHUD_CONFIG` rows via `OptionRow`'s generic `action` snippet, with its string↔struct logic in `lib/mangohud.ts` — settings drawer (theme/relevance/HDR/ProtonDB), conflict notices, primitives. |
 
 ### 5.5 Theming (`app.css` + `themes.ts`)
 
@@ -565,6 +565,7 @@ Proton-gui/
 │       ├── ipc.ts · mock.ts   typed invoke + browser fallback
 │       ├── types.ts           DTOs mirroring the Rust serde structs
 │       ├── themes.ts · toast.svelte.ts · actions.ts · util.ts
+│       ├── mangohud.ts        MANGOHUD_CONFIG parse/build (pure)
 │       └── components/*.svelte hero · recipes · parameters · dialogs · …
 └── src-tauri/                 BACKEND (Rust / Tauri)
     ├── Cargo.toml · tauri.conf.json · build.rs

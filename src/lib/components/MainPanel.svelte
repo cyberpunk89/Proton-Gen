@@ -6,8 +6,17 @@
   import Recipes from "./Recipes.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
   import ActiveOptions from "./ActiveOptions.svelte";
-  import { MagnifyingGlass, Faders } from "phosphor-svelte";
+  import Dialog from "./Dialog.svelte";
+  import MangoHud from "./MangoHud.svelte";
+  import { MagnifyingGlass, Faders, Gauge } from "phosphor-svelte";
   import type { EnvDef, WrapperDef } from "$lib/types";
+
+  /**
+   * The overlay builder. Lives here rather than inside the row so it survives a
+   * section change (or the row scrolling out of a search result) while open,
+   * and so both of its entry points share one instance.
+   */
+  let mangoOpen = $state(false);
 
   let showAll = $derived(app.store.show_irrelevant);
   const q = $derived(app.paramQuery);
@@ -249,6 +258,29 @@
   </section>
 {/snippet}
 
+<!--
+  Wired to the `mangohud` wrapper *and* the MANGOHUD_CONFIG env row: those are
+  the two places someone looks for it, and neither is obviously the "real" one.
+-->
+{#snippet configureOverlay()}
+  <button
+    type="button"
+    onclick={() => (mangoOpen = true)}
+    class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+  >
+    <Gauge size={13} /> Configure overlay…
+  </button>
+{/snippet}
+
+<Dialog
+  bind:open={mangoOpen}
+  title="MangoHud overlay"
+  subtitle="Build the overlay, then apply it to the launch command."
+  width="46rem"
+>
+  <MangoHud onapply={() => (mangoOpen = false)} />
+</Dialog>
+
 {#snippet row(h: Hit)}
   {#if h.kind === "wrap"}
     {@const w = h.def as WrapperDef}
@@ -271,6 +303,7 @@
       appliedBy={app.recipeOrigin[h.key] ?? null}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
+      action={w.key === "mangohud" ? configureOverlay : null}
       onToggle={() => app.toggleWrap(w.key)}
       onValue={(v) => app.setWrapValue(w.key, v)}
     />
@@ -297,6 +330,7 @@
       appliedBy={app.recipeOrigin[h.key] ?? null}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
+      action={e.key === "MANGOHUD_CONFIG" ? configureOverlay : null}
       onToggle={() => app.toggleEnv(e.key)}
       onValue={(v) => app.setEnvValue(e.key, v)}
     />

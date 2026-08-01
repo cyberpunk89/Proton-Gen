@@ -5,6 +5,7 @@
   import { app } from "$lib/state.svelte";
   import { prefersReducedMotion } from "$lib/motion.svelte";
   import { Sparkle } from "phosphor-svelte";
+  import type { Snippet } from "svelte";
 
   let {
     /** Catalog key. Distinct from `title`, which for wrappers is the label. */
@@ -28,6 +29,7 @@
     appliedBy = null,
     titleRanges = [],
     helpRanges = [],
+    action = null,
     onToggle,
     onValue,
   }: {
@@ -53,6 +55,13 @@
     /** Half-open [start, end) spans to highlight, from the fuzzy matcher. */
     titleRanges?: [number, number][];
     helpRanges?: [number, number][];
+    /**
+     * An extra control for rows that own more than a switch and a value — a
+     * link into a dedicated editor, say. Rendered in the trailing cluster,
+     * before the badges. Generic on purpose: the alternative was a
+     * `mangohud`-shaped special case baked into MainPanel's row snippet.
+     */
+    action?: Snippet | null;
     onToggle: () => void;
     onValue?: (v: string) => void;
   } = $props();
@@ -194,6 +203,7 @@
           {appliedBy}
         </span>
       {/if}
+      {#if action}{@render action()}{/if}
       <Badges {requires} {gpu} {needs} />
       <InfoPopover {details} {example} {url} {defaultValue} {values} />
     </div>

@@ -178,8 +178,7 @@ Catppuccin (all four flavours), Dracula, Nord, Tokyo Night, Gruvbox, Rosé Pine 
 |---|---|
 | <img src="docs/screenshots/theme-latte.webp" alt="protongen in the light Catppuccin Latte theme"> | <img src="docs/screenshots/theme-gruvbox.webp" alt="protongen in the Gruvbox theme"> |
 
-Plus opt-in capability toggles (HDR, FSR 4) for hardware that can't be auto-detected, and
-MangoHud overlay settings.
+Plus opt-in capability toggles (HDR, FSR 4) for hardware that can't be auto-detected.
 
 <img src="docs/screenshots/settings.webp" alt="The settings drawer with the Appearance section expanded, showing the ten themes">
 
