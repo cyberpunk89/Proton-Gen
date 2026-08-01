@@ -18,6 +18,7 @@ import type {
   StaleInfo,
   Store,
   SyncState,
+  Tier,
   Token,
   UpdateInfo,
 } from "./types";
@@ -921,6 +922,49 @@ class AppStore {
       .gameArt(appId, source, kind, true)
       .then((url) => (this.artCache[key] = url))
       .catch(() => (this.artCache[key] = null));
+  }
+
+  // ------------------------------- protondb ---------------------------------
+
+  /**
+   * Session cache for ProtonDB tiers, mirroring the art cache above: switching
+   * between two games used to refetch both every time, which is needless load on
+   * an unofficial third-party API of unknown rate limits.
+   *
+   * Session-only on purpose. A persisted TTL cache needs a `Store` field, a
+   * clock, an eviction policy and `Tier: Deserialize` — worth measuring for
+   * first, and it would have to respect the wholesale-overwrite hazard in #43.
+   */
+  tierCache = $state<Record<string, Tier | null>>({});
+  private tierRequested = new Set<number>();
+  /** Appids with a fetch in flight, so the chip can show a spinner. */
+  tierLoading = $state<Record<string, boolean>>({});
+
+  /** Cached tier, `null` if the lookup failed, `undefined` if never requested. */
+  tierFor(appId: number): Tier | null | undefined {
+    return this.tierCache[String(appId)];
+  }
+
+  /** Fetch a tier at most once per session. Safe to call repeatedly. */
+  requestTier(appId: number) {
+    if (this.tierRequested.has(appId)) return;
+    this.tierRequested.add(appId);
+    this.tierLoading[String(appId)] = true;
+    ipc
+      .protondbFetch(appId)
+      .then((t) => (this.tierCache[String(appId)] = t))
+      .catch((e) => {
+        console.error("protondbFetch failed", appId, e);
+        this.tierCache[String(appId)] = null;
+      })
+      .finally(() => (this.tierLoading[String(appId)] = false));
+  }
+
+  /** Drop a failed lookup so the chip's Retry can try again. */
+  retryTier(appId: number) {
+    this.tierRequested.delete(appId);
+    delete this.tierCache[String(appId)];
+    this.requestTier(appId);
   }
 
   dismissStale() {
