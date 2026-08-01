@@ -96,6 +96,54 @@ export function matches(filter: string, haystack: string[]): boolean {
   return haystack.some((h) => h.toLowerCase().includes(f));
 }
 
+/**
+ * Quote-aware split of a `K=V K=V …` string, mirroring `parser::tokenize`
+ * (src-tauri/src/parser.rs) so `FOO="a b"` stays one token.
+ *
+ * Kept in lockstep with the Rust side deliberately: the "custom env" chips in
+ * ActiveOptions must agree with what `compose::parse_extra_env` will actually
+ * put on the command line, or removing a chip would edit a token the backend
+ * never saw.
+ */
+export function tokenizeEnv(input: string): string[] {
+  const tokens: string[] = [];
+  let cur = "";
+  let quote: string | null = null;
+  let has = false;
+  for (const ch of input) {
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      has = true;
+    } else if (/\s/.test(ch)) {
+      if (has) {
+        tokens.push(cur);
+        cur = "";
+        has = false;
+      }
+    } else {
+      cur += ch;
+      has = true;
+    }
+  }
+  if (has) tokens.push(cur);
+  return tokens;
+}
+
+/** `K=V` pairs from the custom-env field, alongside the raw token so a caller
+ *  can remove exactly what it displayed. */
+export function splitExtraEnv(input: string): { raw: string; key: string; value: string }[] {
+  return tokenizeEnv(input).flatMap((raw) => {
+    const at = raw.indexOf("=");
+    if (at < 0) return [];
+    return [{ raw, key: raw.slice(0, at), value: raw.slice(at + 1) }];
+  });
+}
+
 const TIER_COLORS: Record<string, string> = {
   platinum: "#b4c7d9",
   gold: "#cfb53b",

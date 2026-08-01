@@ -3,7 +3,7 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
-import { irrelevance } from "./util";
+import { irrelevance, splitExtraEnv, tokenizeEnv } from "./util";
 import { emptyConfig } from "./types";
 import type {
   Catalog,
@@ -410,6 +410,20 @@ class AppStore {
     if (this.selectedRuntime?.path === r.path) return;
     this.selectedRuntime = r;
     this.mark(`select ${r.display_name}`);
+  }
+
+  /** Everything the user has turned on, for the nav badge and the Active view. */
+  get activeCount(): number {
+    const envs = this.catalog.envs.filter((e) => this.env[e.key]?.enabled).length;
+    const wraps = this.catalog.wrappers.filter((w) => this.wrap[w.key]?.enabled).length;
+    return envs + wraps + splitExtraEnv(this.extraEnv).length;
+  }
+
+  /** Drop one `K=V` token from the custom-env string, keeping the rest verbatim. */
+  removeExtraEnv(raw: string) {
+    const kept = tokenizeEnv(this.extraEnv).filter((t) => t !== raw);
+    this.extraEnv = kept.join(" ");
+    this.mark(`remove ${raw.split("=")[0]}`);
   }
 
   enabledCountInCategory(category: string): number {

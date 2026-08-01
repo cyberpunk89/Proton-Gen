@@ -5,6 +5,7 @@
   import OptionRow from "./OptionRow.svelte";
   import Recipes from "./Recipes.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
+  import ActiveOptions from "./ActiveOptions.svelte";
   import { MagnifyingGlass, Faders } from "phosphor-svelte";
   import type { EnvDef, WrapperDef } from "$lib/types";
 
@@ -163,6 +164,10 @@
   <Recipes />
 {:else if app.activeSection === "game"}
   <GameRuntimePanel />
+{:else if app.activeSection === "@active"}
+  <!-- Must come before the final {:else}: falling through would render an empty
+       options card, since no catalog category is named "@active". -->
+  <ActiveOptions />
 {:else}
   {@render optionsCard()}
 {/if}
