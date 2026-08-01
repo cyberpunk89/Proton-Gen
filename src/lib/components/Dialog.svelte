@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Dialog as DialogPrimitive } from "bits-ui";
   import { X } from "phosphor-svelte";
+  import { keys } from "$lib/keys.svelte";
   import type { Snippet } from "svelte";
 
   let {
@@ -16,6 +17,16 @@
     children: Snippet;
     width?: string;
   } = $props();
+
+  // Tell the global key layer an overlay is up, so single-key bindings ("/",
+  // "?", Escape-to-library) stay quiet underneath it. bits-ui already layers
+  // Escape correctly among its own overlays; this covers *our* global handler,
+  // which it knows nothing about.
+  $effect(() => {
+    if (!open) return;
+    keys.pushOverlay();
+    return () => keys.popOverlay();
+  });
 </script>
 
 <!--

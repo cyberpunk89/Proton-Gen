@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { keys } from "$lib/keys.svelte";
   import { THEMES } from "$lib/themes";
   import { fly, fade } from "$lib/motion.svelte";
   import { Dialog as DialogPrimitive } from "bits-ui";
@@ -17,6 +18,13 @@
   import type { Component } from "svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
+
+  // Keep the global key layer quiet while the drawer is up — see Dialog.svelte.
+  $effect(() => {
+    if (!open) return;
+    keys.pushOverlay();
+    return () => keys.popOverlay();
+  });
 
   // Sections are collapsible; all start collapsed to keep the (now larger)
   // drawer tidy.

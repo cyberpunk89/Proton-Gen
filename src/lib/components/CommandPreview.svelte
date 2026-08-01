@@ -1,8 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { history } from "$lib/history.svelte";
-  import { copyText } from "$lib/util";
-  import { toast } from "$lib/toast.svelte";
+  import { copyCommandAction, resetCommandAction } from "$lib/commands";
   import {
     ArrowCounterClockwise,
     ArrowUUpLeft,
@@ -17,21 +16,18 @@
   import OpenInSteam from "./OpenInSteam.svelte";
   import SyncPill from "./SyncPill.svelte";
 
-  /** Always the store's string, never the DOM. Even if a selection quirk ever
-   *  survives in the tokenized body, the primary copy path stays exact by
-   *  construction — the worst case is a slightly-off manual drag-select, not a
-   *  wrong pasted command. */
-  async function copy() {
-    await copyText(app.command);
-    toast.success("Command copied");
-  }
-
-  function reset() {
-    app.resetCommand();
-    toast.success("Command reset", {
-      action: { label: "Undo", onClick: () => app.undo() },
-    });
-  }
+  /**
+   * Both actions come from commands.ts so the palette and these buttons cannot
+   * drift — the reset-with-undo-toast in particular used to live inline here,
+   * which is exactly how the two would have ended up with different toast text
+   * or only one of them offering undo.
+   *
+   * Copy still reads the store's string, never the DOM: even if a selection
+   * quirk ever survives in the tokenized body, the primary copy path stays exact
+   * by construction.
+   */
+  const copy = () => void copyCommandAction.run();
+  const reset = () => void resetCommandAction.run();
 
   /**
    * The runtime hint, stated as fact when we can check it and as an instruction

@@ -21,6 +21,21 @@
   function isActive(section: string): boolean {
     return app.activeSection === section && app.paramQuery.trim() === "";
   }
+
+  /**
+   * Escape clears the search rather than leaving the builder.
+   *
+   * Handled here with stopPropagation, not in the global binding table: the
+   * global Escape means "back to the library", and there is no way for it to
+   * know this field has text worth clearing first. Only swallow the key when
+   * there is something to clear, so an empty box still lets Escape through.
+   */
+  function onSearchKeydown(e: KeyboardEvent) {
+    if (e.key !== "Escape" || !app.paramQuery) return;
+    e.stopPropagation();
+    e.preventDefault();
+    app.paramQuery = "";
+  }
 </script>
 
 <aside class="flex w-60 shrink-0 flex-col border-r border-border bg-mantle/30">
@@ -35,6 +50,7 @@
       <input
         use:focusTarget={"param-search"}
         bind:value={app.paramQuery}
+        onkeydown={onSearchKeydown}
         aria-label="Search parameters"
         placeholder="Search parameters…"
         class="w-full rounded-lg border border-border bg-surface-2 py-1.5 pl-8 pr-7 text-xs text-text outline-none focus:border-accent"

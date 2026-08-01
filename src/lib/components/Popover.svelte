@@ -2,6 +2,7 @@
   import type { Snippet } from "svelte";
   import { Popover as PopoverPrimitive } from "bits-ui";
   import { fly } from "$lib/motion.svelte";
+  import { keys } from "$lib/keys.svelte";
 
   let {
     trigger,
@@ -24,6 +25,15 @@
     /** Read-only bubbles should not steal focus; see InfoPopover. */
     trapFocus?: boolean;
   } = $props();
+
+  // An open popover counts as an overlay: bits-ui closes it on Escape, and
+  // without this our global Escape would *also* fire and dump the user back to
+  // the library in the same keystroke.
+  $effect(() => {
+    if (!open) return;
+    keys.pushOverlay();
+    return () => keys.popOverlay();
+  });
 </script>
 
 <!--
