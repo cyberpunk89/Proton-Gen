@@ -14,6 +14,7 @@
   import Toast from "$lib/components/Toast.svelte";
   import ShortcutsSheet from "$lib/components/ShortcutsSheet.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
+  import ResizeGrips from "$lib/components/ResizeGrips.svelte";
   import { CircleNotch, WarningCircle, ArrowsClockwise, Copy } from "phosphor-svelte";
   import { copyText } from "$lib/util";
 
@@ -147,3 +148,7 @@
 <ShortcutsSheet />
 <CommandPalette />
 <Toast />
+<!-- Outside the init-error / loading branches above on purpose: both of those
+     are full-screen and were unresizable too, which is exactly when you want to
+     stretch the window to read a stack trace. -->
+<ResizeGrips />

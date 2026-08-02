@@ -5,6 +5,7 @@
   import Dialog from "./Dialog.svelte";
   import SettingsDrawer from "./SettingsDrawer.svelte";
   import { autofocus } from "$lib/actions";
+  import { inTauri } from "$lib/ipc";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     BookmarkSimple,
@@ -22,8 +23,8 @@
   let saveName = $state("");
 
   // Custom window controls (native decorations are off). No-op in the browser
-  // dev/mock path, where there's no Tauri window to drive.
-  const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  // dev/mock path, where there's no Tauri window to drive. Resize is the fourth
+  // piece of the same CSD, in ResizeGrips.svelte.
   const win = () => (inTauri ? getCurrentWindow() : null);
 
   function openSave() {
