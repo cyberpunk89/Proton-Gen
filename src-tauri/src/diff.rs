@@ -375,6 +375,17 @@ mod tests {
     }
 
     #[test]
+    fn an_absolute_wrapper_path_does_not_read_as_drift() {
+        // #66. `prime-run` in `foreign_wrappers_force_drift_even_with_matching_env`
+        // *should* drift — it is a program we don't model. `/usr/bin/mangohud` is
+        // the same program we emit, named by path, and used to drift for no
+        // reason other than string equality.
+        let d = compare("mangohud %command%", "/usr/bin/mangohud %command%");
+        assert_eq!(d.status, DiffStatus::InSync);
+        assert!(d.unmodeled.is_empty(), "got: {:?}", d.unmodeled);
+    }
+
+    #[test]
     fn a_stale_env_key_is_compared_rather_than_dropped() {
         // #62. `store::apply_lists` used to discard env keys the catalog no
         // longer knows, so this config assembled to a bare "%command%" and

@@ -13,6 +13,8 @@
 
 use serde::Serialize;
 
+use crate::parser;
+
 /// What a token is, for the frontend's colouring and hover copy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -126,11 +128,11 @@ fn env_key(word: &str) -> Option<&str> {
 pub fn explain(command: &str) -> Vec<Token> {
     let pieces = split_preserving(command);
 
-    // umu commands are recognised the same way `parser::parse` recognises them.
+    // umu commands are recognised the same way `parser::parse` recognises them,
+    // by basename — the program can be named by path.
     let is_umu = pieces
         .iter()
-        .any(|p| matches!(p, Piece::Word(w) if unquote(w) == "umu-run"));
-    let target = if is_umu { "umu-run" } else { "%command%" };
+        .any(|p| matches!(p, Piece::Word(w) if parser::basename(&unquote(w)) == "umu-run"));
 
     let mut out = Vec::with_capacity(pieces.len());
     let mut past_target = false;
@@ -146,6 +148,10 @@ pub fn explain(command: &str) -> Vec<Token> {
             Piece::Word(w) => w,
         };
         let bare = unquote(word);
+        // Program tokens are matched by basename; `key` stays the *catalog* key
+        // so the frontend can still resolve it, even when the command names the
+        // binary by path.
+        let prog = parser::basename(&bare).to_string();
 
         let (kind, key) = if past_target {
             post_count += 1;
@@ -155,7 +161,7 @@ pub fn explain(command: &str) -> Vec<Token> {
             } else {
                 (TokenKind::GameArg, None)
             }
-        } else if bare == target {
+        } else if if is_umu { prog == "umu-run" } else { bare == "%command%" } {
             past_target = true;
             in_gamescope_args = false;
             (TokenKind::Target, None)
@@ -164,11 +170,11 @@ pub fn explain(command: &str) -> Vec<Token> {
             (TokenKind::Separator, None)
         } else if in_gamescope_args {
             (TokenKind::WrapperArg, None)
-        } else if bare == "gamescope" {
+        } else if prog == "gamescope" {
             in_gamescope_args = true;
-            (TokenKind::Wrapper, Some(bare.clone()))
-        } else if bare == "gamemoderun" || bare == "mangohud" {
-            (TokenKind::Wrapper, Some(bare.clone()))
+            (TokenKind::Wrapper, Some(prog.clone()))
+        } else if prog == "gamemoderun" || prog == "mangohud" {
+            (TokenKind::Wrapper, Some(prog.clone()))
         } else if let Some(k) = env_key(&bare) {
             (TokenKind::Env, Some(k.to_string()))
         } else {
@@ -347,5 +353,24 @@ mod tests {
     fn foreign_wrapper_is_unknown() {
         use TokenKind::*;
         assert_eq!(kinds("prime-run mangohud %command%"), vec![Unknown, Wrapper, Target]);
+    }
+
+    #[test]
+    fn a_wrapper_named_by_path_is_still_a_wrapper() {
+        use TokenKind::*;
+        let cmd = "/usr/bin/mangohud %command%";
+        assert_eq!(kinds(cmd), vec![Wrapper, Target]);
+        // The reassembly guarantee holds: only the classification changed.
+        assert_eq!(explain(cmd).iter().map(|t| t.text.as_str()).collect::<String>(), cmd);
+        // `key` stays the catalog key, or the frontend could not resolve it.
+        assert_eq!(explain(cmd)[0].key.as_deref(), Some("mangohud"));
+    }
+
+    #[test]
+    fn umu_run_named_by_path_still_marks_the_target() {
+        use TokenKind::*;
+        let cmd = "GAMEID=umu-0 /home/u/.local/bin/umu-run /games/g.exe --windowed";
+        assert_eq!(kinds(cmd), vec![Env, Target, Exe, GameArg]);
+        assert_eq!(explain(cmd).iter().map(|t| t.text.as_str()).collect::<String>(), cmd);
     }
 }
