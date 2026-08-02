@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { ipc } from "$lib/ipc";
-  import { openUrl, tierColor, tierForeground, tierRank } from "$lib/util";
+  import { mergeStyle, openUrl, tierColor, tierForeground, tierRank } from "$lib/util";
   import Popover from "./Popover.svelte";
   import {
     Trophy,
@@ -68,8 +68,12 @@
           class="rounded-full px-2.5 py-1 text-xs font-medium capitalize transition {isOpen
             ? 'ring-2 ring-accent'
             : ''}"
-          style="background: {tierColor(tier.tier)}; color: {tierForeground(tier.tier)};
-                 box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 20%, transparent)"
+          style={mergeStyle(
+            props,
+            `background: ${tierColor(tier.tier)}`,
+            `color: ${tierForeground(tier.tier)}`,
+            "box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 20%, transparent)",
+          )}
           aria-label="ProtonDB rating: {tier.tier}. Show details"
         >
           {tier.tier}

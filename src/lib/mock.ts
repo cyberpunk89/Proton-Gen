@@ -306,10 +306,22 @@ export const mockBootstrap: Bootstrap = {
     // Seeded so the library grid's per-game sync badges have something to show
     // under `pnpm dev`: 1245620 matches its launch options exactly (in-sync),
     // 553850 does not (drifted), 275850 has none set at all (not-applied).
+    //
+    // 275850 also carries PROTON_ENABLE_NVAPI, which is deliberately *not* in
+    // the mock catalog (a552034 renamed it to PROTON_DISABLE_NVAPI upstream).
+    // That makes the #62 recovery path — a stale key re-homed into the
+    // custom-env field instead of silently vanishing — reachable in the browser
+    // dev path just by selecting the game.
     game_memory: {
       "1245620": emptyMockConfig(),
       "553850": { ...emptyMockConfig(), wrappers: [["mangohud", ""]] },
-      "275850": { ...emptyMockConfig(), env: [["DXVK_ASYNC", "1"]] },
+      "275850": {
+        ...emptyMockConfig(),
+        env: [
+          ["DXVK_ASYNC", "1"],
+          ["PROTON_ENABLE_NVAPI", "1"],
+        ],
+      },
     },
     dismissed_cachyos_build: "",
     dismissed_update_version: "",
@@ -323,6 +335,13 @@ export const mockBootstrap: Bootstrap = {
     library_sort: "",
     last_session: null,
     last_game_appid: null,
+    // One seeded entry so the Paths section isn't empty under `pnpm dev`.
+    paths: {
+      steam_roots: [],
+      steam_libraries: [],
+      proton_dirs: ["/opt/proton-builds"],
+      bins: {},
+    },
   },
   // 553850 drifts against anything the builder produces; 1245620 is exactly
   // what `mockBuildCommand` emits for a freshly-reset config, so opening it
@@ -335,7 +354,9 @@ export const mockBootstrap: Bootstrap = {
     "1245620": "%command%",
   },
   compat_tools: { "553850": "proton-cachyos-slr" },
-  requires_status: { gamescope: true, gamemoderun: true, mangohud: false },
+  // `umu-run` is seeded from Bins rather than a catalog `requires` entry — it is
+  // neither a wrapper nor an env var, but an entire mode depends on it.
+  requires_status: { gamescope: true, gamemoderun: true, mangohud: false, "umu-run": true },
   stale: null,
   config_warnings: [],
 };

@@ -3,7 +3,7 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
-import { irrelevance, splitExtraEnv, tokenizeEnv } from "./util";
+import { irrelevance, mergeIntoExtraEnv, splitExtraEnv, tokenizeEnv } from "./util";
 import { emptyConfig } from "./types";
 import type {
   Catalog,
@@ -49,6 +49,7 @@ const EMPTY_STORE: Store = {
   library_sort: "",
   last_session: null,
   last_game_appid: null,
+  paths: { steam_roots: [], steam_libraries: [], proton_dirs: [], bins: {} },
 };
 
 /** Library sort ids. Kept here because both the toolbar and the comparator in
@@ -303,6 +304,11 @@ class AppStore {
       this.launchOptions = b.launch_options;
       this.compatTools = b.compat_tools;
       this.stale = b.stale;
+      // Both are recomputed by `rescan` and must be copied, or a corrected
+      // Settings path would never clear its banner and a fixed binary override
+      // would never turn its badge green.
+      this.configWarnings = b.config_warnings;
+      this.requiresStatus = b.requires_status;
 
       // Re-validate current selections against the refreshed lists.
       if (
@@ -480,14 +486,25 @@ class AppStore {
 
   loadConfig(cfg: Config) {
     this.resetOptions();
+    // Mirror of `store::options_from_lists`: an env key the catalog no longer
+    // has is re-homed into the custom-env field rather than dropped. Dropping it
+    // was not merely cosmetic — `toConfig()` rebuilds `env` by walking
+    // `this.catalog.envs`, so the key was erased from the preset or game_memory
+    // entry the moment anything re-saved (#62).
+    const leftover: [string, string][] = [];
     for (const [k, v] of cfg.env) {
       if (this.env[k]) this.env[k] = { enabled: true, value: v };
+      else leftover.push([k, v]);
     }
+    // Wrapper keys stay dropped, as on the Rust side: a wrapper is a program
+    // token from a closed enum, so there is nothing to re-home it into.
     for (const [k, v] of cfg.wrappers) {
       if (this.wrap[k]) this.wrap[k] = { enabled: true, value: v };
     }
     this.umu = cfg.umu;
-    this.extraEnv = cfg.extra_env;
+    // Idempotent with the backend merge: after a round-trip the key is already
+    // in `cfg.extra_env`, so it produces no leftover and nothing is duplicated.
+    this.extraEnv = mergeIntoExtraEnv(cfg.extra_env, leftover);
     this.gameArgs = cfg.game_args;
     this.umuExe = cfg.umu_exe;
     this.umuWineprefix = cfg.umu_wineprefix;
@@ -968,6 +985,41 @@ class AppStore {
   setProtondbAuto(v: boolean) {
     this.store.protondb_auto = v;
     this.persistStore();
+  }
+
+  // ------------------------------ paths -------------------------------------
+
+  /** Replace one of the path lists and re-scan. */
+  setPathList(field: "steam_roots" | "steam_libraries" | "proton_dirs", list: string[]) {
+    this.store.paths[field] = list;
+    this.persistStore();
+    this.scheduleRescan();
+  }
+
+  /** Override the program token emitted for `name` ("" clears the override). */
+  setBinOverride(name: string, value: string) {
+    if (value.trim() === "") delete this.store.paths.bins[name];
+    else this.store.paths.bins[name] = value;
+    this.persistStore();
+    this.scheduleRescan();
+  }
+
+  private rescanTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Debounced discovery re-scan. The rescan *is* the validator for a configured
+   * path — there is no separate validate command, which would be a second
+   * implementation of the same scan that could disagree with it. Debounced
+   * because these setters fire per keystroke and a scan hits the filesystem.
+   */
+  private scheduleRescan() {
+    clearTimeout(this.rescanTimer);
+    this.rescanTimer = setTimeout(() => void this.refresh(), 600);
+  }
+
+  /** Path warnings only — the parse warnings belong to the TOML overrides. */
+  get pathWarnings() {
+    return this.configWarnings.filter((w) => w.kind === "path");
   }
 
   // ------------------------------ library view ------------------------------

@@ -50,6 +50,35 @@ instantly and the choice persists. Latte is the only light theme.
 The two hardware declarations are explained in
 [Recipes and troubleshooting](Recipes-and-troubleshooting#the-two-things-it-cant-detect).
 
+### Paths
+
+Only needed when protongen can't find something on its own. It looks for Steam under
+`~/.local/share/Steam`, `~/.steam/steam` and `~/.steam/root`, for Proton under
+`/usr/share/steam/compatibilitytools.d` and your Steam install's
+`compatibilitytools.d`, and for wrapper programs on `$PATH`. If your system puts any
+of those somewhere else, add it here.
+
+| Field | What it takes |
+|---|---|
+| **Steam roots** | A Steam install directory. Tried *before* the built-in locations |
+| **Steam libraries** | A library folder — the one containing `steamapps/`. Only needed if `libraryfolders.vdf` doesn't already mention it |
+| **Proton directories** | A folder holding **one sub-folder per Proton build**, each with its own `compatibilitytool.vdf`. Not a single build's folder — that's the usual mistake |
+| **Program paths** | Where to find `umu-run`, `gamescope`, `gamemoderun`, `mangohud` |
+
+Every change re-scans immediately, and the box at the top of the section shows what the
+scan found — the Steam root, and how many runtimes and games came back. That *is* the
+validation; if a path is wrong you get a yellow banner naming it and saying why, and
+discovery carries on with everything else.
+
+Proton builds found through a configured directory are tagged **custom** in the runtime
+dropdown, so you can tell yours is being picked up.
+
+A program path is written into the command exactly as you type it, not just used for the
+installed/missing badge. That's deliberate: the reason to set one is that the bare name
+doesn't resolve where the command will actually run — Steam launched from a desktop
+entry often has a `$PATH` without `~/.local/bin`, which is exactly where `umu-run` tends
+to live. Leave a field blank to use the bare name.
+
 ## The MangoHud overlay builder
 
 A builder for the MangoHud on-screen overlay, with a live preview of what it'll look like.
@@ -74,7 +103,7 @@ starting blank — including while it's open, so an undo is reflected immediatel
 
 | Path | What's in it |
 |---|---|
-| `~/.config/protongen/state.toml` | **The only file protongen writes.** Theme, presets, per-game memory, your settings toggles, dismissed banners, last session |
+| `~/.config/protongen/state.toml` | **The only file protongen writes.** Theme, presets, per-game memory, your settings toggles and paths, dismissed banners, last session |
 | `~/.config/protongen/params.toml` | *Optional.* Your own parameter catalogue, overriding the built-in one |
 | `~/.config/protongen/recipes.toml` | *Optional.* Your own recipes, overriding the built-in ones |
 | `~/.cache/protongen/art/` | Downloaded game artwork |

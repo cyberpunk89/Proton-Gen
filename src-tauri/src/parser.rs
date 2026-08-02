@@ -91,10 +91,21 @@ pub fn tokenize(input: &str) -> Vec<String> {
     tokens
 }
 
+/// The last path component of a token, or the token itself if it has no `/`.
+///
+/// Wrapper programs are recognised by basename, not by exact string: a command
+/// can legitimately name one by path — a user pasting `/usr/bin/gamescope -f --
+/// %command%`, or protongen itself emitting a configured binary override. Before
+/// this, such a token fell through to `unknown`, which forced a permanent
+/// `Drifted` verdict and painted it `Unknown` in the preview.
+pub(crate) fn basename(tok: &str) -> &str {
+    tok.rsplit('/').next().unwrap_or(tok)
+}
+
 /// Consume a wrapper token; returns true if it matched a known wrapper. For
 /// `gamescope`, collects args from `iter` up to the `--` separator.
 fn take_wrapper(tok: &str, iter: &mut std::iter::Peekable<std::slice::Iter<String>>, p: &mut Parsed) -> bool {
-    match tok {
+    match basename(tok) {
         "gamemoderun" => {
             p.gamemoderun = true;
             true
@@ -124,11 +135,17 @@ pub fn parse(input: &str) -> Parsed {
     let tokens = tokenize(input);
     let mut p = Parsed::default();
 
-    let is_umu = tokens.iter().any(|t| t == "umu-run");
-    let sep = if is_umu { "umu-run" } else { "%command%" };
+    // `umu-run` can be an absolute path; `%command%` is Steam's literal
+    // placeholder and never is. Deriving the split index from the same lookup
+    // that decides the mode keeps the two from disagreeing.
+    let umu_at = tokens.iter().position(|t| basename(t) == "umu-run");
+    let is_umu = umu_at.is_some();
     p.umu = is_umu;
 
-    let split = tokens.iter().position(|t| t == sep);
+    let split = match umu_at {
+        Some(i) => Some(i),
+        None => tokens.iter().position(|t| t == "%command%"),
+    };
     let (pre, post): (&[String], &[String]) = match split {
         Some(i) => (&tokens[..i], &tokens[i + 1..]),
         None => (&tokens[..], &[]),
@@ -179,7 +196,7 @@ mod tests {
         let s = "PROTON_ENABLE_WAYLAND=1 DXVK_ASYNC=1 gamescope -W 2560 -H 1440 -f -- gamemoderun mangohud %command% --skip-launcher";
         let p = parse(s);
         assert_eq!(p.mode(), ParsedMode::Steam);
-        let rebuilt = builder::build_command(&p.env, &p.wrappers(), &p.game_args);
+        let rebuilt = builder::build_command(&p.env, &p.wrappers(), &p.game_args, &builder::Bins::default());
         assert_eq!(rebuilt, s);
     }
 
@@ -198,6 +215,7 @@ mod tests {
             p.umu_wineprefix.as_deref(),
             &p.umu_exe,
             &p.game_args,
+            &builder::Bins::default(),
         );
         assert_eq!(rebuilt, s);
     }
@@ -252,5 +270,39 @@ mod tests {
         assert_eq!(p.umu_wineprefix, None);
         // PROTONPATH does nothing under Steam, but it isn't silently erased.
         assert_eq!(p.unknown, vec!["PROTONPATH=/opt/proton".to_string()]);
+    }
+
+    #[test]
+    fn an_absolute_wrapper_path_is_still_a_wrapper() {
+        // Wrappers used to be matched by exact string, so a path fell through to
+        // `unknown` — which forced a permanent Drifted verdict against a command
+        // that is functionally identical to the one we build.
+        let p = parse("/usr/bin/mangohud /usr/bin/gamescope -f -- %command%");
+        assert!(p.mangohud);
+        assert_eq!(p.gamescope.as_deref(), Some("-f"));
+        assert!(p.unknown.is_empty(), "got: {:?}", p.unknown);
+    }
+
+    #[test]
+    fn an_absolute_umu_run_still_splits_the_command() {
+        // Worse than the wrapper case: `is_umu` came out false, so the whole
+        // command parsed as a Steam command and the separator was never found.
+        let p = parse("GAMEID=umu-0 /home/u/.local/bin/umu-run /games/game.exe --windowed");
+        assert!(p.umu);
+        assert_eq!(p.umu_gameid.as_deref(), Some("umu-0"));
+        assert_eq!(p.umu_exe, "/games/game.exe");
+        assert_eq!(p.game_args, "--windowed");
+    }
+
+    #[test]
+    fn a_relative_binary_variant_is_matched_by_name() {
+        // An override needn't be absolute: `gamescope-git` is a different
+        // program and must NOT match, while a bare rename in a custom dir must.
+        assert!(parse("/opt/tools/gamemoderun %command%").gamemoderun);
+        let p = parse("gamescope-git -f -- %command%");
+        assert!(p.gamescope.is_none());
+        // Unrecognised, so its args are not consumed as wrapper args either —
+        // they stay visible in `unknown` rather than being swallowed.
+        assert_eq!(p.unknown, vec!["gamescope-git", "-f", "--"]);
     }
 }

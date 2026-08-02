@@ -30,7 +30,7 @@ use crate::builder::Wrapper;
 use crate::compose;
 use crate::params::Catalog;
 use crate::parser::{self, Parsed};
-use crate::store::{self, Config};
+use crate::store::Config;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -181,17 +181,19 @@ pub fn compare(built: &str, current: &str) -> LaunchDiff {
 /// and umu configs short-circuit to [`DiffStatus::Umu`] before anything is
 /// built.
 ///
-/// **Caveat, deliberately conservative.** `store::apply_lists` silently drops
-/// env keys the catalog no longer knows, so a config remembered before a
-/// catalog refresh assembles into a command missing them — and could then
-/// compare equal to Steam and be reported `InSync` when it is nothing of the
-/// sort. Such configs are downgraded to `Drifted` instead of being trusted.
-/// That is a workaround, not a fix: the real fix is for `apply_lists` to stop
-/// dropping keys (route them to `extra_env`, or keep them on the `Config`).
+/// No caveat: [`compose::assemble`] renders a config faithfully. It used to drop
+/// env keys the catalog no longer knew, so a config remembered before a catalog
+/// refresh assembled into a command missing them and could compare equal to
+/// Steam while being nothing of the sort — which this function papered over by
+/// force-downgrading such configs to `Drifted`. #62 fixed that at the source:
+/// the keys now survive into the command, so the verdict falls out of the
+/// ordinary comparison. (Unknown *wrapper* keys are still dropped — see
+/// [`crate::store::options_from_lists`] for why they cannot drift the same way.)
 pub fn statuses(
     catalog: &Catalog,
     memory: &BTreeMap<String, Config>,
     launch_options: &HashMap<String, String>,
+    bins: &crate::builder::Bins,
 ) -> HashMap<String, DiffStatus> {
     memory
         .iter()
@@ -200,18 +202,9 @@ pub fn statuses(
                 // Steam's launch options say nothing about a umu command.
                 DiffStatus::Umu
             } else {
-                let built = compose::assemble(catalog, config, None);
+                let built = compose::assemble(catalog, config, None, bins);
                 let current = launch_options.get(appid).map(String::as_str).unwrap_or("");
-                let status = compare(&built, current).status;
-                // Never claim in-sync for a config the builder couldn't render
-                // faithfully.
-                if status == DiffStatus::InSync
-                    && !store::dropped_env_keys(catalog, &config.env).is_empty()
-                {
-                    DiffStatus::Drifted
-                } else {
-                    status
-                }
+                compare(&built, current).status
             };
             (appid.clone(), status)
         })
@@ -373,7 +366,7 @@ mod tests {
             ("9", "PROTON_ENABLE_WAYLAND=1 %command%"),
         ]);
 
-        let got = statuses(&cat, &mem, &opts);
+        let got = statuses(&cat, &mem, &opts, &crate::builder::Bins::default());
         assert_eq!(got.len(), 4, "one entry per remembered game, and no more");
         assert_eq!(got["1"], DiffStatus::InSync);
         assert_eq!(got["2"], DiffStatus::Drifted);
@@ -383,34 +376,71 @@ mod tests {
     }
 
     #[test]
-    fn a_config_with_dropped_env_keys_never_reads_as_in_sync() {
-        // `store::apply_lists` silently discards env keys the catalog doesn't
-        // know, so this config assembles to a bare "%command%" — which really
-        // does equal Steam's side. Reporting InSync would be a confident lie
-        // about a variable that vanished in a catalog refresh.
-        let cat = Catalog::bundled();
-        let stale = Config {
-            env: vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())],
-            ..Config::default()
-        };
-        assert!(!store::dropped_env_keys(&cat, &stale.env).is_empty());
-        assert_eq!(compose::assemble(&cat, &stale, None), "%command%");
-        assert_eq!(compare("%command%", "%command%").status, DiffStatus::InSync);
-
-        let got = statuses(&cat, &memory(&[("1", stale)]), &options(&[("1", "%command%")]));
-        assert_eq!(got["1"], DiffStatus::Drifted);
+    fn an_absolute_wrapper_path_does_not_read_as_drift() {
+        // #66. `prime-run` in `foreign_wrappers_force_drift_even_with_matching_env`
+        // *should* drift — it is a program we don't model. `/usr/bin/mangohud` is
+        // the same program we emit, named by path, and used to drift for no
+        // reason other than string equality.
+        let d = compare("mangohud %command%", "/usr/bin/mangohud %command%");
+        assert_eq!(d.status, DiffStatus::InSync);
+        assert!(d.unmodeled.is_empty(), "got: {:?}", d.unmodeled);
     }
 
     #[test]
-    fn dropped_keys_do_not_upgrade_a_not_applied_verdict() {
-        // The downgrade only guards the in-sync *claim*; "Steam has nothing set"
-        // is still true regardless of what the config could not render.
+    fn a_stale_env_key_is_compared_rather_than_dropped() {
+        // #62. `store::apply_lists` used to discard env keys the catalog no
+        // longer knows, so this config assembled to a bare "%command%" and
+        // compared *equal* to Steam — a confident InSync verdict about a
+        // variable that had vanished in a catalog refresh. `statuses` papered
+        // over that by force-downgrading such configs to Drifted, which bought
+        // honesty in one direction and lost it in the other: a config that
+        // genuinely matched Steam could never say so.
+        //
+        // The key now survives into the command, so both verdicts fall out of
+        // the ordinary comparison.
         let cat = Catalog::bundled();
         let stale = Config {
             env: vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())],
             ..Config::default()
         };
-        let got = statuses(&cat, &memory(&[("1", stale)]), &HashMap::new());
+        assert!(
+            !cat.envs.iter().any(|e| e.key == "PROTON_ENABLE_NVAPI"),
+            "fixture must name a key the bundled catalog really lacks"
+        );
+        assert_eq!(
+            compose::assemble(&cat, &stale, None, &crate::builder::Bins::default()),
+            "PROTON_ENABLE_NVAPI=1 %command%"
+        );
+
+        // Steam has nothing set for it: genuinely drifted.
+        let got = statuses(
+            &cat,
+            &memory(&[("1", stale.clone())]),
+            &options(&[("1", "%command%")]),
+            &crate::builder::Bins::default(),
+        );
+        assert_eq!(got["1"], DiffStatus::Drifted);
+
+        // Steam has exactly it: genuinely in sync. This is the false negative
+        // the old workaround caused, and nothing used to test it.
+        let got = statuses(
+            &cat,
+            &memory(&[("1", stale)]),
+            &options(&[("1", "PROTON_ENABLE_NVAPI=1 %command%")]),
+            &crate::builder::Bins::default(),
+        );
+        assert_eq!(got["1"], DiffStatus::InSync);
+    }
+
+    #[test]
+    fn a_stale_env_key_still_reads_as_not_applied_against_empty_steam_options() {
+        // "Steam has nothing set" is true regardless of where the key lives.
+        let cat = Catalog::bundled();
+        let stale = Config {
+            env: vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())],
+            ..Config::default()
+        };
+        let got = statuses(&cat, &memory(&[("1", stale)]), &HashMap::new(), &crate::builder::Bins::default());
         assert_eq!(got["1"], DiffStatus::NotApplied);
     }
 }

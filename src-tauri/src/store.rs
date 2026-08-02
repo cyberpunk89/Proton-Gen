@@ -40,6 +40,46 @@ pub struct Preset {
     pub config: Config,
 }
 
+/// User-supplied discovery paths, for systems protongen's built-in candidates
+/// don't cover — a non-CachyOS distro, Steam installed somewhere unusual, or
+/// tools outside `$PATH`.
+///
+/// One sub-struct rather than four flat `Store` fields: discovery takes a single
+/// parameter, there is one place to document what these are, and `state.toml`
+/// gets a legible `[paths]` table — which matters, because hand-editing it is
+/// exactly what this audience does.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Paths {
+    /// Extra Steam roots, tried *before* the built-in candidates: a user only
+    /// adds one because the defaults were wrong, so an explicit choice outranks
+    /// a lucky guess.
+    #[serde(default)]
+    pub steam_roots: Vec<String>,
+    /// Extra Steam library folders (each containing `steamapps/`), merged with
+    /// the ones `libraryfolders.vdf` declares.
+    #[serde(default)]
+    pub steam_libraries: Vec<String>,
+    /// Extra directories in the `compatibilitytools.d` layout — one sub-folder
+    /// per Proton build, each with a `compatibilitytool.vdf`.
+    #[serde(default)]
+    pub proton_dirs: Vec<String>,
+    /// Program overrides keyed by the catalog `requires` name (`gamescope`,
+    /// `gamemoderun`, `mangohud`) plus `umu-run`. Blank or absent = the bare
+    /// name. A map rather than named fields so `compute_requires_status` can
+    /// consult overrides generically, and a `BTreeMap` for the stable, diffable
+    /// TOML `game_memory` and `favorites` already cite.
+    #[serde(default)]
+    pub bins: BTreeMap<String, String>,
+}
+
+impl Paths {
+    /// Non-empty, trimmed entries. The Settings rows keep blank placeholder
+    /// inputs while the user types, so blanks reach the backend routinely.
+    pub fn clean(list: &[String]) -> Vec<&str> {
+        list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect()
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Store {
     #[serde(default)]
@@ -85,6 +125,9 @@ pub struct Store {
     /// can be re-selected on launch.
     #[serde(default)]
     pub last_game_appid: Option<u32>,
+    /// User-supplied discovery paths. See [`Paths`].
+    #[serde(default)]
+    pub paths: Paths,
 }
 
 impl Store {
@@ -165,26 +208,52 @@ pub fn options_to_lists(
     (env, wrappers)
 }
 
-/// Reset options to catalog defaults, then enable + set values from the lists.
-pub fn apply_lists(
+/// Build `Options` from catalog defaults plus the enabled (env, wrapper) lists,
+/// **returning the env pairs the catalog has no entry for**.
+///
+/// Those leftovers are the point. `params.toml` is rewritten in place by the
+/// `update-proton-params` skill, so a preset or `game_memory` entry written
+/// before a rename keeps naming a key the catalog no longer has — `a552034`
+/// renamed `PROTON_ENABLE_NVAPI` to `PROTON_DISABLE_NVAPI` and dropped
+/// `PROTON_ENABLE_HDR` outright. Those keys used to vanish here (#62): the
+/// assembled command silently lost them, the sync verdict was computed against
+/// that lossy command, and `ipc::apply_recipe`'s round-trip through
+/// [`options_to_lists`] erased them from disk for good. Callers must re-home
+/// them — [`crate::compose::merge_into_extra_env`] is the shared way.
+///
+/// [`Options`] is strictly parallel to the catalog, so there is nowhere inside
+/// it to park an unknown key; hence the out-of-band return rather than a flag.
+///
+/// **Unknown wrapper keys are still dropped, deliberately.** A wrapper is
+/// emitted as a program token by the closed 3-variant [`crate::builder::Wrapper`]
+/// enum, so an unknown wrapper has no representation in a built command and no
+/// field to survive in. It also cannot drift the way env keys do: the skill
+/// never touches `[[wrapper]]`, so the only way to lose one is to hand-edit a
+/// user `params.toml`, which is the user saying they don't want it.
+#[must_use]
+pub fn options_from_lists(
     catalog: &Catalog,
-    options: &mut Options,
     env: &[(String, String)],
     wrappers: &[(String, String)],
-) {
-    *options = Options::from_catalog(catalog);
+) -> (Options, Vec<(String, String)>) {
+    let mut options = Options::from_catalog(catalog);
     for (k, v) in wrappers {
         if let Some(i) = catalog.wrappers.iter().position(|w| &w.key == k) {
             options.wrappers[i].enabled = true;
             options.wrappers[i].value = v.clone();
         }
     }
+    let mut unknown = Vec::new();
     for (k, v) in env {
-        if let Some(i) = catalog.envs.iter().position(|e| &e.key == k) {
-            options.envs[i].enabled = true;
-            options.envs[i].value = v.clone();
+        match catalog.envs.iter().position(|e| &e.key == k) {
+            Some(i) => {
+                options.envs[i].enabled = true;
+                options.envs[i].value = v.clone();
+            }
+            None => unknown.push((k.clone(), v.clone())),
         }
     }
+    (options, unknown)
 }
 
 #[cfg(test)]
@@ -195,6 +264,12 @@ mod tests {
     fn store_toml_roundtrip() {
         let mut s = Store {
             theme: "Dracula".into(),
+            paths: Paths {
+                steam_roots: vec!["/mnt/games/Steam".into()],
+                steam_libraries: vec!["/mnt/second/SteamLibrary".into()],
+                proton_dirs: vec!["/opt/proton-builds".into()],
+                bins: BTreeMap::from([("umu-run".to_string(), "/home/u/.local/bin/umu-run".to_string())]),
+            },
             ..Default::default()
         };
         s.upsert_preset(Preset {
@@ -232,6 +307,12 @@ mod tests {
         // A BTreeSet so the TOML is stable and diffable, not insertion-ordered.
         assert_eq!(back.favorites.iter().copied().collect::<Vec<_>>(), vec![275850, 553850]);
         assert_eq!(back.library_sort, "recent");
+        assert_eq!(back.paths.steam_roots, vec!["/mnt/games/Steam".to_string()]);
+        assert_eq!(back.paths.proton_dirs, vec!["/opt/proton-builds".to_string()]);
+        assert_eq!(
+            back.paths.bins.get("umu-run").map(String::as_str),
+            Some("/home/u/.local/bin/umu-run")
+        );
     }
 
     /// Every `Store` field is `#[serde(default)]` so that a `state.toml` written
@@ -249,18 +330,78 @@ show_irrelevant = true
         assert!(s.show_irrelevant);
         assert!(s.favorites.is_empty());
         assert_eq!(s.library_sort, "");
+        assert!(s.paths.steam_roots.is_empty());
+        assert!(s.paths.bins.is_empty());
+    }
+
+    #[test]
+    fn a_state_file_with_a_partial_paths_table_still_loads() {
+        // The failure mode a *nested* struct adds over flat fields: a `[paths]`
+        // table written by an older build, or hand-edited, carries only some of
+        // its keys. Every one of them has to default independently.
+        let partial = r#"
+theme = "Mocha"
+[paths]
+steam_roots = ["/mnt/games/Steam"]
+"#;
+        let s: Store = toml::from_str(partial).expect("a partial [paths] table still parses");
+        assert_eq!(s.paths.steam_roots, vec!["/mnt/games/Steam".to_string()]);
+        assert!(s.paths.proton_dirs.is_empty());
+        assert!(s.paths.steam_libraries.is_empty());
+        assert!(s.paths.bins.is_empty());
+    }
+
+    #[test]
+    fn clean_drops_the_blank_rows_the_settings_ui_produces() {
+        // The path rows keep an empty input around while the user types, so
+        // blanks reach the backend on every keystroke.
+        let list = vec!["  /opt/proton  ".to_string(), String::new(), "   ".to_string()];
+        assert_eq!(Paths::clean(&list), vec!["/opt/proton"]);
     }
 
     #[test]
     fn apply_then_capture_is_stable() {
         let cat = Catalog::bundled();
-        let mut opts = Options::from_catalog(&cat);
         let env = vec![("PROTON_NO_NTSYNC".to_string(), "1".to_string())];
         let wrappers = vec![("mangohud".to_string(), String::new())];
-        apply_lists(&cat, &mut opts, &env, &wrappers);
+        let (opts, unknown) = options_from_lists(&cat, &env, &wrappers);
         let (env2, wrappers2) = options_to_lists(&cat, &opts);
         assert_eq!(env, env2);
         assert_eq!(wrappers, wrappers2);
+        assert!(unknown.is_empty(), "every key here is in the catalog");
+    }
+
+    #[test]
+    fn an_env_key_the_catalog_no_longer_knows_comes_back_as_a_leftover() {
+        // #62. `a552034` renamed PROTON_ENABLE_NVAPI to PROTON_DISABLE_NVAPI, so
+        // any config saved before it names a key the catalog has no entry for.
+        // Returning it is what lets the caller re-home it into `extra_env`
+        // instead of the command quietly losing the variable.
+        let cat = Catalog::bundled();
+        let env = vec![
+            ("PROTON_ENABLE_NVAPI".to_string(), "1".to_string()),
+            ("PROTON_NO_NTSYNC".to_string(), "1".to_string()),
+        ];
+        let (opts, unknown) = options_from_lists(&cat, &env, &[]);
+
+        assert_eq!(unknown, vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())]);
+        // The known key still lands normally.
+        let (captured, _) = options_to_lists(&cat, &opts);
+        assert_eq!(captured, vec![("PROTON_NO_NTSYNC".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn leftovers_keep_their_input_order_and_duplicates() {
+        // `compose::merge_into_extra_env` dedups by key and relies on this order,
+        // so it has to be the caller's order and not the catalog's.
+        let cat = Catalog::bundled();
+        let env = vec![
+            ("ZZZ_NOT_A_REAL_KEY".to_string(), "2".to_string()),
+            ("AAA_NOT_A_REAL_KEY".to_string(), "1".to_string()),
+            ("ZZZ_NOT_A_REAL_KEY".to_string(), "3".to_string()),
+        ];
+        let (_, unknown) = options_from_lists(&cat, &env, &[]);
+        assert_eq!(unknown, env);
     }
 
     #[test]
@@ -299,29 +440,4 @@ show_irrelevant = true
 
         std::fs::remove_file(&blocker).ok();
     }
-}
-
-/// Env keys in a `Config`'s catalog list that the catalog no longer knows.
-///
-/// **[`apply_lists`] silently drops these**, so a command assembled from such a
-/// config is missing them. That happens for real: `params.toml` is refreshed by
-/// the `update-proton-params` skill, and a remembered per-game config or a saved
-/// preset written before a rename keeps naming the old key. Any caller that
-/// makes a *claim* about the assembled command — the in-sync verdict in
-/// `diff::statuses`, for one — has to consult this rather than trust the build.
-pub fn dropped_env_keys(catalog: &Catalog, env: &[(String, String)]) -> Vec<String> {
-    env.iter()
-        .filter(|(k, _)| !catalog.envs.iter().any(|e| &e.key == k))
-        .map(|(k, _)| k.clone())
-        .collect()
-}
-
-/// Env pairs from a parsed/imported command that are NOT in the catalog,
-/// rendered as a space-separated `K=V` string for the "custom env" field.
-pub fn unknown_env_string(catalog: &Catalog, env: &[(String, String)]) -> String {
-    env.iter()
-        .filter(|(k, _)| !catalog.envs.iter().any(|e| &e.key == k))
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join(" ")
 }

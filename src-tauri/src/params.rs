@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::builder::Wrapper;
-use crate::which;
 
 /// The bundled default catalog.
 const BUNDLED: &str = include_str!("../params.toml");
@@ -154,6 +153,7 @@ impl Catalog {
         let warning = error.map(|error| {
             eprintln!("warning: {} failed to parse; using bundled catalog", path.display());
             ConfigWarning {
+                kind: WarningKind::Parse,
                 file: "params.toml".to_string(),
                 path: path.display().to_string(),
                 error,
@@ -197,17 +197,50 @@ pub fn config_dir() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".config/protongen"))
 }
 
-/// A file under the protongen config dir, e.g. `config_file("state.toml")`.
-/// A user config override that couldn't be parsed and was therefore ignored.
+/// What kind of user input a [`ConfigWarning`] is about. The UI needs this to
+/// word the banner: "couldn't be parsed; using the bundled catalog" is right for
+/// a TOML override and nonsense for a Settings path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WarningKind {
+    /// A `params.toml` / `recipes.toml` override that failed to parse.
+    Parse,
+    /// A path configured in Settings that discovery could not use.
+    Path,
+}
+
+/// Something the user configured that protongen could not use, surfaced rather
+/// than silently ignored.
+///
+/// Deliberately not fatal: one bad entry must not kill discovery of everything
+/// else. Deliberately not silent either — that is what makes a portability
+/// feature feel broken.
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct ConfigWarning {
-    /// Which override this was, e.g. `params.toml`.
+    pub kind: WarningKind,
+    /// For a parse warning, the override file (`params.toml`). For a path
+    /// warning, the Settings field it came from (`Steam root`, `Proton
+    /// directory`, …) — the label the user needs to go and find.
     pub file: String,
     /// Absolute path, so the message can tell the user what to go and fix.
     pub path: String,
-    /// The underlying toml parse error.
+    /// The underlying toml parse error, or why the path was unusable.
     pub error: String,
 }
+
+impl ConfigWarning {
+    /// A path from Settings that discovery could not use.
+    pub fn path(field: &str, path: impl std::fmt::Display, error: impl Into<String>) -> Self {
+        Self {
+            kind: WarningKind::Path,
+            file: field.to_string(),
+            path: path.to_string(),
+            error: error.into(),
+        }
+    }
+}
+
+/// A file under the protongen config dir, e.g. `config_file("state.toml")`.
 
 pub fn config_file(name: &str) -> Option<PathBuf> {
     config_dir().map(|d| d.join(name))
@@ -286,11 +319,6 @@ pub fn to_spec(cat: &Catalog, opts: &Options) -> (Vec<(String, String)>, Vec<Wra
     (env, wrappers)
 }
 
-/// Whether a definition's required binary is installed (None = no requirement).
-pub fn requires_status(requires: &Option<String>) -> Option<bool> {
-    requires.as_ref().map(|b| which::is_installed(b))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,7 +352,7 @@ mod tests {
             }
         }
         let (env, wrappers) = to_spec(&cat, &opts);
-        let cmd = crate::builder::build_command(&env, &wrappers, "");
+        let cmd = crate::builder::build_command(&env, &wrappers, "", &crate::builder::Bins::default());
         assert_eq!(cmd, "PROTON_ENABLE_WAYLAND=1 gamemoderun mangohud %command%");
     }
 

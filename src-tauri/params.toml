@@ -28,7 +28,7 @@
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
 proton_cachyos_build = "20260703"
-updated = "2026-07-26"
+updated = "2026-08-02"
 
 # ============================ Wrappers ============================
 
@@ -729,6 +729,50 @@ help = "Block the game from reaching listed hosts (telemetry/DRM), comma-separat
 details = "Blocks network access to the listed hostnames from inside the prefix — handy for stopping telemetry or a broken DRM/phone-home check that stalls launch. Comma- or semicolon-separated, up to 16 hosts; a second-level domain blocks its subdomains too (e.g. 'test.org' also blocks '*.test.org')."
 example = "WINE_BLOCK_HOSTS=telemetry.example.com,ads.example.net %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+# ==================== Overlay / Post-processing ==================
+#
+# vkBasalt is a Vulkan *implicit layer*, not a wrapper program, so it needs no
+# [[wrapper]] entry and no `requires` (there is no binary on PATH to find — it
+# ships a libvkbasalt.so plus a layer JSON).
+
+[[env]]
+key = "ENABLE_VKBASALT"
+category = "Overlay / Post-processing"
+default_value = "1"
+values = ["1", "0"]
+help = "Turn on vkBasalt post-processing (CAS sharpening, FXAA, SMAA, ReShade FX)."
+details = "Activates the vkBasalt Vulkan layer, which applies post-processing effects on top of the game's output — most commonly AMD FidelityFX CAS sharpening, but also FXAA, SMAA and ReShade-style .fx shaders. The effects themselves are chosen in vkBasalt.conf, not here; this variable only enables the layer. Pairs well with an upscaler (FSR/XeSS), where a little sharpening offsets the softness upscaling introduces. The in-game toggle key (HOME by default) needs raw X11 input and does nothing on a pure Wayland session — the layer itself works either way."
+example = "ENABLE_VKBASALT=1 %command%"
+url = "https://github.com/DadSchoorse/vkBasalt"
+
+[[env]]
+key = "VKBASALT_CONFIG_FILE"
+category = "Overlay / Post-processing"
+default_value = ""
+help = "Path to a specific vkBasalt.conf (otherwise the standard search path is used)."
+details = "Points vkBasalt at one config file instead of letting it search. Without this it tries, in order: the game's working directory, $XDG_CONFIG_HOME/vkBasalt/vkBasalt.conf (~/.config/vkBasalt/vkBasalt.conf), $XDG_DATA_HOME/vkBasalt/vkBasalt.conf, /etc/vkBasalt.conf, /etc/vkBasalt/vkBasalt.conf, then /usr/share/vkBasalt/vkBasalt.conf. Use it to keep a per-game effect chain. As with MANGOHUD_CONFIGFILE the path must be absolute — '~' is not expanded in Steam launch options."
+example = "ENABLE_VKBASALT=1 VKBASALT_CONFIG_FILE=/home/user/.config/vkBasalt/sharpen.conf %command%"
+url = "https://github.com/DadSchoorse/vkBasalt#configuration"
+
+[[env]]
+key = "VKBASALT_LOG_LEVEL"
+category = "Overlay / Post-processing"
+default_value = "info"
+values = ["trace", "debug", "info", "warn", "error", "none"]
+help = "vkBasalt log verbosity — raise it when an effect silently fails to load."
+details = "Controls how much vkBasalt reports. The useful case is a shader or effect that appears to do nothing: at 'debug' or 'trace' the layer says which config file it actually read and which effects it managed to compile, which is usually the whole answer. Set 'none' to silence it."
+example = "ENABLE_VKBASALT=1 VKBASALT_LOG_LEVEL=debug %command%"
+url = "https://github.com/DadSchoorse/vkBasalt"
+
+[[env]]
+key = "VKBASALT_LOG_FILE"
+category = "Overlay / Post-processing"
+default_value = ""
+help = "Send vkBasalt's log to a file instead of stderr."
+details = "Redirects vkBasalt's output to the given path. Worth setting when debugging through Steam, where stderr goes to the Steam console rather than anywhere you can easily read it. Absolute paths only — '~' is not expanded in Steam launch options."
+example = "ENABLE_VKBASALT=1 VKBASALT_LOG_LEVEL=debug VKBASALT_LOG_FILE=/tmp/vkbasalt.log %command%"
+url = "https://github.com/DadSchoorse/vkBasalt"
 
 # ============================= Logging ===========================
 

@@ -61,10 +61,15 @@ pub fn run() {
 /// Print discovered Steam install, Proton runtimes, games and catalog summary.
 /// Mirrors the old `--list` mode for verification and scripting.
 pub fn dump() -> Result<()> {
-    let dir = steam::locate_native()?;
+    // Same configured paths the app uses, so `--list` is the answer to "why
+    // isn't my Settings path working?" rather than a second, disagreeing view.
+    let paths = store::Store::load().paths;
+    let mut warnings = Vec::new();
+
+    let dir = steam::locate_native(&paths.steam_roots, &mut warnings)?;
     println!("Steam root: {}", steam::root_display(&dir));
 
-    let runtimes = runtime::discover(&dir);
+    let runtimes = runtime::discover(&dir, &paths.proton_dirs, &mut warnings);
     println!("\nProton runtimes:");
     for r in &runtimes {
         println!(
@@ -85,7 +90,7 @@ pub fn dump() -> Result<()> {
         app_cfgs.values().filter(|c| c.last_played.is_some()).count()
     );
 
-    let games = games::list_games(&dir);
+    let games = games::list_games(&dir, &paths.steam_libraries, &mut warnings);
     println!("\nGames + shortcuts ({}):", games.len());
     for g in &games {
         let state = if g.installed { "" } else { "  (not installed)" };
@@ -96,6 +101,13 @@ pub fn dump() -> Result<()> {
             g.source.label(),
             state
         );
+    }
+
+    if !warnings.is_empty() {
+        println!("\nConfigured paths protongen could not use:");
+        for w in &warnings {
+            println!("  - {} {}: {}", w.file, w.path, w.error);
+        }
     }
 
     let (cat, cat_warning) = params::Catalog::load();

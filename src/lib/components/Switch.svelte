@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Switch as SwitchPrimitive } from "bits-ui";
+  import { mergeStyle } from "$lib/util";
 
   let {
     checked = false,
@@ -35,7 +36,7 @@
     <button
       {...props}
       class="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200"
-      style="background: {checked ? 'var(--accent)' : 'var(--surface-2)'}"
+      style={mergeStyle(props, `background: ${checked ? "var(--accent)" : "var(--surface-2)"}`)}
     >
       <span
         class="absolute top-[3px] size-4 rounded-full bg-white shadow transition-all duration-200"

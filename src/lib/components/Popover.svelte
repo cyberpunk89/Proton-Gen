@@ -3,6 +3,7 @@
   import { Popover as PopoverPrimitive } from "bits-ui";
   import { fly } from "$lib/motion.svelte";
   import { keys } from "$lib/keys.svelte";
+  import { mergeStyle } from "$lib/util";
 
   let {
     trigger,
@@ -64,7 +65,7 @@
               {...props}
               transition:fly={{ y: -4, duration: 120 }}
               class="popover p-3"
-              style="width:{width}"
+              style={mergeStyle(props, `width:${width}`)}
             >
               {@render children()}
             </div>

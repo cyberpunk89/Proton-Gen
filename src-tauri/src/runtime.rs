@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use steamlocate::SteamDir;
 
+use crate::params::ConfigWarning;
 use crate::steam;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,6 +18,10 @@ pub enum RuntimeKind {
     System,
     User,
     Bundled,
+    /// From a directory the user added under Settings → Paths. Distinct from
+    /// `System`/`User` so the picker can show where it came from — which is how
+    /// the user confirms their configured dir actually worked.
+    Custom,
 }
 
 impl RuntimeKind {
@@ -25,6 +30,7 @@ impl RuntimeKind {
             RuntimeKind::System => "system",
             RuntimeKind::User => "user",
             RuntimeKind::Bundled => "valve",
+            RuntimeKind::Custom => "custom",
         }
     }
 }
@@ -44,7 +50,16 @@ pub struct Runtime {
 const SYSTEM_COMPAT_DIR: &str = "/usr/share/steam/compatibilitytools.d";
 
 /// Discover all runtimes available to the given Steam install.
-pub fn discover(dir: &SteamDir) -> Vec<Runtime> {
+///
+/// `extra_dirs` (from Settings) are additional `compatibilitytools.d`-shaped
+/// directories — one sub-folder per Proton build, each with a
+/// `compatibilitytool.vdf`. Getting that layout wrong is the usual mistake, so a
+/// configured dir that yields nothing warns rather than going quiet.
+pub fn discover(
+    dir: &SteamDir,
+    extra_dirs: &[String],
+    warn: &mut Vec<ConfigWarning>,
+) -> Vec<Runtime> {
     let mut runtimes = Vec::new();
 
     scan_compat_dir(Path::new(SYSTEM_COMPAT_DIR), RuntimeKind::System, &mut runtimes);
@@ -54,6 +69,28 @@ pub fn discover(dir: &SteamDir) -> Vec<Runtime> {
         &mut runtimes,
     );
     scan_bundled(dir, &mut runtimes);
+
+    for raw in crate::store::Paths::clean(extra_dirs) {
+        let path = Path::new(raw);
+        if !path.is_dir() {
+            warn.push(ConfigWarning::path(
+                "Proton directory",
+                path.display(),
+                "not a directory",
+            ));
+            continue;
+        }
+        let before = runtimes.len();
+        scan_compat_dir(path, RuntimeKind::Custom, &mut runtimes);
+        if runtimes.len() == before {
+            warn.push(ConfigWarning::path(
+                "Proton directory",
+                path.display(),
+                "no Proton builds here — expected one sub-folder per build, \
+                 each containing a compatibilitytool.vdf",
+            ));
+        }
+    }
 
     runtimes.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
     runtimes
@@ -195,6 +232,65 @@ mod tests {
             path: PathBuf::new(),
         }];
         assert_eq!(installed_cachyos_build(&rts).as_deref(), Some("20260602"));
+    }
+
+
+    /// A `compatibilitytools.d`-shaped tree with one build in it.
+    fn temp_compat_dir(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir()
+            .join(format!("protongen-compat-{}-{}", tag, std::process::id()));
+        let tool = root.join("GE-Proton10-34");
+        std::fs::create_dir_all(&tool).unwrap();
+        std::fs::write(
+            tool.join("compatibilitytool.vdf"),
+            r#"
+"compatibilitytools"
+{
+  "compat_tools"
+  {
+    "GE-Proton10-34"
+    {
+      "install_path" "."
+      "display_name" "GE-Proton10-34"
+      "from_oslist"  "windows"
+      "to_oslist"    "linux"
+    }
+  }
+}
+"#,
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn an_extra_compat_dir_contributes_custom_runtimes() {
+        // Driven through `scan_compat_dir` directly: `discover` needs a SteamDir,
+        // and the configured-dir behaviour is entirely this call.
+        let root = temp_compat_dir("ok");
+        let mut out = Vec::new();
+        scan_compat_dir(&root, RuntimeKind::Custom, &mut out);
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].internal_name, "GE-Proton10-34");
+        // The kind is how the picker shows the user their dir actually worked.
+        assert_eq!(out[0].kind, RuntimeKind::Custom);
+        assert_eq!(out[0].kind.label(), "custom");
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_configured_dir_with_no_tools_finds_nothing_to_warn_about() {
+        // The empty case `discover` turns into a warning: the usual mistake is
+        // pointing at a single Proton build rather than at its parent.
+        let root = std::env::temp_dir()
+            .join(format!("protongen-compat-empty-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut out = Vec::new();
+        scan_compat_dir(&root, RuntimeKind::Custom, &mut out);
+        assert!(out.is_empty());
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

@@ -145,6 +145,30 @@ export function splitExtraEnv(input: string): { raw: string; key: string; value:
 }
 
 /**
+ * Render pairs back into the custom-env field's `K=V K=V …` form, re-quoting any
+ * value containing whitespace. Mirrors `compose::format_extra_env`
+ * (src-tauri/src/compose.rs) and is the exact inverse of `tokenizeEnv`.
+ */
+export function formatExtraEnv(pairs: [string, string][]): string {
+  return pairs.map(([k, v]) => (/\s/.test(v) ? `${k}="${v}"` : `${k}=${v}`)).join(" ");
+}
+
+/**
+ * Append `pairs` to an extra-env string, skipping any key it already assigns.
+ * Mirrors `compose::merge_into_extra_env` (src-tauri/src/compose.rs), including
+ * the tie-break: dedup is **by key and the incoming pair loses**, because these
+ * pairs carry values from a catalog the app no longer has, and what the user
+ * typed into the visible field outranks that.
+ */
+export function mergeIntoExtraEnv(extraEnv: string, pairs: [string, string][]): string {
+  const existing = new Set(splitExtraEnv(extraEnv).map((p) => p.key));
+  const fresh = pairs.filter(([k]) => !existing.has(k));
+  if (fresh.length === 0) return extraEnv;
+  const rendered = formatExtraEnv(fresh);
+  return extraEnv.trim() === "" ? rendered : `${extraEnv.trimEnd()} ${rendered}`;
+}
+
+/**
  * ProtonDB tier colours. Deliberately *not* theme tokens — these are the
  * medal colours the tiers are named after, and they have to mean the same
  * thing on every theme.
@@ -201,4 +225,35 @@ const TIER_ORDER = ["platinum", "gold", "silver", "bronze", "borked"];
 export function tierRank(tier: string): number | null {
   const i = TIER_ORDER.indexOf(tier);
   return i === -1 ? null : i;
+}
+
+/**
+ * Combine the inline `style` bits-ui hands us through a `child` snippet with our
+ * own declarations. Use this at EVERY `{...props}` site that also needs an inline
+ * style — a bare `style="…"` written after the spread is a silent P0.
+ *
+ * While a modal layer is open bits-ui sets `document.body { pointer-events: none }`
+ * and re-enables the panel with `pointer-events: auto`, which it delivers *inside*
+ * `props.style` — as a string, because svelte-toolbelt's `mergeProps` stringifies
+ * its style object. A literal `style=` after `{...props}` is a later key in the
+ * same compiled object literal, so it replaces that string wholesale;
+ * `pointer-events` inherits, and the panel plus every control in it goes
+ * click-dead with no error, no warning and a clean `pnpm check`. That shipped
+ * once (#63) and took a bug report to find.
+ *
+ * The Content props also carry `FocusScope`'s `onkeydown` (the Tab focus trap) and,
+ * on `Select.Content`, load-bearing layout style — so the same rule covers event
+ * handlers. Enforced by `scripts/check-props-spread.sh`, which `pnpm check` runs.
+ *
+ * `props` is typed `Record<string, unknown>` by bits-ui, hence the `unknown`.
+ * Inputs may or may not carry a trailing `;`, so it is normalised here.
+ */
+export function mergeStyle(
+  props: { style?: unknown },
+  ...extra: (string | false | null | undefined)[]
+): string {
+  const parts = [props.style, ...extra]
+    .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+    .map((s) => s.trim().replace(/;+$/, ""));
+  return parts.length === 0 ? "" : `${parts.join("; ")};`;
 }

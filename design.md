@@ -331,9 +331,15 @@ mutually-exclusive DXVK forks. These surface in the **Notices** strip.
 
 `Store` (serialized to `$XDG_CONFIG_HOME/protongen/state.toml`) holds: chosen `theme`,
 named `presets`, per-game `game_memory` (`appid → Config`), the dismissed staleness
-build, and the `show_irrelevant` / `hdr` / `protondb_auto` toggles. `Config` is the
-serializable snapshot of builder selection (umu flag, runtime, env/wrapper lists,
-extra-env, umu fields, game args).
+build, the `show_irrelevant` / `hdr` / `protondb_auto` toggles, and a `paths` sub-struct
+of user-supplied discovery overrides (extra Steam roots and libraries, extra Proton
+directories, and per-program binary paths). `Config` is the serializable snapshot of
+builder selection (umu flag, runtime, env/wrapper lists, extra-env, umu fields, game
+args).
+
+`options_from_lists` returns the env pairs the catalog has no entry for rather than
+dropping them; callers re-home those into `extra_env` so a config written before a
+catalog refresh keeps emitting its variables (#62).
 
 Helpers `options_to_lists` / `apply_lists` convert between the catalog's `Options` and
 the flat key/value lists stored in a `Config` — and a test asserts the apply→capture
@@ -446,7 +452,7 @@ Three round-trips keep the system consistent and are all tested:
 
 | Path | Contents | Writer |
 | --- | --- | --- |
-| `$XDG_CONFIG_HOME/protongen/state.toml` | theme, presets, per-game memory, settings, dismissals | `store.rs` (only file protongen writes for state) |
+| `$XDG_CONFIG_HOME/protongen/state.toml` | theme, presets, per-game memory, settings, discovery paths, dismissals | `store.rs` (only file protongen writes for state) |
 | `$XDG_CONFIG_HOME/protongen/params.toml` | optional user catalog override | user / skill (read-only to app) |
 | `$XDG_CONFIG_HOME/protongen/recipes.toml` | optional user recipes override | user (read-only to app) |
 | `$XDG_CACHE_HOME/protongen/art/` | downloaded artwork cache | `art.rs` |
@@ -502,7 +508,9 @@ Discovery against the real filesystem and the WebView UI are validated manually 
   summaries (compatibility stats only, no commands) and Steam-CDN artwork fallback. Both
   run off-thread and degrade silently when offline.
 - **Least privilege.** Minimal Tauri capabilities; no shell execution, no arbitrary FS
-  plugin. Artwork is delivered as in-memory `data:` URLs rather than exposing a file
+  plugin. `decorations: false` means the client-side titlebar owns move, minimize,
+  maximize, close *and* resize (`ResizeGrips.svelte`), so the window permission set is
+  four narrow verbs rather than a general window capability. Artwork is delivered as in-memory `data:` URLs rather than exposing a file
   asset protocol.
 - **Local-only state.** Everything persistent lives under the user's XDG dirs.
 

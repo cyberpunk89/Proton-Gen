@@ -5,6 +5,8 @@ use std::collections::HashSet;
 use steamlocate::app::StateFlag;
 use steamlocate::SteamDir;
 
+use crate::params::ConfigWarning;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameSource {
     Steam,
@@ -68,33 +70,65 @@ fn dedup_and_sort(mut games: Vec<Game>) -> Vec<Game> {
     games
 }
 
+/// Collect the apps of one library into `out`, skipping runtimes/tools.
+/// Returns how many it added, so a configured library that yields nothing can
+/// say so.
+fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usize {
+    let before = out.len();
+    for app in library.apps().flatten() {
+        let name = app.name.clone().unwrap_or_else(|| app.install_dir.clone());
+        if is_tool(app.app_id, &name) {
+            continue;
+        }
+        // An appmanifest with no state flags tells us nothing; the manifest
+        // existing at all is the better guess, so assume installed rather than
+        // hiding a game that is really there.
+        let installed = app
+            .state_flags
+            .map_or(true, |f| f.flags().any(|s| s == StateFlag::FullyInstalled));
+        out.push(Game {
+            app_id: app.app_id,
+            name,
+            source: GameSource::Steam,
+            executable: None,
+            installed,
+        });
+    }
+    out.len() - before
+}
+
 /// List installed Steam games plus non-Steam shortcuts, sorted by name with
 /// runtime/tool apps filtered out.
-pub fn list_games(dir: &SteamDir) -> Vec<Game> {
+///
+/// `extra_libraries` (from Settings) are additional library folders, for the
+/// case where `libraryfolders.vdf` doesn't mention a drive. A folder already
+/// declared there costs nothing to list twice: `dedup_and_sort` keys on appid.
+pub fn list_games(
+    dir: &SteamDir,
+    extra_libraries: &[String],
+    warn: &mut Vec<ConfigWarning>,
+) -> Vec<Game> {
     let mut games = Vec::new();
 
     // Installed Steam games across all libraries.
     if let Ok(libraries) = dir.libraries() {
         for library in libraries.flatten() {
-            for app in library.apps().flatten() {
-                let name = app.name.clone().unwrap_or_else(|| app.install_dir.clone());
-                if is_tool(app.app_id, &name) {
-                    continue;
+            push_library_apps(&library, &mut games);
+        }
+    }
+
+    for raw in crate::store::Paths::clean(extra_libraries) {
+        match steamlocate::Library::from_dir(std::path::Path::new(raw)) {
+            Ok(library) => {
+                if push_library_apps(&library, &mut games) == 0 {
+                    warn.push(ConfigWarning::path(
+                        "Steam library",
+                        raw,
+                        "no installed games here — expected a folder containing steamapps/",
+                    ));
                 }
-                // An appmanifest with no state flags tells us nothing; the
-                // manifest existing at all is the better guess, so assume
-                // installed rather than hiding a game that is really there.
-                let installed = app.state_flags.map_or(true, |f| {
-                    f.flags().any(|s| s == StateFlag::FullyInstalled)
-                });
-                games.push(Game {
-                    app_id: app.app_id,
-                    name,
-                    source: GameSource::Steam,
-                    executable: None,
-                    installed,
-                });
             }
+            Err(e) => warn.push(ConfigWarning::path("Steam library", raw, e.to_string())),
         }
     }
 
