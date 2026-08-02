@@ -101,7 +101,13 @@ These are optional, and only needed for the features that use them. protongen ch
 | `gamescope` | the gamescope wrapper |
 | `gamemode` (`gamemoderun`) | the GameMode wrapper |
 | `mangohud` | the MangoHud overlay |
+| `vkbasalt` | post-processing (CAS sharpening, FXAA, SMAA, ReShade FX) |
 | `umu-launcher` (`umu-run`) | umu mode |
+
+If one of these lives somewhere off your `$PATH`, set its location under
+**Settings → Paths** and protongen will emit that path into the command rather than the
+bare name — which matters because Steam launched from a desktop entry often has a
+`$PATH` without `~/.local/bin`.
 
 ### Updating
 
@@ -178,7 +184,11 @@ Catppuccin (all four flavours), Dracula, Nord, Tokyo Night, Gruvbox, Rosé Pine 
 |---|---|
 | <img src="docs/screenshots/theme-latte.webp" alt="protongen in the light Catppuccin Latte theme"> | <img src="docs/screenshots/theme-gruvbox.webp" alt="protongen in the Gruvbox theme"> |
 
-Plus opt-in capability toggles (HDR, FSR 4) for hardware that can't be auto-detected.
+Plus opt-in capability toggles (HDR, FSR 4) for hardware that can't be auto-detected, and a
+**Paths** section for the cases auto-discovery misses — extra Steam roots and library
+folders, extra Proton directories, and where to find `umu-run`, `gamescope`, `gamemoderun`
+and `mangohud`. Every change re-scans immediately and tells you what it found, so a wrong
+path says so instead of failing quietly.
 
 <img src="docs/screenshots/settings.webp" alt="The settings drawer with the Appearance section expanded, showing the ten themes">
 
