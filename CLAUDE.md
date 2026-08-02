@@ -85,6 +85,16 @@ extra `--` into cargo).
   default, tag it `needs = ["<cap>"]` and thread the cap through `store.rs`, `types.ts`,
   `state.svelte.ts` (`EMPTY_STORE` + `hwCaps` + setter), `util.ts`, `mock.ts`, and a
   `SettingsDrawer.svelte` toggle. (Hidden options stay revealable via "Show all".)
+- **Never write a bare attribute after `{...props}`.** bits-ui's `child` snippets hand
+  back a merged prop bag: a **style string** carrying `pointer-events: auto` (its modal
+  layers set `body { pointer-events: none }`), `onkeydown` for the Tab focus trap, and
+  load-bearing layout style on `Select.Content`. A literal `style=`/`on*=` written after
+  the spread is a later key in the same compiled object literal, so it replaces that
+  value silently — no error, no warning, `pnpm check` clean. It made every modal in the
+  app click-dead once (#63). Route extra inline styles through `mergeStyle()` in
+  `util.ts`. Enforced by `scripts/check-props-spread.sh`, which `pnpm check` runs.
+  `bits-ui` is **pinned exactly** for the same reason: the app depends on internal prop
+  shapes that a minor bump has already changed once.
 - **Minimal Tauri capabilities** (`capabilities/default.json`): core, opener, clipboard,
   dialog. Adding a plugin = `Cargo.toml` dep + `.plugin(...)` in `lib.rs` + a capability
   permission + the JS `@tauri-apps/plugin-*` package. `opener:default` only scopes

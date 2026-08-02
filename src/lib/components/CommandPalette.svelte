@@ -3,6 +3,7 @@
   import { app } from "$lib/state.svelte";
   import { keys } from "$lib/keys.svelte";
   import { buildItems, indexItems, rank, type PaletteItem } from "$lib/palette.svelte";
+  import { mergeStyle } from "$lib/util";
   import { MagnifyingGlass } from "phosphor-svelte";
 
   /**
@@ -117,7 +118,7 @@
           <div
             {...props}
             class="card w-full max-w-xl overflow-hidden p-0 shadow-2xl"
-            style="background: var(--surface-solid)"
+            style={mergeStyle(props, "background: var(--surface-solid)")}
           >
             <DialogPrimitive.Title class="sr-only">Command palette</DialogPrimitive.Title>
 

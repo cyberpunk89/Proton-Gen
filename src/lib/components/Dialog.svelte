@@ -2,6 +2,7 @@
   import { Dialog as DialogPrimitive } from "bits-ui";
   import { X } from "phosphor-svelte";
   import { keys } from "$lib/keys.svelte";
+  import { mergeStyle } from "$lib/util";
   import type { Snippet } from "svelte";
 
   let {
@@ -50,7 +51,11 @@
           class="fixed inset-0 z-[100] flex items-start justify-center p-6 pt-[12vh]"
           role="presentation"
         >
-          <div {...props} class="card w-full p-5 shadow-2xl" style="max-width:{width}; background: var(--surface-solid)">
+          <div
+            {...props}
+            class="card w-full p-5 shadow-2xl"
+            style={mergeStyle(props, `max-width:${width}`, "background: var(--surface-solid)")}
+          >
             <div class="flex items-start gap-3">
               <div class="min-w-0 flex-1">
                 <DialogPrimitive.Title class="text-lg font-medium text-text">

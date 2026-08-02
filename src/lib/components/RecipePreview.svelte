@@ -2,6 +2,7 @@
   import { app } from "$lib/state.svelte";
   import { ipc } from "$lib/ipc";
   import Popover from "./Popover.svelte";
+  import { mergeStyle } from "$lib/util";
   import type { RecipeChange } from "$lib/types";
 
   /**
@@ -53,7 +54,11 @@
         {...props}
         type="button"
         class="rounded-full px-1.5 py-0.5 font-mono text-[10px] transition hover:brightness-125"
-        style="background: color-mix(in srgb, {accent} 14%, transparent); color: {accent}"
+        style={mergeStyle(
+          props,
+          `background: color-mix(in srgb, ${accent} 14%, transparent)`,
+          `color: ${accent}`,
+        )}
         aria-label="Preview what this recipe changes"
       >
         {#if changes === null}

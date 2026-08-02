@@ -202,3 +202,34 @@ export function tierRank(tier: string): number | null {
   const i = TIER_ORDER.indexOf(tier);
   return i === -1 ? null : i;
 }
+
+/**
+ * Combine the inline `style` bits-ui hands us through a `child` snippet with our
+ * own declarations. Use this at EVERY `{...props}` site that also needs an inline
+ * style — a bare `style="…"` written after the spread is a silent P0.
+ *
+ * While a modal layer is open bits-ui sets `document.body { pointer-events: none }`
+ * and re-enables the panel with `pointer-events: auto`, which it delivers *inside*
+ * `props.style` — as a string, because svelte-toolbelt's `mergeProps` stringifies
+ * its style object. A literal `style=` after `{...props}` is a later key in the
+ * same compiled object literal, so it replaces that string wholesale;
+ * `pointer-events` inherits, and the panel plus every control in it goes
+ * click-dead with no error, no warning and a clean `pnpm check`. That shipped
+ * once (#63) and took a bug report to find.
+ *
+ * The Content props also carry `FocusScope`'s `onkeydown` (the Tab focus trap) and,
+ * on `Select.Content`, load-bearing layout style — so the same rule covers event
+ * handlers. Enforced by `scripts/check-props-spread.sh`, which `pnpm check` runs.
+ *
+ * `props` is typed `Record<string, unknown>` by bits-ui, hence the `unknown`.
+ * Inputs may or may not carry a trailing `;`, so it is normalised here.
+ */
+export function mergeStyle(
+  props: { style?: unknown },
+  ...extra: (string | false | null | undefined)[]
+): string {
+  const parts = [props.style, ...extra]
+    .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+    .map((s) => s.trim().replace(/;+$/, ""));
+  return parts.length === 0 ? "" : `${parts.join("; ")};`;
+}

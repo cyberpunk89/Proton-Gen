@@ -3,6 +3,7 @@
   import { toast } from "$lib/toast.svelte";
   import Popover from "./Popover.svelte";
   import OpenInSteam from "./OpenInSteam.svelte";
+  import { mergeStyle } from "$lib/util";
   import { CheckCircle, WarningCircle, CircleDashed, DownloadSimple } from "phosphor-svelte";
 
   /**
@@ -62,9 +63,12 @@
         class="inline-flex min-w-0 shrink items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition hover:brightness-110 {open
           ? 'brightness-110'
           : ''}"
-        style="border-color: color-mix(in srgb, {l.colour} 35%, transparent);
-               background: color-mix(in srgb, {l.colour} 12%, transparent);
-               color: {l.colour}"
+        style={mergeStyle(
+          props,
+          `border-color: color-mix(in srgb, ${l.colour} 35%, transparent)`,
+          `background: color-mix(in srgb, ${l.colour} 12%, transparent)`,
+          `color: ${l.colour}`,
+        )}
       >
         <l.icon size={13} weight="fill" class="shrink-0" />
         <span class="truncate @xl:hidden">{shortLabel}</span>

@@ -3,6 +3,7 @@
   import { keys } from "$lib/keys.svelte";
   import { THEMES } from "$lib/themes";
   import { fly, fade } from "$lib/motion.svelte";
+  import { mergeStyle } from "$lib/util";
   import { Dialog as DialogPrimitive } from "bits-ui";
   import Switch from "./Switch.svelte";
   import { GearSix, Palette, SlidersHorizontal, Check, X, CaretDown } from "phosphor-svelte";
@@ -51,7 +52,7 @@
             <div
               {...props}
               class="flex h-full w-[360px] max-w-[90vw] flex-col border-l border-border shadow-2xl"
-              style="background: var(--surface-solid)"
+              style={mergeStyle(props, "background: var(--surface-solid)")}
               transition:fly={{ x: 360, duration: 200 }}
               aria-label="Settings"
             >

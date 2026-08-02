@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-check --tsconfig ./tsconfig.json && scripts/check-props-spread.sh",
+    "check:props": "scripts/check-props-spread.sh",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -16,7 +17,7 @@
     "@tauri-apps/plugin-clipboard-manager": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
-    "bits-ui": "^1.3.0",
+    "bits-ui": "1.8.0",
     "phosphor-svelte": "^3.0.1"
   },
   "devDependencies": {
