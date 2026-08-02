@@ -188,11 +188,12 @@ pub fn compare(built: &str, current: &str) -> LaunchDiff {
 /// force-downgrading such configs to `Drifted`. #62 fixed that at the source:
 /// the keys now survive into the command, so the verdict falls out of the
 /// ordinary comparison. (Unknown *wrapper* keys are still dropped — see
-/// [`store::options_from_lists`] for why they cannot drift the same way.)
+/// [`crate::store::options_from_lists`] for why they cannot drift the same way.)
 pub fn statuses(
     catalog: &Catalog,
     memory: &BTreeMap<String, Config>,
     launch_options: &HashMap<String, String>,
+    bins: &crate::builder::Bins,
 ) -> HashMap<String, DiffStatus> {
     memory
         .iter()
@@ -201,7 +202,7 @@ pub fn statuses(
                 // Steam's launch options say nothing about a umu command.
                 DiffStatus::Umu
             } else {
-                let built = compose::assemble(catalog, config, None);
+                let built = compose::assemble(catalog, config, None, bins);
                 let current = launch_options.get(appid).map(String::as_str).unwrap_or("");
                 compare(&built, current).status
             };
@@ -365,7 +366,7 @@ mod tests {
             ("9", "PROTON_ENABLE_WAYLAND=1 %command%"),
         ]);
 
-        let got = statuses(&cat, &mem, &opts);
+        let got = statuses(&cat, &mem, &opts, &crate::builder::Bins::default());
         assert_eq!(got.len(), 4, "one entry per remembered game, and no more");
         assert_eq!(got["1"], DiffStatus::InSync);
         assert_eq!(got["2"], DiffStatus::Drifted);
@@ -407,7 +408,7 @@ mod tests {
             "fixture must name a key the bundled catalog really lacks"
         );
         assert_eq!(
-            compose::assemble(&cat, &stale, None),
+            compose::assemble(&cat, &stale, None, &crate::builder::Bins::default()),
             "PROTON_ENABLE_NVAPI=1 %command%"
         );
 
@@ -416,6 +417,7 @@ mod tests {
             &cat,
             &memory(&[("1", stale.clone())]),
             &options(&[("1", "%command%")]),
+            &crate::builder::Bins::default(),
         );
         assert_eq!(got["1"], DiffStatus::Drifted);
 
@@ -425,6 +427,7 @@ mod tests {
             &cat,
             &memory(&[("1", stale)]),
             &options(&[("1", "PROTON_ENABLE_NVAPI=1 %command%")]),
+            &crate::builder::Bins::default(),
         );
         assert_eq!(got["1"], DiffStatus::InSync);
     }
@@ -437,7 +440,7 @@ mod tests {
             env: vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())],
             ..Config::default()
         };
-        let got = statuses(&cat, &memory(&[("1", stale)]), &HashMap::new());
+        let got = statuses(&cat, &memory(&[("1", stale)]), &HashMap::new(), &crate::builder::Bins::default());
         assert_eq!(got["1"], DiffStatus::NotApplied);
     }
 }

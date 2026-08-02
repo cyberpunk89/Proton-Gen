@@ -36,19 +36,32 @@
       {app.loadError}
     </div>
   {/if}
-  {#each app.configWarnings as w (w.path)}
-    <!-- Their override was ignored. Without this the app just silently
-         appears to disregard the file they wrote. -->
+  <!-- Keyed on kind+path: a parse warning and a path warning can name the same
+       file, and a duplicate key in a keyed {#each} is a crash. -->
+  {#each app.configWarnings as w (w.kind + w.path)}
+    <!-- Something the user configured was ignored. Without this the app just
+         silently appears to disregard what they set. -->
     <div
       class="flex items-start gap-2 rounded-xl border px-4 py-2.5 text-xs"
       style="border-color: color-mix(in srgb, var(--yellow) 35%, transparent); background: color-mix(in srgb, var(--yellow) 8%, transparent)"
     >
       <WarningCircle size={16} weight="fill" class="mt-0.5 shrink-0 text-yellow" />
       <span class="text-subtext">
-        Your custom <code class="font-mono text-text">{w.file}</code> at
-        <code class="font-mono text-text">{w.path}</code> couldn't be parsed
-        (<span class="font-mono">{w.error}</span>); using the bundled
-        {w.file === "recipes.toml" ? "recipes" : "catalog"}.
+        {#if w.kind === "path"}
+          protongen couldn't use the
+          <code class="font-mono text-text">{w.file}</code> you set —
+          <code class="font-mono text-text">{w.path}</code>
+          (<span class="font-mono">{w.error}</span>).
+          <button
+            class="ml-1 underline underline-offset-2 hover:text-text"
+            onclick={() => (app.showSettings = true)}>Open Settings</button
+          >
+        {:else}
+          Your custom <code class="font-mono text-text">{w.file}</code> at
+          <code class="font-mono text-text">{w.path}</code> couldn't be parsed
+          (<span class="font-mono">{w.error}</span>); using the bundled
+          {w.file === "recipes.toml" ? "recipes" : "catalog"}.
+        {/if}
       </span>
     </div>
   {/each}

@@ -49,6 +49,7 @@ const EMPTY_STORE: Store = {
   library_sort: "",
   last_session: null,
   last_game_appid: null,
+  paths: { steam_roots: [], steam_libraries: [], proton_dirs: [], bins: {} },
 };
 
 /** Library sort ids. Kept here because both the toolbar and the comparator in
@@ -303,6 +304,11 @@ class AppStore {
       this.launchOptions = b.launch_options;
       this.compatTools = b.compat_tools;
       this.stale = b.stale;
+      // Both are recomputed by `rescan` and must be copied, or a corrected
+      // Settings path would never clear its banner and a fixed binary override
+      // would never turn its badge green.
+      this.configWarnings = b.config_warnings;
+      this.requiresStatus = b.requires_status;
 
       // Re-validate current selections against the refreshed lists.
       if (
@@ -979,6 +985,41 @@ class AppStore {
   setProtondbAuto(v: boolean) {
     this.store.protondb_auto = v;
     this.persistStore();
+  }
+
+  // ------------------------------ paths -------------------------------------
+
+  /** Replace one of the path lists and re-scan. */
+  setPathList(field: "steam_roots" | "steam_libraries" | "proton_dirs", list: string[]) {
+    this.store.paths[field] = list;
+    this.persistStore();
+    this.scheduleRescan();
+  }
+
+  /** Override the program token emitted for `name` ("" clears the override). */
+  setBinOverride(name: string, value: string) {
+    if (value.trim() === "") delete this.store.paths.bins[name];
+    else this.store.paths.bins[name] = value;
+    this.persistStore();
+    this.scheduleRescan();
+  }
+
+  private rescanTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Debounced discovery re-scan. The rescan *is* the validator for a configured
+   * path — there is no separate validate command, which would be a second
+   * implementation of the same scan that could disagree with it. Debounced
+   * because these setters fire per keystroke and a scan hits the filesystem.
+   */
+  private scheduleRescan() {
+    clearTimeout(this.rescanTimer);
+    this.rescanTimer = setTimeout(() => void this.refresh(), 600);
+  }
+
+  /** Path warnings only — the parse warnings belong to the TOML overrides. */
+  get pathWarnings() {
+    return this.configWarnings.filter((w) => w.kind === "path");
   }
 
   // ------------------------------ library view ------------------------------

@@ -10,7 +10,7 @@ use steamlocate::SteamDir;
 use tauri::State;
 
 use crate::art;
-use crate::builder::Wrapper;
+use crate::builder::{self, Wrapper};
 use crate::compose;
 use crate::diff::{self, LaunchDiff};
 use crate::explain::{self, Token};
@@ -98,8 +98,21 @@ pub struct AppState {
     compat_tools: HashMap<String, String>,
     requires_status: HashMap<String, bool>,
     stale: Option<StaleInfo>,
+    /// Static warnings from the TOML overrides. Path warnings live on
+    /// `Discovery` instead, because a rescan can clear them.
     config_warnings: Vec<ConfigWarning>,
+    path_warnings: Mutex<Vec<ConfigWarning>>,
     store: Mutex<Store>,
+}
+
+impl AppState {
+    /// Wrapper program names, with the user's Settings overrides applied.
+    ///
+    /// Built per call rather than cached: `save_store` can replace the whole
+    /// store mid-session, and a cached copy would stay stale until restart.
+    fn bins(&self) -> builder::Bins {
+        builder::Bins::with_overrides(&self.store.lock().unwrap().paths.bins)
+    }
 }
 
 /// Results of a filesystem re-scan: everything that can change while the app is
@@ -113,26 +126,32 @@ struct Discovery {
     launch_options: HashMap<String, String>,
     compat_tools: HashMap<String, String>,
     stale: Option<StaleInfo>,
+    /// Configured paths discovery could not use. Recomputed every scan, so
+    /// fixing a path clears its banner.
+    path_warnings: Vec<ConfigWarning>,
 }
 
 /// Re-run Steam / runtime / games discovery. Pure and idempotent — safe to call
 /// repeatedly. `catalog` is only read (for staleness); it never changes here.
-fn scan_discovery(catalog: &Catalog) -> Discovery {
+/// `paths` carries the user's Settings overrides; no discovery module reads the
+/// store itself.
+fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
     let mut steam_root = None;
     let mut load_error = None;
     let mut runtimes_raw = Vec::new();
     let mut games = Vec::new();
     let mut launch_options = HashMap::new();
     let mut compat_tools = HashMap::new();
+    let mut path_warnings = Vec::new();
 
-    match steam::locate_native() {
+    match steam::locate_native(&paths.steam_roots, &mut path_warnings) {
         Ok(dir) => {
             steam_root = Some(steam::root_display(&dir));
-            runtimes_raw = runtime::discover(&dir);
+            runtimes_raw = runtime::discover(&dir, &paths.proton_dirs, &mut path_warnings);
             // localconfig first: `list_games_dto` reads last-played/playtime out
             // of it, so the parsed map has to exist before the games are built.
             let app_cfgs = steamcfg::current_app_cfgs(&dir);
-            games = list_games_dto(&dir, &app_cfgs);
+            games = list_games_dto(&dir, &app_cfgs, &paths.steam_libraries, &mut path_warnings);
             launch_options = stringify_keys(steamcfg::launch_options(&app_cfgs));
             compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
         }
@@ -150,6 +169,7 @@ fn scan_discovery(catalog: &Catalog) -> Discovery {
         launch_options,
         compat_tools,
         stale,
+        path_warnings,
     }
 }
 
@@ -161,8 +181,9 @@ impl AppState {
         let hardware = hardware::detect();
         let store = Store::load();
 
-        let d = scan_discovery(&catalog);
-        let requires_status = compute_requires_status(&catalog);
+        let d = scan_discovery(&catalog, &store.paths);
+        let requires_status =
+            compute_requires_status(&catalog, &builder::Bins::with_overrides(&store.paths.bins));
 
         Self {
             catalog,
@@ -177,6 +198,7 @@ impl AppState {
             requires_status,
             stale: d.stale,
             config_warnings,
+            path_warnings: Mutex::new(d.path_warnings),
             store: Mutex::new(store),
         }
     }
@@ -187,6 +209,7 @@ fn runtime_dto(r: &runtime::Runtime) -> RuntimeDto {
         RuntimeKind::System => "system",
         RuntimeKind::User => "user",
         RuntimeKind::Bundled => "valve",
+        RuntimeKind::Custom => "custom",
     };
     RuntimeDto {
         internal_name: r.internal_name.clone(),
@@ -196,8 +219,13 @@ fn runtime_dto(r: &runtime::Runtime) -> RuntimeDto {
     }
 }
 
-fn list_games_dto(dir: &SteamDir, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> Vec<GameDto> {
-    games::list_games(dir)
+fn list_games_dto(
+    dir: &SteamDir,
+    app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>,
+    extra_libraries: &[String],
+    warn: &mut Vec<ConfigWarning>,
+) -> Vec<GameDto> {
+    games::list_games(dir, extra_libraries, warn)
         .into_iter()
         .map(|g| {
             // Only Steam apps have a localconfig record; a shortcut's appid is a
@@ -228,14 +256,22 @@ fn stringify_keys(m: HashMap<u32, String>) -> HashMap<String, String> {
 }
 
 /// For every distinct `requires` binary in the catalog, whether it's on $PATH.
-fn compute_requires_status(catalog: &Catalog) -> HashMap<String, bool> {
+///
+/// Seeded from `Bins` first, so the badge reflects the token the builder will
+/// actually emit rather than the default name. That also gives `umu-run` a badge
+/// at all: it is neither a `[[wrapper]]` nor an `[[env]]`, so there is no TOML
+/// entry to hang `requires` on, yet an entire mode depends on it.
+fn compute_requires_status(catalog: &Catalog, bins: &builder::Bins) -> HashMap<String, bool> {
     let mut out = HashMap::new();
-    let bins = catalog
+    for (name, program) in bins.pairs() {
+        out.insert(name.to_string(), crate::which::is_installed(program));
+    }
+    let extra = catalog
         .wrappers
         .iter()
         .filter_map(|w| w.requires.clone())
         .chain(catalog.envs.iter().filter_map(|e| e.requires.clone()));
-    for bin in bins {
+    for bin in extra {
         out.entry(bin)
             .or_insert_with_key(|b| crate::which::is_installed(b));
     }
@@ -275,20 +311,38 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         compat_tools: state.compat_tools.clone(),
         requires_status: state.requires_status.clone(),
         stale: state.stale.clone(),
-        config_warnings: state.config_warnings.clone(),
+        // Parse warnings plus whatever the startup scan made of the configured
+        // paths, so a bad path is visible from the first frame.
+        config_warnings: state
+            .config_warnings
+            .iter()
+            .cloned()
+            .chain(state.path_warnings.lock().unwrap().iter().cloned())
+            .collect(),
     }
 }
 
 /// Re-scan Steam / runtimes / games and return a fresh `Bootstrap` so the UI can
 /// pick up newly-installed games or Proton runtimes without a restart. The
-/// static fields (catalog, recipes, hardware, requires_status) and the current
-/// store are reused unchanged. `AppState`'s discovery snapshot is intentionally
+/// static fields (catalog, recipes, hardware) and the current store are reused
+/// unchanged. `requires_status` and the path warnings are *not* static — a
+/// rescan is how a corrected Settings path clears its banner and turns a binary
+/// override's badge green. `AppState`'s discovery snapshot is intentionally
 /// left untouched — no command reads it after startup, so there's nothing to keep
 /// in sync (build_command/lint work off the passed Config + catalog).
 #[tauri::command]
 pub fn rescan(state: State<'_, AppState>) -> Bootstrap {
     let store = state.store.lock().unwrap().clone();
-    let d = scan_discovery(&state.catalog);
+    let d = scan_discovery(&state.catalog, &store.paths);
+    let requires_status =
+        compute_requires_status(&state.catalog, &builder::Bins::with_overrides(&store.paths.bins));
+    let warnings = state
+        .config_warnings
+        .iter()
+        .cloned()
+        .chain(d.path_warnings.iter().cloned())
+        .collect();
+    *state.path_warnings.lock().unwrap() = d.path_warnings;
     Bootstrap {
         steam_root: d.steam_root,
         load_error: d.load_error,
@@ -301,9 +355,9 @@ pub fn rescan(state: State<'_, AppState>) -> Bootstrap {
         store,
         launch_options: d.launch_options,
         compat_tools: d.compat_tools,
-        requires_status: state.requires_status.clone(),
+        requires_status,
         stale: d.stale,
-        config_warnings: state.config_warnings.clone(),
+        config_warnings: warnings,
     }
 }
 
@@ -315,7 +369,11 @@ pub fn build_command(
     config: Config,
     proton_path: Option<String>,
 ) -> String {
-    compose::assemble(&state.catalog, &config, proton_path.as_deref())
+    // Built per call rather than cached on AppState: `save_store` can replace
+    // the store mid-session, and a cached copy would stay stale until restart.
+    // Cheap — this command is already debounced ~60 ms on the frontend.
+    let bins = state.bins();
+    compose::assemble(&state.catalog, &config, proton_path.as_deref(), &bins)
 }
 
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
@@ -388,7 +446,7 @@ pub fn launch_statuses(
     memory: BTreeMap<String, Config>,
     launch_options: HashMap<String, String>,
 ) -> HashMap<String, diff::DiffStatus> {
-    diff::statuses(&state.catalog, &memory, &launch_options)
+    diff::statuses(&state.catalog, &memory, &launch_options, &state.bins())
 }
 
 /// Merge recipe `index` onto `config`, returning the updated config.

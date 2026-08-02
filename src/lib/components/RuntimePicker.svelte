@@ -11,6 +11,9 @@
     user: "user",
     valve: "valve",
     auto: "auto-DL",
+    // From a dir added under Settings → Paths. Labelled so the user can see
+    // their configured directory actually worked.
+    custom: "custom",
   };
 
   // `path` is the identity everywhere else (state.svelte.ts matches on it), so

@@ -196,7 +196,7 @@ mod tests {
         let s = "PROTON_ENABLE_WAYLAND=1 DXVK_ASYNC=1 gamescope -W 2560 -H 1440 -f -- gamemoderun mangohud %command% --skip-launcher";
         let p = parse(s);
         assert_eq!(p.mode(), ParsedMode::Steam);
-        let rebuilt = builder::build_command(&p.env, &p.wrappers(), &p.game_args);
+        let rebuilt = builder::build_command(&p.env, &p.wrappers(), &p.game_args, &builder::Bins::default());
         assert_eq!(rebuilt, s);
     }
 
@@ -215,6 +215,7 @@ mod tests {
             p.umu_wineprefix.as_deref(),
             &p.umu_exe,
             &p.game_args,
+            &builder::Bins::default(),
         );
         assert_eq!(rebuilt, s);
     }

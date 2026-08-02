@@ -6,7 +6,20 @@
   import { mergeStyle } from "$lib/util";
   import { Dialog as DialogPrimitive } from "bits-ui";
   import Switch from "./Switch.svelte";
-  import { GearSix, Palette, SlidersHorizontal, Check, X, CaretDown } from "phosphor-svelte";
+  import {
+    GearSix,
+    Palette,
+    SlidersHorizontal,
+    Check,
+    X,
+    CaretDown,
+    FolderOpen,
+    Trash,
+  } from "phosphor-svelte";
+  // Aliased: `open` is already the drawer's own bindable prop.
+  import { open as pickPath } from "@tauri-apps/plugin-dialog";
+  import { inTauri } from "$lib/ipc";
+  import Badges from "./Badges.svelte";
   import type { Component } from "svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -19,7 +32,7 @@
   });
 
   // Sections are collapsible; all start collapsed to keep the drawer tidy.
-  let sections = $state({ appearance: false, behavior: false });
+  let sections = $state({ appearance: false, behavior: false, paths: false });
 </script>
 
 <!--
@@ -136,6 +149,74 @@
           </div>
           {/if}
         </section>
+
+        <!-- Paths -->
+        <section>
+          {@render sectionHeading(
+            FolderOpen,
+            "Paths",
+            sections.paths,
+            () => (sections.paths = !sections.paths),
+          )}
+          {#if sections.paths}
+            <div id="drawer-section-paths" class="mt-2 space-y-4">
+              <p class="text-[11px] leading-snug text-muted">
+                Only needed if protongen can't find things on its own — a Steam install
+                somewhere unusual, or tools outside your <code class="font-mono">PATH</code>.
+                Changes re-scan automatically.
+              </p>
+
+              <!-- What the re-scan found. This is the validation: there is no
+                   separate check, so a second implementation can't disagree. -->
+              <div class="rounded-lg border border-border bg-surface-2/40 px-2.5 py-2">
+                <p class="text-[11px] text-muted">
+                  {app.steamRoot ?? "No Steam install found"}
+                </p>
+                <p class="mt-0.5 text-[11px] text-subtext">
+                  {app.runtimes.length} runtimes · {app.games.length} games
+                  {#if app.refreshing}<span class="text-muted"> · re-scanning…</span>{/if}
+                </p>
+              </div>
+
+              {#each app.pathWarnings as w (w.kind + w.path)}
+                <p class="text-[11px] leading-snug text-yellow">
+                  {w.file} <code class="font-mono">{w.path}</code>: {w.error}
+                </p>
+              {/each}
+
+              {@render pathList(
+                "Steam roots",
+                "Tried before the built-in ~/.steam locations.",
+                app.store.paths.steam_roots,
+                (v) => app.setPathList("steam_roots", v),
+              )}
+              {@render pathList(
+                "Steam libraries",
+                "Extra library folders, each containing steamapps/.",
+                app.store.paths.steam_libraries,
+                (v) => app.setPathList("steam_libraries", v),
+              )}
+              {@render pathList(
+                "Proton directories",
+                "A folder holding one sub-folder per Proton build, each with a compatibilitytool.vdf — not a single build.",
+                app.store.paths.proton_dirs,
+                (v) => app.setPathList("proton_dirs", v),
+              )}
+
+              <div>
+                <p class="text-[11px] font-medium text-subtext">Program paths</p>
+                <p class="mb-1.5 text-[11px] leading-snug text-muted">
+                  Emitted into the command as-is. Steam launched from a desktop entry
+                  often has a PATH without ~/.local/bin.
+                </p>
+                {@render binRow("umu-run")}
+                {@render binRow("gamescope")}
+                {@render binRow("gamemoderun")}
+                {@render binRow("mangohud")}
+              </div>
+            </div>
+          {/if}
+        </section>
       </div>
             </div>
           </div>
@@ -157,6 +238,79 @@
     {label}
     <CaretDown size={12} class="ml-auto transition-transform {isOpen ? '' : '-rotate-90'}" />
   </button>
+{/snippet}
+
+{#snippet pathList(title: string, desc: string, list: string[], onchange: (v: string[]) => void)}
+  <div>
+    <p class="text-[11px] font-medium text-subtext">{title}</p>
+    <p class="mb-1.5 text-[11px] leading-snug text-muted">{desc}</p>
+    <div class="space-y-1">
+      {#each list as entry, i (i)}
+        <div class="flex items-center gap-1">
+          <input
+            value={entry}
+            oninput={(e) => onchange(list.map((x, j) => (j === i ? e.currentTarget.value : x)))}
+            aria-label="{title} {i + 1}"
+            spellcheck="false"
+            class="min-w-0 flex-1 rounded-lg border border-border bg-surface-2/60 px-2 py-1 font-mono text-[11px] text-text"
+          />
+          <button
+            onclick={() => onchange(list.filter((_, j) => j !== i))}
+            aria-label="Remove {title} {i + 1}"
+            class="grid size-6 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-red"
+          >
+            <Trash size={13} />
+          </button>
+        </div>
+      {/each}
+      <div class="flex gap-1">
+        <button
+          onclick={() => onchange([...list, ""])}
+          class="rounded-lg border border-border px-2 py-1 text-[11px] text-subtext transition hover:border-accent/50 hover:text-text"
+        >
+          Add row
+        </button>
+        {#if inTauri}
+          <button
+            onclick={async () => {
+              const picked = await pickPath({ directory: true, multiple: false });
+              if (typeof picked === "string") onchange([...list, picked]);
+            }}
+            class="rounded-lg border border-border px-2 py-1 text-[11px] text-subtext transition hover:border-accent/50 hover:text-text"
+          >
+            Browse…
+          </button>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet binRow(name: string)}
+  <div class="flex items-center gap-1.5 py-0.5">
+    <code class="w-24 shrink-0 font-mono text-[11px] text-subtext">{name}</code>
+    <input
+      value={app.store.paths.bins[name] ?? ""}
+      oninput={(e) => app.setBinOverride(name, e.currentTarget.value)}
+      placeholder="default — found on PATH"
+      aria-label="{name} path"
+      spellcheck="false"
+      class="min-w-0 flex-1 rounded-lg border border-border bg-surface-2/60 px-2 py-1 font-mono text-[11px] text-text"
+    />
+    {#if inTauri}
+      <button
+        onclick={async () => {
+          const picked = await pickPath({ directory: false, multiple: false });
+          if (typeof picked === "string") app.setBinOverride(name, picked);
+        }}
+        aria-label="Browse for {name}"
+        class="grid size-6 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-text"
+      >
+        <FolderOpen size={13} />
+      </button>
+    {/if}
+    <Badges requires={name} />
+  </div>
 {/snippet}
 
 {#snippet toggle(title: string, desc: string, checked: boolean, onchange: () => void)}

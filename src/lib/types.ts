@@ -69,7 +69,7 @@ export interface Hardware {
 export interface RuntimeDto {
   internal_name: string;
   display_name: string;
-  kind: string; // "system" | "user" | "valve"
+  kind: string; // "system" | "user" | "valve" | "custom" | "auto" (frontend-only)
   path: string;
 }
 
@@ -119,6 +119,21 @@ export interface Preset {
   config: Config;
 }
 
+/** Mirrors store::Paths — user-supplied discovery paths, for systems the
+ *  built-in candidates don't cover. */
+export interface Paths {
+  /** Extra Steam roots, tried *before* the built-in candidates. */
+  steam_roots: string[];
+  /** Extra library folders (each containing `steamapps/`). */
+  steam_libraries: string[];
+  /** Extra `compatibilitytools.d`-shaped dirs: one sub-folder per Proton
+   *  build, each with a `compatibilitytool.vdf`. */
+  proton_dirs: string[];
+  /** Program overrides keyed by catalog `requires` name plus `umu-run`. A Rust
+   *  `BTreeMap<String, String>`; a blank value means "use the bare name". */
+  bins: Record<string, string>;
+}
+
 export interface Store {
   theme: string;
   presets: Preset[];
@@ -137,6 +152,7 @@ export interface Store {
   library_sort: string;
   last_session: Config | null;
   last_game_appid: number | null;
+  paths: Paths;
 }
 
 /// Mirrors explain::TokenKind (serde rename_all = "snake_case").
@@ -239,7 +255,13 @@ export interface Tier {
 }
 
 /** A user config override that couldn't be parsed and was therefore ignored. */
+/// Mirrors params::WarningKind (serde rename_all = "kebab-case").
+export type WarningKind = "parse" | "path";
+
 export interface ConfigWarning {
+  kind: WarningKind;
+  /** For "parse", the override file (`params.toml`). For "path", the Settings
+   *  field label the path came from (`Steam root`, `Proton directory`, …). */
   file: string;
   path: string;
   error: string;

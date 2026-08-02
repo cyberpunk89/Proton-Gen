@@ -74,7 +74,12 @@ pub fn options_from_config(catalog: &Catalog, config: &Config) -> (Options, Vec<
 
 /// Assemble the launch command for `config`. `proton_path` is the selected
 /// runtime's install dir, used as `PROTONPATH` in umu mode and ignored otherwise.
-pub fn assemble(catalog: &Catalog, config: &Config, proton_path: Option<&str>) -> String {
+pub fn assemble(
+    catalog: &Catalog,
+    config: &Config,
+    proton_path: Option<&str>,
+    bins: &builder::Bins,
+) -> String {
     let (options, leftover) = options_from_config(catalog, config);
     let (mut env, wrappers) = params::to_spec(catalog, &options);
     // One merge, so the preview and `ipc::apply_recipe` cannot disagree about
@@ -97,9 +102,10 @@ pub fn assemble(catalog: &Catalog, config: &Config, proton_path: Option<&str>) -
             wineprefix,
             &config.umu_exe,
             &config.game_args,
+            bins,
         )
     } else {
-        builder::build_command(&env, &wrappers, &config.game_args)
+        builder::build_command(&env, &wrappers, &config.game_args, bins)
     }
 }
 
@@ -128,7 +134,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(
-            assemble(&cat, &config, None),
+            assemble(&cat, &config, None, &builder::Bins::default()),
             "PROTON_USE_NTSYNC=1 gamescope -f -- gamemoderun mangohud %command% --skip-launcher"
         );
     }
@@ -142,7 +148,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(
-            assemble(&cat, &config, None),
+            assemble(&cat, &config, None, &builder::Bins::default()),
             "PROTON_ENABLE_WAYLAND=1 mangohud %command%"
         );
     }
@@ -154,7 +160,7 @@ mod tests {
             extra_env: "FOO=bar BAZ=1".to_string(),
             ..Config::default()
         };
-        assert_eq!(assemble(&cat, &config, None), "FOO=bar BAZ=1 %command%");
+        assert_eq!(assemble(&cat, &config, None, &builder::Bins::default()), "FOO=bar BAZ=1 %command%");
     }
 
     #[test]
@@ -184,7 +190,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(
-            assemble(&cat, &config, None),
+            assemble(&cat, &config, None, &builder::Bins::default()),
             "PROTON_ENABLE_NVAPI=1 %command%"
         );
     }
@@ -201,7 +207,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(
-            assemble(&cat, &config, None),
+            assemble(&cat, &config, None, &builder::Bins::default()),
             "PROTON_ENABLE_NVAPI=0 %command%"
         );
     }
@@ -241,7 +247,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(
-            assemble(&cat, &config, Some("/opt/proton")),
+            assemble(&cat, &config, Some("/opt/proton"), &builder::Bins::default()),
             "GAMEID=umu-0 PROTONPATH=/opt/proton umu-run /games/game.exe"
         );
     }

@@ -85,6 +85,9 @@ extra `--` into cargo).
   default, tag it `needs = ["<cap>"]` and thread the cap through `store.rs`, `types.ts`,
   `state.svelte.ts` (`EMPTY_STORE` + `hwCaps` + setter), `util.ts`, `mock.ts`, and a
   `SettingsDrawer.svelte` toggle. (Hidden options stay revealable via "Show all".)
+  The same six layers apply to any new `Store` field — `store.paths` is a nested struct,
+  so it also needs a "partial table still loads" test, and remember `save_store`
+  overwrites the store wholesale (#43): anything the frontend doesn't round-trip is lost.
 - **Never write a bare attribute after `{...props}`.** bits-ui's `child` snippets hand
   back a merged prop bag: a **style string** carrying `pointer-events: auto` (its modal
   layers set `body { pointer-events: none }`), `onkeydown` for the Tab focus trap, and
@@ -102,6 +105,10 @@ extra `--` into cargo).
   `opener:allow-open-url` entry — deliberately narrowed to `steam://gameproperties/*`
   and `steam://nav/*`. Never widen it to `steam://*`: that would also permit mutating
   verbs like `steam://uninstall/<id>`, against the read-only invariant.
+- **`decorations: false` means the CSD owns four things**, not one: move
+  (`data-tauri-drag-region` in `Header.svelte`), minimize/maximize/close (its buttons),
+  and **resize** (`ResizeGrips.svelte` → `core:window:allow-start-resize-dragging`).
+  Resize was missing until #64. Re-enabling decorations means removing all four.
 - **umu / Proton GE.** umu mode emits `PROTONPATH=<runtime path>`. A synthetic
   "GE-Proton (latest · umu auto-download)" runtime uses `path="GE-Proton"` (the codename
   umu resolves & auto-downloads), so it always targets the newest GE-Proton with no version

@@ -40,6 +40,46 @@ pub struct Preset {
     pub config: Config,
 }
 
+/// User-supplied discovery paths, for systems protongen's built-in candidates
+/// don't cover — a non-CachyOS distro, Steam installed somewhere unusual, or
+/// tools outside `$PATH`.
+///
+/// One sub-struct rather than four flat `Store` fields: discovery takes a single
+/// parameter, there is one place to document what these are, and `state.toml`
+/// gets a legible `[paths]` table — which matters, because hand-editing it is
+/// exactly what this audience does.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Paths {
+    /// Extra Steam roots, tried *before* the built-in candidates: a user only
+    /// adds one because the defaults were wrong, so an explicit choice outranks
+    /// a lucky guess.
+    #[serde(default)]
+    pub steam_roots: Vec<String>,
+    /// Extra Steam library folders (each containing `steamapps/`), merged with
+    /// the ones `libraryfolders.vdf` declares.
+    #[serde(default)]
+    pub steam_libraries: Vec<String>,
+    /// Extra directories in the `compatibilitytools.d` layout — one sub-folder
+    /// per Proton build, each with a `compatibilitytool.vdf`.
+    #[serde(default)]
+    pub proton_dirs: Vec<String>,
+    /// Program overrides keyed by the catalog `requires` name (`gamescope`,
+    /// `gamemoderun`, `mangohud`) plus `umu-run`. Blank or absent = the bare
+    /// name. A map rather than named fields so `compute_requires_status` can
+    /// consult overrides generically, and a `BTreeMap` for the stable, diffable
+    /// TOML `game_memory` and `favorites` already cite.
+    #[serde(default)]
+    pub bins: BTreeMap<String, String>,
+}
+
+impl Paths {
+    /// Non-empty, trimmed entries. The Settings rows keep blank placeholder
+    /// inputs while the user types, so blanks reach the backend routinely.
+    pub fn clean(list: &[String]) -> Vec<&str> {
+        list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect()
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Store {
     #[serde(default)]
@@ -85,6 +125,9 @@ pub struct Store {
     /// can be re-selected on launch.
     #[serde(default)]
     pub last_game_appid: Option<u32>,
+    /// User-supplied discovery paths. See [`Paths`].
+    #[serde(default)]
+    pub paths: Paths,
 }
 
 impl Store {
@@ -221,6 +264,12 @@ mod tests {
     fn store_toml_roundtrip() {
         let mut s = Store {
             theme: "Dracula".into(),
+            paths: Paths {
+                steam_roots: vec!["/mnt/games/Steam".into()],
+                steam_libraries: vec!["/mnt/second/SteamLibrary".into()],
+                proton_dirs: vec!["/opt/proton-builds".into()],
+                bins: BTreeMap::from([("umu-run".to_string(), "/home/u/.local/bin/umu-run".to_string())]),
+            },
             ..Default::default()
         };
         s.upsert_preset(Preset {
@@ -258,6 +307,12 @@ mod tests {
         // A BTreeSet so the TOML is stable and diffable, not insertion-ordered.
         assert_eq!(back.favorites.iter().copied().collect::<Vec<_>>(), vec![275850, 553850]);
         assert_eq!(back.library_sort, "recent");
+        assert_eq!(back.paths.steam_roots, vec!["/mnt/games/Steam".to_string()]);
+        assert_eq!(back.paths.proton_dirs, vec!["/opt/proton-builds".to_string()]);
+        assert_eq!(
+            back.paths.bins.get("umu-run").map(String::as_str),
+            Some("/home/u/.local/bin/umu-run")
+        );
     }
 
     /// Every `Store` field is `#[serde(default)]` so that a `state.toml` written
@@ -275,6 +330,33 @@ show_irrelevant = true
         assert!(s.show_irrelevant);
         assert!(s.favorites.is_empty());
         assert_eq!(s.library_sort, "");
+        assert!(s.paths.steam_roots.is_empty());
+        assert!(s.paths.bins.is_empty());
+    }
+
+    #[test]
+    fn a_state_file_with_a_partial_paths_table_still_loads() {
+        // The failure mode a *nested* struct adds over flat fields: a `[paths]`
+        // table written by an older build, or hand-edited, carries only some of
+        // its keys. Every one of them has to default independently.
+        let partial = r#"
+theme = "Mocha"
+[paths]
+steam_roots = ["/mnt/games/Steam"]
+"#;
+        let s: Store = toml::from_str(partial).expect("a partial [paths] table still parses");
+        assert_eq!(s.paths.steam_roots, vec!["/mnt/games/Steam".to_string()]);
+        assert!(s.paths.proton_dirs.is_empty());
+        assert!(s.paths.steam_libraries.is_empty());
+        assert!(s.paths.bins.is_empty());
+    }
+
+    #[test]
+    fn clean_drops_the_blank_rows_the_settings_ui_produces() {
+        // The path rows keep an empty input around while the user types, so
+        // blanks reach the backend on every keystroke.
+        let list = vec!["  /opt/proton  ".to_string(), String::new(), "   ".to_string()];
+        assert_eq!(Paths::clean(&list), vec!["/opt/proton"]);
     }
 
     #[test]

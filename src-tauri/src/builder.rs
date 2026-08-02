@@ -20,6 +20,74 @@ pub enum Wrapper {
     Mangohud,
 }
 
+/// Program tokens for the wrapper binaries and `umu-run`.
+///
+/// [`Default`] is the bare names — what an ordinary install wants, and what
+/// every builder test asserts, so a byte-identical expectation *is* the
+/// assertion that the default is a no-op.
+///
+/// Overridable because the emitted command is pasted into Steam and run with
+/// Steam's `$PATH`, which — launched from a `.desktop` file — frequently omits
+/// `~/.local/bin`. That is the exact case where a bare `umu-run` resolves in the
+/// user's terminal and not in the game, and it is why an override has to change
+/// the emitted token and not merely the installed/missing badge: a
+/// detection-only override would be exercised *only* when it badges the binary
+/// green and then emits a command that fails.
+///
+/// Any non-empty override is emitted verbatim — not "absolute paths only", since
+/// overriding `gamescope` with `gamescope-git` should emit `gamescope-git`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Bins {
+    pub gamescope: String,
+    pub gamemoderun: String,
+    pub mangohud: String,
+    pub umu_run: String,
+}
+
+impl Default for Bins {
+    fn default() -> Self {
+        Self {
+            gamescope: "gamescope".to_string(),
+            gamemoderun: "gamemoderun".to_string(),
+            mangohud: "mangohud".to_string(),
+            umu_run: "umu-run".to_string(),
+        }
+    }
+}
+
+impl Bins {
+    /// Apply overrides keyed by catalog `requires` name (plus `umu-run`).
+    /// Blank values are ignored, so a half-typed Settings row is not an override.
+    pub fn with_overrides(map: &std::collections::BTreeMap<String, String>) -> Self {
+        let mut b = Self::default();
+        let pick = |slot: &mut String, key: &str| {
+            if let Some(v) = map.get(key) {
+                let v = v.trim();
+                if !v.is_empty() {
+                    *slot = v.to_string();
+                }
+            }
+        };
+        pick(&mut b.gamescope, "gamescope");
+        pick(&mut b.gamemoderun, "gamemoderun");
+        pick(&mut b.mangohud, "mangohud");
+        pick(&mut b.umu_run, "umu-run");
+        b
+    }
+
+    /// (catalog name, program actually emitted), for `compute_requires_status`
+    /// — so the installed/missing badge reflects the token the builder emits
+    /// rather than the one it would have emitted by default.
+    pub fn pairs(&self) -> [(&'static str, &str); 4] {
+        [
+            ("gamescope", &self.gamescope),
+            ("gamemoderun", &self.gamemoderun),
+            ("mangohud", &self.mangohud),
+            ("umu-run", &self.umu_run),
+        ]
+    }
+}
+
 impl Wrapper {
     /// Lower rank = more outer (placed further left).
     fn rank(&self) -> u8 {
@@ -34,7 +102,7 @@ impl Wrapper {
 /// Emit the env-var assignments followed by the wrappers (sorted outer->inner).
 /// Shared by the Steam (`%command%`) and umu (`umu-run`) builders so both apply
 /// identical ordering and `--` handling.
-fn env_and_wrappers(env: &[(String, String)], wrappers: &[Wrapper]) -> Vec<String> {
+fn env_and_wrappers(env: &[(String, String)], wrappers: &[Wrapper], bins: &Bins) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
 
     // Environment variables, in the order given.
@@ -51,13 +119,13 @@ fn env_and_wrappers(env: &[(String, String)], wrappers: &[Wrapper]) -> Vec<Strin
             Wrapper::Gamescope(args) => {
                 let args = args.trim();
                 if args.is_empty() {
-                    parts.push("gamescope --".to_string());
+                    parts.push(format!("{} --", bins.gamescope));
                 } else {
-                    parts.push(format!("gamescope {args} --"));
+                    parts.push(format!("{} {args} --", bins.gamescope));
                 }
             }
-            Wrapper::Gamemoderun => parts.push("gamemoderun".to_string()),
-            Wrapper::Mangohud => parts.push("mangohud".to_string()),
+            Wrapper::Gamemoderun => parts.push(bins.gamemoderun.clone()),
+            Wrapper::Mangohud => parts.push(bins.mangohud.clone()),
         }
     }
     parts
@@ -74,8 +142,13 @@ fn shell_quote(s: &str) -> String {
 
 /// Build the Steam Launch Options string from environment variables, wrappers
 /// and trailing game arguments. `%command%` always appears exactly once.
-pub fn build_command(env: &[(String, String)], wrappers: &[Wrapper], game_args: &str) -> String {
-    let mut parts = env_and_wrappers(env, wrappers);
+pub fn build_command(
+    env: &[(String, String)],
+    wrappers: &[Wrapper],
+    game_args: &str,
+    bins: &Bins,
+) -> String {
+    let mut parts = env_and_wrappers(env, wrappers, bins);
 
     // The mandatory placeholder.
     parts.push("%command%".to_string());
@@ -102,6 +175,7 @@ pub fn build_umu_command(
     wineprefix: Option<&str>,
     exe: &str,
     game_args: &str,
+    bins: &Bins,
 ) -> String {
     // umu-specific assignments come first, then the user's env vars + wrappers.
     let mut lead: Vec<(String, String)> = Vec::new();
@@ -116,9 +190,9 @@ pub fn build_umu_command(
     lead.push(("PROTONPATH".to_string(), protonpath.trim().to_string()));
     lead.extend(env.iter().cloned());
 
-    let mut parts = env_and_wrappers(&lead, wrappers);
+    let mut parts = env_and_wrappers(&lead, wrappers, bins);
 
-    parts.push("umu-run".to_string());
+    parts.push(bins.umu_run.clone());
     let exe = exe.trim();
     parts.push(shell_quote(if exe.is_empty() { "<game.exe>" } else { exe }));
 
@@ -134,6 +208,12 @@ pub fn build_umu_command(
 mod tests {
     use super::*;
 
+    /// Every expectation below is byte-identical to before `Bins` existed,
+    /// which is exactly the assertion that the default is a no-op.
+    fn bins() -> Bins {
+        Bins::default()
+    }
+
     fn env(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs
             .iter()
@@ -143,14 +223,14 @@ mod tests {
 
     #[test]
     fn bare_command() {
-        assert_eq!(build_command(&[], &[], ""), "%command%");
+        assert_eq!(build_command(&[], &[], "", &bins()), "%command%");
     }
 
     #[test]
     fn env_only() {
         let e = env(&[("PROTON_ENABLE_WAYLAND", "1"), ("DXVK_ASYNC", "1")]);
         assert_eq!(
-            build_command(&e, &[], ""),
+            build_command(&e, &[], "", &bins()),
             "PROTON_ENABLE_WAYLAND=1 DXVK_ASYNC=1 %command%"
         );
     }
@@ -160,7 +240,7 @@ mod tests {
         // Toggled in "wrong" order; output must be gamemoderun before mangohud.
         let w = vec![Wrapper::Mangohud, Wrapper::Gamemoderun];
         assert_eq!(
-            build_command(&[], &w, ""),
+            build_command(&[], &w, "", &bins()),
             "gamemoderun mangohud %command%"
         );
     }
@@ -172,7 +252,7 @@ mod tests {
             Wrapper::Gamescope("-W 2560 -H 1440 -f".to_string()),
         ];
         assert_eq!(
-            build_command(&[], &w, ""),
+            build_command(&[], &w, "", &bins()),
             "gamescope -W 2560 -H 1440 -f -- mangohud %command%"
         );
     }
@@ -180,7 +260,7 @@ mod tests {
     #[test]
     fn gamescope_no_args() {
         let w = vec![Wrapper::Gamescope(String::new())];
-        assert_eq!(build_command(&[], &w, ""), "gamescope -- %command%");
+        assert_eq!(build_command(&[], &w, "", &bins()), "gamescope -- %command%");
     }
 
     #[test]
@@ -194,6 +274,7 @@ mod tests {
             None,
             "/games/Game/game.exe",
             "",
+            &bins(),
         );
         assert_eq!(
             out,
@@ -212,6 +293,7 @@ mod tests {
             Some("/home/u/prefix"),
             "/games/My Game/game.exe",
             "--windowed",
+            &bins(),
         );
         assert_eq!(
             out,
@@ -222,7 +304,7 @@ mod tests {
     #[test]
     fn umu_gamescope_wraps_outermost() {
         let w = vec![Wrapper::Gamescope("-f".to_string()), Wrapper::Mangohud];
-        let out = build_umu_command(&[], &w, "/opt/proton", "", None, "g.exe", "");
+        let out = build_umu_command(&[], &w, "/opt/proton", "", None, "g.exe", "", &bins());
         assert_eq!(
             out,
             "GAMEID=umu-0 PROTONPATH=/opt/proton gamescope -f -- mangohud umu-run g.exe"
@@ -237,12 +319,61 @@ mod tests {
             Wrapper::Mangohud,
             Wrapper::Gamescope("-f".to_string()),
         ];
-        let out = build_command(&e, &w, "--skip-launcher");
+        let out = build_command(&e, &w, "--skip-launcher", &bins());
         assert_eq!(
             out,
             "PROTON_USE_NTSYNC=1 gamescope -f -- gamemoderun mangohud %command% --skip-launcher"
         );
         // %command% appears exactly once.
         assert_eq!(out.matches("%command%").count(), 1);
+    }
+
+    #[test]
+    fn the_default_bins_are_the_bare_names() {
+        // Every expectation above relies on this, so state it once explicitly.
+        let b = Bins::default();
+        assert_eq!(
+            b.pairs().map(|(_, p)| p.to_string()).to_vec(),
+            vec!["gamescope", "gamemoderun", "mangohud", "umu-run"]
+        );
+    }
+
+    #[test]
+    fn an_override_replaces_the_wrapper_token() {
+        // The point of the feature: Steam launched from a .desktop file has a
+        // $PATH that often lacks ~/.local/bin, so a bare name resolves in the
+        // user's terminal and not in the game.
+        let bins = Bins::with_overrides(&std::collections::BTreeMap::from([
+            ("mangohud".to_string(), "/usr/local/bin/mangohud".to_string()),
+            ("gamescope".to_string(), "gamescope-git".to_string()),
+        ]));
+        let w = vec![Wrapper::Mangohud, Wrapper::Gamescope("-f".into())];
+        assert_eq!(
+            build_command(&[], &w, "", &bins),
+            "gamescope-git -f -- /usr/local/bin/mangohud %command%"
+        );
+    }
+
+    #[test]
+    fn an_override_replaces_umu_run_too() {
+        let bins = Bins::with_overrides(&std::collections::BTreeMap::from([(
+            "umu-run".to_string(),
+            "/home/u/.local/bin/umu-run".to_string(),
+        )]));
+        let out = build_umu_command(&[], &[], "/opt/proton", "", None, "g.exe", "", &bins);
+        assert_eq!(
+            out,
+            "GAMEID=umu-0 PROTONPATH=/opt/proton /home/u/.local/bin/umu-run g.exe"
+        );
+    }
+
+    #[test]
+    fn a_blank_override_is_not_an_override() {
+        // A half-typed Settings row must not blank out the program name.
+        let bins = Bins::with_overrides(&std::collections::BTreeMap::from([
+            ("mangohud".to_string(), "   ".to_string()),
+            ("gamescope".to_string(), String::new()),
+        ]));
+        assert_eq!(bins, Bins::default());
     }
 }

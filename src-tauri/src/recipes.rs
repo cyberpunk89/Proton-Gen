@@ -65,6 +65,7 @@ impl Recipes {
         let warning = error.map(|error| {
             eprintln!("warning: {} failed to parse; using bundled recipes", path.display());
             params::ConfigWarning {
+                kind: params::WarningKind::Parse,
                 file: "recipes.toml".to_string(),
                 path: path.display().to_string(),
                 error,

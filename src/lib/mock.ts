@@ -335,6 +335,13 @@ export const mockBootstrap: Bootstrap = {
     library_sort: "",
     last_session: null,
     last_game_appid: null,
+    // One seeded entry so the Paths section isn't empty under `pnpm dev`.
+    paths: {
+      steam_roots: [],
+      steam_libraries: [],
+      proton_dirs: ["/opt/proton-builds"],
+      bins: {},
+    },
   },
   // 553850 drifts against anything the builder produces; 1245620 is exactly
   // what `mockBuildCommand` emits for a freshly-reset config, so opening it
@@ -347,7 +354,9 @@ export const mockBootstrap: Bootstrap = {
     "1245620": "%command%",
   },
   compat_tools: { "553850": "proton-cachyos-slr" },
-  requires_status: { gamescope: true, gamemoderun: true, mangohud: false },
+  // `umu-run` is seeded from Bins rather than a catalog `requires` entry — it is
+  // neither a wrapper nor an env var, but an entire mode depends on it.
+  requires_status: { gamescope: true, gamemoderun: true, mangohud: false, "umu-run": true },
   stale: null,
   config_warnings: [],
 };

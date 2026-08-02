@@ -218,19 +218,21 @@ mod tests {
     /// catalog-driven command from `params::tests::to_spec_orders_like_before`.
     fn fixtures() -> Vec<String> {
         let mut v = vec![
-            builder::build_command(&[], &[], ""),
+            builder::build_command(&[], &[], "", &builder::Bins::default()),
             builder::build_command(
                 &env(&[("PROTON_ENABLE_WAYLAND", "1"), ("DXVK_ASYNC", "1")]),
                 &[],
                 "",
+                &builder::Bins::default(),
             ),
-            builder::build_command(&[], &[Wrapper::Mangohud, Wrapper::Gamemoderun], ""),
+            builder::build_command(&[], &[Wrapper::Mangohud, Wrapper::Gamemoderun], "", &builder::Bins::default()),
             builder::build_command(
                 &[],
                 &[Wrapper::Mangohud, Wrapper::Gamescope("-W 2560 -H 1440 -f".into())],
                 "",
+                &builder::Bins::default(),
             ),
-            builder::build_command(&[], &[Wrapper::Gamescope(String::new())], ""),
+            builder::build_command(&[], &[Wrapper::Gamescope(String::new())], "", &builder::Bins::default()),
             builder::build_command(
                 &env(&[("PROTON_USE_NTSYNC", "1")]),
                 &[
@@ -239,6 +241,7 @@ mod tests {
                     Wrapper::Gamescope("-f".into()),
                 ],
                 "--skip-launcher",
+                &builder::Bins::default(),
             ),
             builder::build_umu_command(
                 &env(&[("PROTON_USE_NTSYNC", "1")]),
@@ -248,6 +251,7 @@ mod tests {
                 None,
                 "/games/Game/game.exe",
                 "",
+                &builder::Bins::default(),
             ),
             builder::build_umu_command(
                 &[],
@@ -257,6 +261,7 @@ mod tests {
                 Some("/home/u/prefix"),
                 "/games/My Game/game.exe",
                 "--windowed",
+                &builder::Bins::default(),
             ),
             builder::build_umu_command(
                 &[],
@@ -266,6 +271,7 @@ mod tests {
                 None,
                 "g.exe",
                 "",
+                &builder::Bins::default(),
             ),
         ];
 
@@ -284,7 +290,7 @@ mod tests {
             }
         }
         let (e, w) = params::to_spec(&cat, &opts);
-        v.push(builder::build_command(&e, &w, ""));
+        v.push(builder::build_command(&e, &w, "", &builder::Bins::default()));
         v
     }
 
