@@ -3,7 +3,7 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
-import { irrelevance, splitExtraEnv, tokenizeEnv } from "./util";
+import { irrelevance, mergeIntoExtraEnv, splitExtraEnv, tokenizeEnv } from "./util";
 import { emptyConfig } from "./types";
 import type {
   Catalog,
@@ -480,14 +480,25 @@ class AppStore {
 
   loadConfig(cfg: Config) {
     this.resetOptions();
+    // Mirror of `store::options_from_lists`: an env key the catalog no longer
+    // has is re-homed into the custom-env field rather than dropped. Dropping it
+    // was not merely cosmetic — `toConfig()` rebuilds `env` by walking
+    // `this.catalog.envs`, so the key was erased from the preset or game_memory
+    // entry the moment anything re-saved (#62).
+    const leftover: [string, string][] = [];
     for (const [k, v] of cfg.env) {
       if (this.env[k]) this.env[k] = { enabled: true, value: v };
+      else leftover.push([k, v]);
     }
+    // Wrapper keys stay dropped, as on the Rust side: a wrapper is a program
+    // token from a closed enum, so there is nothing to re-home it into.
     for (const [k, v] of cfg.wrappers) {
       if (this.wrap[k]) this.wrap[k] = { enabled: true, value: v };
     }
     this.umu = cfg.umu;
-    this.extraEnv = cfg.extra_env;
+    // Idempotent with the backend merge: after a round-trip the key is already
+    // in `cfg.extra_env`, so it produces no leftover and nothing is duplicated.
+    this.extraEnv = mergeIntoExtraEnv(cfg.extra_env, leftover);
     this.gameArgs = cfg.game_args;
     this.umuExe = cfg.umu_exe;
     this.umuWineprefix = cfg.umu_wineprefix;

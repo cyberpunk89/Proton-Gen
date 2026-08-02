@@ -17,7 +17,7 @@ use crate::explain::{self, Token};
 use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
 use crate::lint;
-use crate::params::{Catalog, ConfigWarning, Options};
+use crate::params::{Catalog, ConfigWarning};
 use crate::parser;
 use crate::protondb::{self, Tier};
 use crate::recipes::{self, Recipe, Recipes};
@@ -336,8 +336,9 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
         .collect();
 
     // Enable catalog-known env/wrappers; capture them back in catalog order.
-    let mut options = Options::from_catalog(catalog);
-    store::apply_lists(catalog, &mut options, &p.env, &wrappers);
+    // Anything the catalog doesn't know comes back as a leftover and goes to the
+    // custom-env field, which is what makes the import lossless.
+    let (options, unknown) = store::options_from_lists(catalog, &p.env, &wrappers);
     let (env, wrappers) = store::options_to_lists(catalog, &options);
 
     Config {
@@ -345,7 +346,7 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
         runtime: None,
         env,
         wrappers,
-        extra_env: store::unknown_env_string(catalog, &p.env),
+        extra_env: compose::format_extra_env(&unknown),
         umu_exe: p.umu_exe,
         umu_wineprefix: p.umu_wineprefix.unwrap_or_default(),
         umu_gameid: p.umu_gameid.unwrap_or_default(),
@@ -398,8 +399,12 @@ pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) ->
         return config;
     };
 
-    let mut options = compose::options_from_config(catalog, &config);
-    let mut extra_env = config.extra_env.clone();
+    let (mut options, leftover) = compose::options_from_config(catalog, &config);
+    // Recover keys the catalog no longer knows *before* the recipe merges, so the
+    // round-trip through `options_to_lists` below can't erase them (#62). Without
+    // this, applying any recipe — even one touching nothing related — silently
+    // deleted stale env from the saved config for good.
+    let mut extra_env = compose::merge_into_extra_env(&config.extra_env, &leftover);
     recipes::apply(recipe, catalog, &mut options, &mut extra_env);
 
     let (env, wrappers) = store::options_to_lists(catalog, &options);
@@ -422,14 +427,19 @@ pub fn preview_recipe(
     let Some(recipe) = state.recipes.recipes.get(index) else {
         return Vec::new();
     };
-    let options = compose::options_from_config(catalog, &config);
-    recipes::diff(recipe, catalog, &options, &config.extra_env)
+    let (options, leftover) = compose::options_from_config(catalog, &config);
+    // Diff against the same extra_env `apply_recipe` will build, or the preview
+    // misreports a stale key the recipe also sets as a fresh addition.
+    let extra_env = compose::merge_into_extra_env(&config.extra_env, &leftover);
+    recipes::diff(recipe, catalog, &options, &extra_env)
 }
 
 /// Conflict / footgun notices for the current config.
 #[tauri::command]
 pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
-    let options = compose::options_from_config(&state.catalog, &config);
+    // Leftovers are discarded here on purpose: a rule is written against catalog
+    // keys, so a key with no catalog entry has no rule that could name it.
+    let (options, _) = compose::options_from_config(&state.catalog, &config);
     lint::warnings(&state.catalog, &options, &state.hardware)
 }
 

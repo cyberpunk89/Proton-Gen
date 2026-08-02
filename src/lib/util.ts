@@ -145,6 +145,30 @@ export function splitExtraEnv(input: string): { raw: string; key: string; value:
 }
 
 /**
+ * Render pairs back into the custom-env field's `K=V K=V …` form, re-quoting any
+ * value containing whitespace. Mirrors `compose::format_extra_env`
+ * (src-tauri/src/compose.rs) and is the exact inverse of `tokenizeEnv`.
+ */
+export function formatExtraEnv(pairs: [string, string][]): string {
+  return pairs.map(([k, v]) => (/\s/.test(v) ? `${k}="${v}"` : `${k}=${v}`)).join(" ");
+}
+
+/**
+ * Append `pairs` to an extra-env string, skipping any key it already assigns.
+ * Mirrors `compose::merge_into_extra_env` (src-tauri/src/compose.rs), including
+ * the tie-break: dedup is **by key and the incoming pair loses**, because these
+ * pairs carry values from a catalog the app no longer has, and what the user
+ * typed into the visible field outranks that.
+ */
+export function mergeIntoExtraEnv(extraEnv: string, pairs: [string, string][]): string {
+  const existing = new Set(splitExtraEnv(extraEnv).map((p) => p.key));
+  const fresh = pairs.filter(([k]) => !existing.has(k));
+  if (fresh.length === 0) return extraEnv;
+  const rendered = formatExtraEnv(fresh);
+  return extraEnv.trim() === "" ? rendered : `${extraEnv.trimEnd()} ${rendered}`;
+}
+
+/**
  * ProtonDB tier colours. Deliberately *not* theme tokens — these are the
  * medal colours the tiers are named after, and they have to mean the same
  * thing on every theme.

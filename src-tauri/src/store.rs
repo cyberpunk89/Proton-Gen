@@ -165,26 +165,52 @@ pub fn options_to_lists(
     (env, wrappers)
 }
 
-/// Reset options to catalog defaults, then enable + set values from the lists.
-pub fn apply_lists(
+/// Build `Options` from catalog defaults plus the enabled (env, wrapper) lists,
+/// **returning the env pairs the catalog has no entry for**.
+///
+/// Those leftovers are the point. `params.toml` is rewritten in place by the
+/// `update-proton-params` skill, so a preset or `game_memory` entry written
+/// before a rename keeps naming a key the catalog no longer has — `a552034`
+/// renamed `PROTON_ENABLE_NVAPI` to `PROTON_DISABLE_NVAPI` and dropped
+/// `PROTON_ENABLE_HDR` outright. Those keys used to vanish here (#62): the
+/// assembled command silently lost them, the sync verdict was computed against
+/// that lossy command, and `ipc::apply_recipe`'s round-trip through
+/// [`options_to_lists`] erased them from disk for good. Callers must re-home
+/// them — [`crate::compose::merge_into_extra_env`] is the shared way.
+///
+/// [`Options`] is strictly parallel to the catalog, so there is nowhere inside
+/// it to park an unknown key; hence the out-of-band return rather than a flag.
+///
+/// **Unknown wrapper keys are still dropped, deliberately.** A wrapper is
+/// emitted as a program token by the closed 3-variant [`crate::builder::Wrapper`]
+/// enum, so an unknown wrapper has no representation in a built command and no
+/// field to survive in. It also cannot drift the way env keys do: the skill
+/// never touches `[[wrapper]]`, so the only way to lose one is to hand-edit a
+/// user `params.toml`, which is the user saying they don't want it.
+#[must_use]
+pub fn options_from_lists(
     catalog: &Catalog,
-    options: &mut Options,
     env: &[(String, String)],
     wrappers: &[(String, String)],
-) {
-    *options = Options::from_catalog(catalog);
+) -> (Options, Vec<(String, String)>) {
+    let mut options = Options::from_catalog(catalog);
     for (k, v) in wrappers {
         if let Some(i) = catalog.wrappers.iter().position(|w| &w.key == k) {
             options.wrappers[i].enabled = true;
             options.wrappers[i].value = v.clone();
         }
     }
+    let mut unknown = Vec::new();
     for (k, v) in env {
-        if let Some(i) = catalog.envs.iter().position(|e| &e.key == k) {
-            options.envs[i].enabled = true;
-            options.envs[i].value = v.clone();
+        match catalog.envs.iter().position(|e| &e.key == k) {
+            Some(i) => {
+                options.envs[i].enabled = true;
+                options.envs[i].value = v.clone();
+            }
+            None => unknown.push((k.clone(), v.clone())),
         }
     }
+    (options, unknown)
 }
 
 #[cfg(test)]
@@ -254,13 +280,46 @@ show_irrelevant = true
     #[test]
     fn apply_then_capture_is_stable() {
         let cat = Catalog::bundled();
-        let mut opts = Options::from_catalog(&cat);
         let env = vec![("PROTON_NO_NTSYNC".to_string(), "1".to_string())];
         let wrappers = vec![("mangohud".to_string(), String::new())];
-        apply_lists(&cat, &mut opts, &env, &wrappers);
+        let (opts, unknown) = options_from_lists(&cat, &env, &wrappers);
         let (env2, wrappers2) = options_to_lists(&cat, &opts);
         assert_eq!(env, env2);
         assert_eq!(wrappers, wrappers2);
+        assert!(unknown.is_empty(), "every key here is in the catalog");
+    }
+
+    #[test]
+    fn an_env_key_the_catalog_no_longer_knows_comes_back_as_a_leftover() {
+        // #62. `a552034` renamed PROTON_ENABLE_NVAPI to PROTON_DISABLE_NVAPI, so
+        // any config saved before it names a key the catalog has no entry for.
+        // Returning it is what lets the caller re-home it into `extra_env`
+        // instead of the command quietly losing the variable.
+        let cat = Catalog::bundled();
+        let env = vec![
+            ("PROTON_ENABLE_NVAPI".to_string(), "1".to_string()),
+            ("PROTON_NO_NTSYNC".to_string(), "1".to_string()),
+        ];
+        let (opts, unknown) = options_from_lists(&cat, &env, &[]);
+
+        assert_eq!(unknown, vec![("PROTON_ENABLE_NVAPI".to_string(), "1".to_string())]);
+        // The known key still lands normally.
+        let (captured, _) = options_to_lists(&cat, &opts);
+        assert_eq!(captured, vec![("PROTON_NO_NTSYNC".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn leftovers_keep_their_input_order_and_duplicates() {
+        // `compose::merge_into_extra_env` dedups by key and relies on this order,
+        // so it has to be the caller's order and not the catalog's.
+        let cat = Catalog::bundled();
+        let env = vec![
+            ("ZZZ_NOT_A_REAL_KEY".to_string(), "2".to_string()),
+            ("AAA_NOT_A_REAL_KEY".to_string(), "1".to_string()),
+            ("ZZZ_NOT_A_REAL_KEY".to_string(), "3".to_string()),
+        ];
+        let (_, unknown) = options_from_lists(&cat, &env, &[]);
+        assert_eq!(unknown, env);
     }
 
     #[test]
@@ -299,29 +358,4 @@ show_irrelevant = true
 
         std::fs::remove_file(&blocker).ok();
     }
-}
-
-/// Env keys in a `Config`'s catalog list that the catalog no longer knows.
-///
-/// **[`apply_lists`] silently drops these**, so a command assembled from such a
-/// config is missing them. That happens for real: `params.toml` is refreshed by
-/// the `update-proton-params` skill, and a remembered per-game config or a saved
-/// preset written before a rename keeps naming the old key. Any caller that
-/// makes a *claim* about the assembled command — the in-sync verdict in
-/// `diff::statuses`, for one — has to consult this rather than trust the build.
-pub fn dropped_env_keys(catalog: &Catalog, env: &[(String, String)]) -> Vec<String> {
-    env.iter()
-        .filter(|(k, _)| !catalog.envs.iter().any(|e| &e.key == k))
-        .map(|(k, _)| k.clone())
-        .collect()
-}
-
-/// Env pairs from a parsed/imported command that are NOT in the catalog,
-/// rendered as a space-separated `K=V` string for the "custom env" field.
-pub fn unknown_env_string(catalog: &Catalog, env: &[(String, String)]) -> String {
-    env.iter()
-        .filter(|(k, _)| !catalog.envs.iter().any(|e| &e.key == k))
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join(" ")
 }

@@ -306,10 +306,22 @@ export const mockBootstrap: Bootstrap = {
     // Seeded so the library grid's per-game sync badges have something to show
     // under `pnpm dev`: 1245620 matches its launch options exactly (in-sync),
     // 553850 does not (drifted), 275850 has none set at all (not-applied).
+    //
+    // 275850 also carries PROTON_ENABLE_NVAPI, which is deliberately *not* in
+    // the mock catalog (a552034 renamed it to PROTON_DISABLE_NVAPI upstream).
+    // That makes the #62 recovery path — a stale key re-homed into the
+    // custom-env field instead of silently vanishing — reachable in the browser
+    // dev path just by selecting the game.
     game_memory: {
       "1245620": emptyMockConfig(),
       "553850": { ...emptyMockConfig(), wrappers: [["mangohud", ""]] },
-      "275850": { ...emptyMockConfig(), env: [["DXVK_ASYNC", "1"]] },
+      "275850": {
+        ...emptyMockConfig(),
+        env: [
+          ["DXVK_ASYNC", "1"],
+          ["PROTON_ENABLE_NVAPI", "1"],
+        ],
+      },
     },
     dismissed_cachyos_build: "",
     dismissed_update_version: "",
