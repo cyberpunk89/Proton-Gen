@@ -71,6 +71,12 @@ extra `--` into cargo).
 - **Data-driven catalog.** `params.toml` / `recipes.toml` are baked in via `include_str!`
   and overridable by a user copy in `$XDG_CONFIG_HOME`. Adding an env var or recipe is a
   TOML edit — no Rust change (a new *wrapper program* does need a `Wrapper` enum variant).
+- **Release versioning.** Semver `X.Y.Z`, with the number signalling the scope: **patch
+  (`Z`)** = parameter/catalog refresh only (`params.toml`/`recipes.toml`, no code), **minor
+  (`Y`)** = features / UI / backend, **major (`X`)** = milestone. Cut with
+  `scripts/bump-version.sh X.Y.Z` (then `cargo update -p protongen` to sync `Cargo.lock`),
+  commit `Release vX.Y.Z` on `main`, tag `vX.Y.Z`, push — the tag fires
+  `.github/workflows/release.yml`, which builds + publishes the release the in-app updater reads.
 - **Keep the DTO mirror in sync.** `src/lib/types.ts` interfaces mirror the serde structs
   in `src-tauri/src/ipc.rs` one-to-one. `pnpm check` enforces the FE side; update both.
 - **One store, debounced recompute.** `state.svelte.ts` holds all selection; a root

@@ -97,6 +97,19 @@ Two things worth knowing:
 A failed update check — offline, rate-limited, whatever — is silently ignored. It never blocks
 startup and never shows a false banner.
 
+### What the version number tells you
+
+protongen uses `X.Y.Z` version numbers, and the part that changes tells you what's in the
+update:
+
+| Change | Means | Example |
+|---|---|---|
+| **Last number** (`Z`) | **Parameter refresh only** — the Proton/DXVK/VKD3D catalog was updated (new env vars, fixed descriptions). No app behaviour changes. | `0.8.0 → 0.8.1` |
+| **Middle number** (`Y`) | **Feature update** — new functionality, UI, or fixes in the app itself. | `0.8.x → 0.9.0` |
+| **First number** (`X`) | A milestone release. | `→ 1.0.0` |
+
+So a `.1`-style bump is a safe, quick catalog top-up; a `.0` bump is a real feature release.
+
 ## Uninstalling
 
 ```bash
