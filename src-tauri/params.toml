@@ -1,5 +1,5 @@
 # protongen parameter catalog
-# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-07-26
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-08-10
 #
 # Sources (refresh with the /update-proton-params Claude skill):
 #   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
@@ -28,7 +28,7 @@
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
 proton_cachyos_build = "20260703"
-updated = "2026-08-02"
+updated = "2026-08-10"
 
 # ============================ Wrappers ============================
 
@@ -227,6 +227,16 @@ help = "CachyOS: use D7VK's ddraw.dll for DirectX 7-or-lower games."
 details = "Provides a Vulkan-backed ddraw.dll (D7VK) for very old DirectX 7-and-earlier games, improving rendering over Wine's builtin. Enable for retro titles with 2D / early-3D rendering issues. CachyOS-Proton only."
 example = "PROTON_D7VK_DDRAW=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "FNA3D_FORCE_DRIVER"
+category = "Render backend"
+default_value = "D3D11"
+values = ["D3D11", "Vulkan", "OpenGL"]
+help = "Force the FNA3D backend for FNA/XNA games (set D3D11 to route through DXVK)."
+details = "FNA-based games (many indie titles — Stardew Valley, Celeste, Terraria, FEZ) render through FNA3D, which normally picks Vulkan. Setting D3D11 routes FNA through Wine's d3d11 → DXVK instead, which can fix rendering glitches, black screens, or crashes on drivers where FNA3D's own Vulkan path misbehaves. Leave unset for the default auto-selection; only override for a misbehaving FNA game."
+example = "FNA3D_FORCE_DRIVER=D3D11 %command%"
+url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtime-config-options"
 
 # ====================== NVIDIA / Upscaling =======================
 
@@ -471,6 +481,39 @@ details = "Enables CachyOS's alternative nvml.dll so games/overlays that query N
 example = "PROTON_NVIDIA_NVML=0 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
+[[env]]
+key = "PROTON_NVIDIA_NVCUDA"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable only the alternative nvcuda.dll (CUDA) without the rest of PROTON_NVIDIA_LIBS."
+details = "Loads just CachyOS's alternative nvcuda.dll so games/tools that need CUDA (e.g. GPU PhysX, some AI/compute features) work, without pulling in the whole PROTON_NVIDIA_LIBS bundle. Use this when only CUDA is required and enabling all the alt libraries causes regressions. CachyOS-Proton only."
+example = "PROTON_NVIDIA_NVCUDA=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_NVIDIA_NVENC"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable only the alternative NVENC libraries (hardware video encode)."
+details = "Loads just CachyOS's alternative NVENC (nvEncodeAPI) libraries so in-game recording/streaming that offloads H.264/HEVC/AV1 encoding to the NVIDIA GPU works under Proton, without the full PROTON_NVIDIA_LIBS bundle. Useful with Steam's game recording or an in-prefix encoder. CachyOS-Proton only."
+example = "PROTON_NVIDIA_NVENC=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_NVIDIA_NVOPTIX"
+gpu = "nvidia"
+category = "NVIDIA / Upscaling"
+default_value = "1"
+values = ["1", "0"]
+help = "CachyOS: enable only the alternative nvoptix.dll (OptiX ray-tracing denoiser)."
+details = "Loads just CachyOS's alternative nvoptix.dll, giving games/tools access to NVIDIA's OptiX ray-tracing and AI denoiser without the full PROTON_NVIDIA_LIBS bundle. Niche — only a handful of titles use OptiX directly. CachyOS-Proton only."
+example = "PROTON_NVIDIA_NVOPTIX=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
 # ===================== Display / Wayland / HDR ====================
 
 [[env]]
@@ -480,7 +523,7 @@ category = "Display / Wayland / HDR"
 default_value = "1"
 values = ["1", "0"]
 help = "Run on the native Wayland driver (no XWayland). Enables HDR without gamescope."
-details = "Enables native Wayland driver support (winewayland.drv) instead of XWayland, allowing games to run natively on Wayland compositors. This is experimental and work-in-progress; expect potential issues with Steam Overlay, Steam Input, and some launchers (which may display as white windows). Benefits include HDR support without gamescope and improved latency/frame pacing on compatible systems."
+details = "Enables native Wayland driver support (winewayland.drv) instead of XWayland, allowing games to run natively on Wayland compositors. This is experimental and work-in-progress; expect potential issues with Steam Overlay, Steam Input, and some launchers (which may display as white windows). Benefits include HDR support without gamescope and improved latency/frame pacing on compatible systems. (PROTON_USE_WAYLAND is an accepted alias.)"
 example = "PROTON_ENABLE_WAYLAND=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#runtime-config-options"
 
@@ -875,6 +918,16 @@ example = "WINE_AUDIO_DRIVER=alsa WINEALSA_CHANNELS=6 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 # ====================== Compatibility / Misc =====================
+
+[[env]]
+key = "PROTON_ADD_CONFIG"
+category = "Compatibility / Misc"
+default_value = ""
+values = ["nativevulkanloader", "vkd3dfl12", "vkd3dbindlesstb", "oldglstr", "noforcelgadd"]
+help = "CachyOS: apply umu compat-config keywords instead of raw env vars (comma-separated)."
+details = "Added in 11.0-20260702: supplies Proton's built-in compatibility configs — the same fixes umu-protonfixes applies per game — as a comma-separated list, so you don't have to hand-set the underlying env vars. Useful keywords: 'nativevulkanloader' (use the game's own Vulkan loader instead of Proton's), 'vkd3dfl12' (force D3D12 feature level 12), 'vkd3dbindlesstb' (adds force_bindless_texel_buffer to VKD3D_CONFIG), 'oldglstr' (limit the GL extension-string length for old games), and 'noforcelgadd' (disable the forced LARGE_ADDRESS_AWARE flag). There is also 'cmdlineappend:<arg>' to append a launch argument (escape commas/backslashes). CachyOS-Proton only."
+example = "PROTON_ADD_CONFIG=nativevulkanloader,vkd3dfl12 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_SET_GAME_DRIVE"
