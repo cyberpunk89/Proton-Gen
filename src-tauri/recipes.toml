@@ -62,6 +62,34 @@ env = [
 wrappers = []
 
 [[recipe]]
+name = "AMD: DLSS game → FSR 4 (OptiScaler)"
+kind = "profile"
+gpu = "amd"
+needs = ["fsr4"]
+icon = "sparkle"
+accent = "#e0234e"
+tags = ["OptiScaler", "FSR 4", "DLSS→FSR"]
+description = "For games that only expose DLSS: inject OptiScaler to redirect it to FSR 4 + multi-frame generation (RDNA4). Single-player only — OptiScaler can trip kernel anti-cheat."
+env = [
+    ["PROTON_USE_OPTISCALER", "1"],
+    ["PROTON_FSR4_UPGRADE", "1"],
+    ["PROTON_MLFG_UPGRADE", "1"],
+]
+wrappers = []
+
+[[recipe]]
+name = "My RDNA4 default"
+kind = "profile"
+gpu = "amd"
+needs = ["fsr4"]
+icon = "sparkle"
+accent = "#a6e3a1"
+tags = ["RDNA4", "GameMode", "MangoHud"]
+description = "Everyday starting point on RDNA4: GameMode + MangoHud overlay with the FSR 4 upgrade applied."
+env = [["PROTON_FSR4_UPGRADE", "1"]]
+wrappers = [["gamemoderun", ""], ["mangohud", ""]]
+
+[[recipe]]
 name = "HDR on Wayland"
 kind = "profile"
 needs = ["wayland", "hdr"]

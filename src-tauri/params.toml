@@ -28,7 +28,7 @@
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
 proton_cachyos_build = "20260703"
-updated = "2026-08-10"
+updated = "2026-08-15"
 
 # ============================ Wrappers ============================
 
