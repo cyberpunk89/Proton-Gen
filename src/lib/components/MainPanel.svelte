@@ -8,7 +8,8 @@
   import ActiveOptions from "./ActiveOptions.svelte";
   import Dialog from "./Dialog.svelte";
   import MangoHud from "./MangoHud.svelte";
-  import { MagnifyingGlass, Faders, Gauge } from "phosphor-svelte";
+  import OptiScaler from "./OptiScaler.svelte";
+  import { MagnifyingGlass, Faders, Gauge, Sparkle } from "phosphor-svelte";
   import type { EnvDef, WrapperDef } from "$lib/types";
 
   /**
@@ -17,6 +18,9 @@
    * and so both of its entry points share one instance.
    */
   let mangoOpen = $state(false);
+
+  /** The OptiScaler builder — same rationale as the overlay builder above. */
+  let optiOpen = $state(false);
 
   let showAll = $derived(app.store.show_irrelevant);
   const q = $derived(app.paramQuery);
@@ -281,6 +285,27 @@
   <MangoHud onapply={() => (mangoOpen = false)} />
 </Dialog>
 
+<!-- Wired to both the PROTON_USE_OPTISCALER toggle and the
+     PROTON_OPTISCALER_CONFIG row: either is where someone looks for it. -->
+{#snippet configureOptiScaler()}
+  <button
+    type="button"
+    onclick={() => (optiOpen = true)}
+    class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+  >
+    <Sparkle size={13} /> Configure OptiScaler…
+  </button>
+{/snippet}
+
+<Dialog
+  bind:open={optiOpen}
+  title="OptiScaler"
+  subtitle="Compose the upscaler config, then apply it to the launch command."
+  width="46rem"
+>
+  <OptiScaler onapply={() => (optiOpen = false)} />
+</Dialog>
+
 {#snippet row(h: Hit)}
   {#if h.kind === "wrap"}
     {@const w = h.def as WrapperDef}
@@ -330,7 +355,11 @@
       appliedBy={app.recipeOrigin[h.key] ?? null}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
-      action={e.key === "MANGOHUD_CONFIG" ? configureOverlay : null}
+      action={e.key === "MANGOHUD_CONFIG"
+        ? configureOverlay
+        : e.key === "PROTON_OPTISCALER_CONFIG" || e.key === "PROTON_USE_OPTISCALER"
+          ? configureOptiScaler
+          : null}
       onToggle={() => app.toggleEnv(e.key)}
       onValue={(v) => app.setEnvValue(e.key, v)}
     />

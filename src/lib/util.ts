@@ -65,7 +65,7 @@ export async function openSteamUrl(url: string): Promise<boolean> {
  * hardware object the UI passes in (sourced from the Settings toggle).
  */
 export function irrelevance(
-  hw: Hardware & { hdr?: boolean; fsr4?: boolean },
+  hw: Hardware & { hdr?: boolean; fsr4?: boolean; rdna3?: boolean },
   gpu: string | null,
   needs: string[],
 ): string | null {
@@ -81,6 +81,7 @@ export function irrelevance(
     if (n === "ntsync" && !hw.ntsync) return "needs /dev/ntsync";
     if (n === "hdr" && !hw.hdr) return "needs HDR display";
     if (n === "fsr4" && !hw.fsr4) return "needs an RDNA3/RDNA4 GPU (FSR upgrades)";
+    if (n === "rdna3" && !hw.rdna3) return "RDNA3-only (hidden on RDNA4)";
   }
   return null;
 }

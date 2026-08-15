@@ -134,18 +134,14 @@
               app.store.hdr,
               () => app.setHdr(!app.store.hdr),
             )}
-            {@render toggle(
-              "I have an RDNA3/RDNA4 GPU",
-              "Shows FSR 3/4 upscaler-upgrade options (hidden by default).",
-              app.store.fsr4,
-              () => app.setFsr4(!app.store.fsr4),
-            )}
+            {@render gpuGen()}
             {@render toggle(
               "Auto-check ProtonDB",
               "Fetch the compatibility tier when a Steam game is selected.",
               app.store.protondb_auto,
               () => app.setProtondbAuto(!app.store.protondb_auto),
             )}
+            {@render globalProfile()}
           </div>
           {/if}
         </section>
@@ -321,5 +317,65 @@
       <p class="text-[11px] leading-snug text-muted">{desc}</p>
     </div>
     <Switch {checked} {onchange} labelledby={id} />
+  </div>
+{/snippet}
+
+<!-- AMD GPU generation selector. Replaces the old "I have an RDNA3/RDNA4 GPU"
+     toggle: picking a generation unlocks the FSR 3/4 upgrade options, and RDNA4
+     additionally hides the RDNA3-only FSR4 workaround. -->
+{#snippet gpuGen()}
+  {@const gen = app.store.gpu_gen}
+  <div class="rounded-lg px-1 py-1.5">
+    <p class="text-sm text-subtext">AMD GPU generation</p>
+    <p class="mb-1.5 text-[11px] leading-snug text-muted">
+      Unlocks FSR 3/4 upscaler-upgrade options (hidden by default). RDNA4 hides the
+      RDNA3-only workaround. Not auto-detected.
+    </p>
+    <div class="flex gap-1 rounded-lg bg-mantle p-0.5 text-xs">
+      {#each [["", "Not AMD"], ["rdna3", "RDNA3"], ["rdna4", "RDNA4"]] as [value, label] (value)}
+        <button
+          onclick={() => app.setGpuGen(value)}
+          class="flex-1 rounded-md px-2 py-1 font-medium transition"
+          class:bg-surface-2={gen === value}
+          class:text-text={gen === value}
+          class:text-muted={gen !== value}>{label}</button
+        >
+      {/each}
+    </div>
+  </div>
+{/snippet}
+
+<!-- Global profile: a reusable selection saved from the current build and
+     applied to any game on demand via the builder's "Apply global profile"
+     button. -->
+{#snippet globalProfile()}
+  {@const gp = app.store.global_profile}
+  <div class="rounded-lg px-1 py-1.5">
+    <p class="text-sm text-subtext">Global profile</p>
+    <p class="mb-1.5 text-[11px] leading-snug text-muted">
+      {#if gp}
+        Saved: {gp.env.length} env · {gp.wrappers.length} wrappers{gp.runtime
+          ? ` · ${gp.runtime}`
+          : ""}. Apply it to any game from the builder.
+      {:else}
+        Not set. Build a game the way you like, then save it here to reuse elsewhere.
+      {/if}
+    </p>
+    <div class="flex gap-1">
+      <button
+        onclick={() => app.setGlobalProfileFromCurrent()}
+        class="rounded-lg border border-border px-2 py-1 text-[11px] text-subtext transition hover:border-accent/50 hover:text-text"
+      >
+        Set from current build
+      </button>
+      {#if gp}
+        <button
+          onclick={() => app.clearGlobalProfile()}
+          class="rounded-lg border border-border px-2 py-1 text-[11px] text-muted transition hover:border-red/50 hover:text-red"
+        >
+          Clear
+        </button>
+      {/if}
+    </div>
   </div>
 {/snippet}

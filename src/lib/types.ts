@@ -150,7 +150,12 @@ export interface Store {
   dismissed_update_version: string;
   show_irrelevant: boolean;
   hdr: boolean;
+  /** Legacy "RDNA3/RDNA4" capability flag, superseded by `gpu_gen` as the UI
+   *  control but still read as a fallback for pre-`gpu_gen` state files. */
   fsr4: boolean;
+  /** AMD GPU generation: "" (unset) | "rdna3" | "rdna4". Drives the FSR4 and
+   *  RDNA3-only relevance capabilities. */
+  gpu_gen: string;
   protondb_auto: boolean;
   /** Appids pinned to the top of the library under every sort. A Rust
    *  `BTreeSet<u32>`, so it arrives sorted and must be sent back without
@@ -161,6 +166,10 @@ export interface Store {
   last_session: Config | null;
   last_game_appid: number | null;
   paths: Paths;
+  /** A reusable selection authored in Settings and applied to a game via a
+   *  button. Null until the user saves one. Mirrors store::Store.global_profile
+   *  (Rust `Option<Config>`). */
+  global_profile: Config | null;
 }
 
 /// Mirrors explain::TokenKind (serde rename_all = "snake_case").

@@ -399,7 +399,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 [[env]]
 key = "DXIL_SPIRV_CONFIG"
 gpu = "amd"
-needs = ["fsr4"]
+needs = ["rdna3"]
 category = "NVIDIA / Upscaling"
 default_value = "wmma_rdna3_workaround"
 values = ["wmma_rdna3_workaround"]

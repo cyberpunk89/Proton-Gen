@@ -14,6 +14,7 @@
     Trash,
     FloppyDisk,
     ArrowsClockwise,
+    GlobeHemisphereWest,
     Minus,
     Square,
     X,
@@ -79,6 +80,18 @@
         </button>
       {/snippet}
       <div class="space-y-1">
+        {#if app.store.global_profile}
+          <button
+            onclick={() => {
+              app.applyGlobalProfile();
+              toast.success("Global profile applied");
+            }}
+            class="flex w-full items-center gap-1.5 rounded-lg border border-accent/40 px-2 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
+          >
+            <GlobeHemisphereWest size={13} /> Apply global profile
+          </button>
+          <div class="my-1 border-t border-border/60"></div>
+        {/if}
         {#each app.store.presets as p (p.name)}
           <div class="flex items-center gap-1">
             <button
