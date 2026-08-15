@@ -76,12 +76,20 @@ export interface RuntimeDto {
 export interface GameDto {
   app_id: number;
   name: string;
-  source: string; // "steam" | "non-steam"
+  source: string; // "steam" | "non-steam" | "heroic"
   executable: string | null;
   installed: boolean;
   /** Unix seconds, from localconfig.vdf. Null when never played (or non-Steam). */
   last_played: number | null;
   playtime_minutes: number | null;
+  /** Heroic's per-game id; non-null only when source === "heroic". */
+  heroic_id: string | null;
+}
+
+/** Result of a successful `inject_heroic` write, for the confirmation toast. */
+export interface HeroicInjectResult {
+  config_path: string;
+  backup_path: string;
 }
 
 export interface StaleInfo {

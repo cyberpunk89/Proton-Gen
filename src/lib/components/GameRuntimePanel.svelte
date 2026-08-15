@@ -6,10 +6,19 @@
   import ProtonDbChip from "./ProtonDbChip.svelte";
   import SyncPill from "./SyncPill.svelte";
   import OpenInSteam from "./OpenInSteam.svelte";
-  import { DownloadSimple, Cpu, CheckCircle, WarningCircle } from "phosphor-svelte";
+  import Dialog from "./Dialog.svelte";
+  import { DownloadSimple, Cpu, CheckCircle, WarningCircle, Export } from "phosphor-svelte";
 
   let isSteam = $derived(app.selectedGame?.source === "steam");
+  let isHeroic = $derived(app.selectedGame?.source === "heroic");
   let mismatch = $derived(app.runtimeMismatch);
+
+  let confirmHeroic = $state(false);
+
+  async function applyHeroic() {
+    confirmHeroic = false;
+    await app.injectHeroic();
+  }
 
   let currentOpts = $derived(
     isSteam && app.selectedAppId != null
@@ -107,6 +116,24 @@
     </div>
   {/if}
 
+  {#if isHeroic}
+    <!-- Heroic reads structured per-game JSON, not a launch string — so the
+         useful action here is to write the tuning straight into its config. -->
+    <div class="space-y-2 rounded-xl border border-border/60 bg-surface-2/40 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Heroic</p>
+      <p class="text-xs text-subtext">
+        Write the environment variables and wrappers above straight into this game's
+        Heroic config, so Heroic launches it with them.
+      </p>
+      <button
+        onclick={() => (confirmHeroic = true)}
+        class="inline-flex items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-on-accent transition hover:opacity-90"
+      >
+        <Export size={13} /> Apply to Heroic
+      </button>
+    </div>
+  {/if}
+
   <!--
     These two are `value` + `oninput` rather than `bind:value`, so the handler
     can both assign and name the undo entry. Do not "simplify" to `bind:value`
@@ -145,3 +172,32 @@
     </label>
   </div>
 </section>
+
+<Dialog
+  bind:open={confirmHeroic}
+  title="Apply to Heroic?"
+  subtitle="Close Heroic first — it may overwrite these changes when it exits."
+>
+  <div class="space-y-4">
+    <p class="text-sm text-subtext">
+      protongen will write the selected environment variables and wrappers into this
+      game's Heroic config, replacing any it wrote before. A timestamped backup is
+      saved next to the file first. Heroic's own settings — Proton version, prefix,
+      sync options — are left untouched.
+    </p>
+    <div class="flex justify-end gap-2">
+      <button
+        onclick={() => (confirmHeroic = false)}
+        class="rounded-lg border border-border bg-surface-2/60 px-3 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+      >
+        Cancel
+      </button>
+      <button
+        onclick={applyHeroic}
+        class="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition hover:opacity-90"
+      >
+        Apply
+      </button>
+    </div>
+  </div>
+</Dialog>

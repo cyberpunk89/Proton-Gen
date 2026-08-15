@@ -90,7 +90,8 @@ export function buildItems(): PaletteItem[] {
       id: `game:${g.source}:${g.app_id}`,
       group: "game",
       label: g.name,
-      sublabel: g.source === "non-steam" ? "shortcut" : undefined,
+      sublabel:
+        g.source === "non-steam" ? "shortcut" : g.source === "heroic" ? "Heroic" : undefined,
       keywords: [String(g.app_id)],
       icon: GameController,
       badge: app.isFavorite(g.app_id) ? "★" : undefined,

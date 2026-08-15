@@ -11,6 +11,8 @@ use crate::params::ConfigWarning;
 pub enum GameSource {
     Steam,
     NonSteam,
+    /// A sideloaded game discovered from Heroic (see [`crate::heroic`]).
+    Heroic,
 }
 
 impl GameSource {
@@ -18,6 +20,7 @@ impl GameSource {
         match self {
             GameSource::Steam => "steam",
             GameSource::NonSteam => "non-steam",
+            GameSource::Heroic => "heroic",
         }
     }
 }
@@ -27,11 +30,14 @@ pub struct Game {
     pub app_id: u32,
     pub name: String,
     pub source: GameSource,
-    /// Target executable (non-Steam shortcuts only) — used to prefill umu mode.
+    /// Target executable (non-Steam shortcuts + Heroic games) — prefills umu mode.
     pub executable: Option<String>,
-    /// Whether Steam reports the app as fully installed. Shortcuts point at a
-    /// path Steam does not manage, so they are always `true`.
+    /// Whether the launcher reports the app as installed. Non-Steam shortcuts
+    /// point at a path Steam does not manage, so they are always `true`.
     pub installed: bool,
+    /// Heroic's per-game id (base62 `app_name`), the key to its `GamesConfig`
+    /// file. `Some` only for [`GameSource::Heroic`]; the inject command needs it.
+    pub heroic_id: Option<String>,
 }
 
 /// Well-known non-game app IDs (runtimes / redistributables) to hide.
@@ -63,11 +69,47 @@ fn is_tool(app_id: u32, name: &str) -> bool {
 /// is not guaranteed adjacent (and even when it is, relying on that is luck), so
 /// duplicates survived. Cosmetic today; a duplicate key in a keyed Svelte
 /// `{#each}` is a crash.
-fn dedup_and_sort(mut games: Vec<Game>) -> Vec<Game> {
+pub(crate) fn dedup_and_sort(mut games: Vec<Game>) -> Vec<Game> {
     let mut seen = HashSet::new();
     games.retain(|g| seen.insert(g.app_id));
     games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     games
+}
+
+/// A deterministic synthetic `app_id` for a Heroic game, hashed from its base62
+/// `app_name`.
+///
+/// Determinism is load-bearing: `app_id` is the persistence key for
+/// `game_memory`, `favorites`, and `last_game_appid`, so a per-process-seeded
+/// hasher (`DefaultHasher`/`RandomState`) would rotate the id every launch and
+/// orphan the user's saved tuning. FNV-1a-32 is stable across runs.
+///
+/// The high bit is forced on, parking Heroic ids above every real Steam appid
+/// (all well under 2³¹) — so a hash can't collide with a Steam game and trip
+/// `dedup_and_sort`'s silent drop or crash a keyed Svelte `{#each}`.
+fn heroic_app_id(app_name: &str) -> u32 {
+    let mut hash: u32 = 0x811c_9dc5;
+    for b in app_name.bytes() {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    hash | 0x8000_0000
+}
+
+/// Sideloaded Heroic games as [`Game`]s (source [`GameSource::Heroic`]).
+/// Independent of any Steam install; empty when Heroic isn't present.
+pub fn list_heroic_games() -> Vec<Game> {
+    crate::heroic::list_sideloaded()
+        .into_iter()
+        .map(|h| Game {
+            app_id: heroic_app_id(&h.app_name),
+            name: h.title,
+            source: GameSource::Heroic,
+            executable: h.executable,
+            installed: h.installed,
+            heroic_id: Some(h.app_name),
+        })
+        .collect()
 }
 
 /// Collect the apps of one library into `out`, skipping runtimes/tools.
@@ -92,6 +134,7 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
             source: GameSource::Steam,
             executable: None,
             installed,
+            heroic_id: None,
         });
     }
     out.len() - before
@@ -142,9 +185,14 @@ pub fn list_games(
                 source: GameSource::NonSteam,
                 executable: if exe.is_empty() { None } else { Some(exe) },
                 installed: true,
+                heroic_id: None,
             });
         }
     }
+
+    // Sideloaded Heroic games — independent of Steam, but folded in here so
+    // `--list`/`dump()` shows them and they go through the same dedup + sort.
+    games.extend(list_heroic_games());
 
     dedup_and_sort(games)
 }
@@ -160,7 +208,18 @@ mod tests {
             source: GameSource::Steam,
             executable: None,
             installed: true,
+            heroic_id: None,
         }
+    }
+
+    #[test]
+    fn heroic_app_id_is_deterministic_and_high() {
+        // Same input -> same id across calls (and, since FNV isn't seeded, across
+        // process runs), so saved per-game config survives a restart.
+        assert_eq!(heroic_app_id("7Hm5qmyaYmaSZ45Mqo3u4s"), heroic_app_id("7Hm5qmyaYmaSZ45Mqo3u4s"));
+        assert_ne!(heroic_app_id("abc"), heroic_app_id("abd"));
+        // High bit set -> above every real Steam appid.
+        assert!(heroic_app_id("anything") >= 0x8000_0000);
     }
 
     #[test]

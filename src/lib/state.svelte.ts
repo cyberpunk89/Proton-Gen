@@ -717,6 +717,13 @@ class AppStore {
     return this.games.find((g) => g.app_id === this.selectedAppId) ?? null;
   }
 
+  /** Heroic's per-game id for the selected game, or null when it isn't a Heroic
+   *  game — the gate for the "Apply to Heroic" action. */
+  get heroicId(): string | null {
+    const g = this.selectedGame;
+    return g?.source === "heroic" ? (g.heroic_id ?? null) : null;
+  }
+
   /**
    * The appid a `steam://` deep link can address, or null when one would be
    * meaningless — no game, a non-Steam shortcut (whose appid is a synthetic
@@ -822,11 +829,32 @@ class AppStore {
       this.loadConfig(remembered);
     } else {
       this.resetOptions();
+      // Heroic launches its games itself via umu/Proton; Steam mode's `%command%`
+      // is meaningless for them, so default a freshly-opened Heroic game to umu.
+      if (game.source === "heroic") this.umu = true;
     }
 
     // Undoable on purpose: "I switched games and lost my tuning" is exactly the
     // trust failure the stack exists to fix.
     this.mark(`open ${game.name}`);
+  }
+
+  /**
+   * Write the current tuning (env vars + wrappers) into the selected Heroic
+   * game's per-game config. No-op unless a Heroic game is selected. The backend
+   * backs the file up first and preserves everything it doesn't own.
+   */
+  async injectHeroic() {
+    const id = this.heroicId;
+    if (id == null) return;
+    try {
+      await ipc.injectHeroic(id, this.toConfig());
+      toast.success("Applied to Heroic — restart Heroic to pick it up (backup saved)", {
+        ms: 6000,
+      });
+    } catch (e) {
+      toast.error(`Couldn't write to Heroic: ${e}`, { ms: 6000 });
+    }
   }
 
   // ------------------------------- presets ----------------------------------

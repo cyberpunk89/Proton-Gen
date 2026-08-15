@@ -166,6 +166,12 @@
         style="background: color-mix(in srgb, var(--mauve) 75%, transparent); color: var(--on-accent)"
         >shortcut</span
       >
+    {:else if game.source === "heroic"}
+      <span
+        class="rounded-full px-1.5 py-0.5 text-[10px] font-medium backdrop-blur-sm"
+        style="background: color-mix(in srgb, var(--blue) 75%, transparent); color: var(--on-accent)"
+        >Heroic</span
+      >
     {/if}
     {#if tier}
       <!-- Cache-only: the grid never triggers a lookup, so a screenful of tiles

@@ -3,6 +3,7 @@ import type {
   Bootstrap,
   Config,
   DiffStatus,
+  HeroicInjectResult,
   LaunchDiff,
   Notice,
   RecipeChange,
@@ -15,6 +16,7 @@ import {
   mockBootstrap,
   mockBuildCommand,
   mockExplain,
+  mockInjectHeroic,
   mockLaunchDiff,
   mockLaunchStatuses,
   mockNotices,
@@ -38,6 +40,13 @@ export const ipc = {
     inTauri
       ? invoke<string>("build_command", { config, protonPath })
       : Promise.resolve(mockBuildCommand(config, protonPath)),
+
+  // Write the config's env vars + wrappers into a Heroic game's per-game config.
+  // `appName` is the game's `heroic_id`.
+  injectHeroic: (appName: string, config: Config) =>
+    inTauri
+      ? invoke<HeroicInjectResult>("inject_heroic", { appName, config })
+      : Promise.resolve(mockInjectHeroic(appName, config)),
 
   parseCommand: (input: string) =>
     inTauri ? invoke<Config>("parse_command", { input }) : Promise.resolve(emptyParse()),

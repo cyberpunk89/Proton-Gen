@@ -16,6 +16,7 @@ use crate::diff::{self, LaunchDiff};
 use crate::explain::{self, Token};
 use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
+use crate::heroic;
 use crate::lint;
 use crate::params::{Catalog, ConfigWarning};
 use crate::parser;
@@ -52,6 +53,9 @@ pub struct GameDto {
     /// Unix seconds.
     pub last_played: Option<u64>,
     pub playtime_minutes: Option<u32>,
+    /// Heroic's per-game id — `Some` only for `source == "heroic"`; the key the
+    /// `inject_heroic` command needs to locate the game's config file.
+    pub heroic_id: Option<String>,
 }
 
 /// The "catalog refreshed for an older build" banner data.
@@ -155,7 +159,15 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
             launch_options = stringify_keys(steamcfg::launch_options(&app_cfgs));
             compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
         }
-        Err(e) => load_error = Some(e.to_string()),
+        Err(e) => {
+            load_error = Some(e.to_string());
+            // Heroic games don't need Steam. With no Steam install, `list_games`
+            // never runs, so surface sideloaded Heroic games on their own here.
+            games = games::dedup_and_sort(games::list_heroic_games())
+                .into_iter()
+                .map(|g| game_dto(g, &HashMap::new()))
+                .collect();
+        }
     }
 
     let stale = compute_stale(catalog, &runtimes_raw);
@@ -219,6 +231,26 @@ fn runtime_dto(r: &runtime::Runtime) -> RuntimeDto {
     }
 }
 
+/// Map one discovery [`games::Game`] to its serialized DTO. `app_cfgs` supplies
+/// last-played/playtime, which only Steam apps have — a shortcut's or Heroic
+/// game's synthetic appid is a hash that indexes nothing in `localconfig.vdf`.
+fn game_dto(g: games::Game, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> GameDto {
+    let cfg = match g.source {
+        GameSource::Steam => app_cfgs.get(&g.app_id),
+        GameSource::NonSteam | GameSource::Heroic => None,
+    };
+    GameDto {
+        app_id: g.app_id,
+        name: g.name,
+        source: g.source.label().to_string(),
+        executable: g.executable,
+        installed: g.installed,
+        last_played: cfg.and_then(|c| c.last_played),
+        playtime_minutes: cfg.and_then(|c| c.playtime_minutes),
+        heroic_id: g.heroic_id,
+    }
+}
+
 fn list_games_dto(
     dir: &SteamDir,
     app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>,
@@ -227,27 +259,7 @@ fn list_games_dto(
 ) -> Vec<GameDto> {
     games::list_games(dir, extra_libraries, warn)
         .into_iter()
-        .map(|g| {
-            // Only Steam apps have a localconfig record; a shortcut's appid is a
-            // locally-generated hash that would collide with nothing useful.
-            let cfg = match g.source {
-                GameSource::Steam => app_cfgs.get(&g.app_id),
-                GameSource::NonSteam => None,
-            };
-            GameDto {
-                app_id: g.app_id,
-                name: g.name,
-                source: match g.source {
-                    GameSource::Steam => "steam",
-                    GameSource::NonSteam => "non-steam",
-                }
-                .to_string(),
-                executable: g.executable,
-                installed: g.installed,
-                last_played: cfg.and_then(|c| c.last_played),
-                playtime_minutes: cfg.and_then(|c| c.playtime_minutes),
-            }
-        })
+        .map(|g| game_dto(g, app_cfgs))
         .collect()
 }
 
@@ -374,6 +386,23 @@ pub fn build_command(
     // Cheap — this command is already debounced ~60 ms on the frontend.
     let bins = state.bins();
     compose::assemble(&state.catalog, &config, proton_path.as_deref(), &bins)
+}
+
+/// Write the current `config`'s env vars + wrappers into a Heroic sideloaded
+/// game's per-game config (`GamesConfig/<app_name>.json`). The one sanctioned
+/// write outside protongen's own state: it backs up first, preserves every key
+/// it doesn't own, and writes atomically. `app_name` is the game's `heroic_id`.
+///
+/// Reuses the same resolver as the preview, so what lands in Heroic equals what
+/// the command box shows (minus the umu lead vars, which Heroic owns).
+#[tauri::command]
+pub fn inject_heroic(
+    state: State<'_, AppState>,
+    app_name: String,
+    config: Config,
+) -> Result<heroic::InjectResult, String> {
+    let (env, wrappers) = compose::resolve_env_wrappers(&state.catalog, &config);
+    heroic::inject(&app_name, &env, &wrappers, &state.bins())
 }
 
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).

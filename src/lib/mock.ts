@@ -6,6 +6,7 @@ import type {
   Change,
   Config,
   DiffStatus,
+  HeroicInjectResult,
   LaunchDiff,
   Notice,
   RecipeChange,
@@ -263,6 +264,7 @@ export const mockBootstrap: Bootstrap = {
       installed: true,
       last_played: 1785024000, // 2026-07-26
       playtime_minutes: 4210,
+      heroic_id: null,
     },
     {
       app_id: 1245620,
@@ -272,6 +274,7 @@ export const mockBootstrap: Bootstrap = {
       installed: true,
       last_played: 1783000000, // 2026-07-02
       playtime_minutes: 8640,
+      heroic_id: null,
     },
     {
       app_id: 275850,
@@ -281,15 +284,17 @@ export const mockBootstrap: Bootstrap = {
       installed: false,
       last_played: 1740000000, // 2025-02-19
       playtime_minutes: 312,
+      heroic_id: null,
     },
     {
-      app_id: 2001,
-      name: "Heroic - Cyberpunk 2077",
-      source: "non-steam",
-      executable: "/games/cp2077/bin/x64/Cyberpunk2077.exe",
+      app_id: 0x80000001,
+      name: "Crimson Desert (Heroic)",
+      source: "heroic",
+      executable: "/home/u/Games/FitGirl/crimson-desert/pfx/drive_c/Crimson Desert/bin64/CrimsonDesert.exe",
       installed: true,
       last_played: null,
       playtime_minutes: null,
+      heroic_id: "7Hm5qmyaYmaSZ45Mqo3u4s",
     },
   ],
   hardware: {
@@ -472,6 +477,11 @@ export function mockBuildCommand(config: Config, protonPath: string | null): str
       .join(" ");
   }
   return [...env, ...wraps, "%command%", config.game_args].filter(Boolean).join(" ");
+}
+
+export function mockInjectHeroic(appName: string, _config: Config): HeroicInjectResult {
+  const dir = `~/.config/heroic/GamesConfig/${appName}`;
+  return { config_path: `${dir}.json`, backup_path: `${dir}.json.protongen-1755290000.bak` };
 }
 
 // Reduced stand-in for diff.rs::compare. Understands the same normalisations

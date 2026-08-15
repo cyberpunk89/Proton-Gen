@@ -1,8 +1,14 @@
 //! protongen — a GUI to build Steam / umu-launcher commands for CachyOS Proton.
 //!
-//! Read-only: it scans installed Proton runtimes, Steam games and non-Steam
-//! shortcuts, lets you toggle common env-vars / wrappers, and previews + copies
-//! the resulting launch command. It never writes to Steam config files.
+//! Read-only by default: it scans installed Proton runtimes, Steam games,
+//! non-Steam shortcuts and sideloaded Heroic games, lets you toggle common
+//! env-vars / wrappers, and previews + copies the resulting launch command. It
+//! never writes to Steam config files.
+//!
+//! The one sanctioned write outside protongen's own `state.toml` is
+//! [`heroic::inject`]: Heroic reads structured per-game JSON rather than a launch
+//! string, so applying tweaks means writing them into its config (backing up
+//! first, preserving every key it doesn't own).
 //!
 //! This crate is a Tauri backend: the pure logic modules below are exposed to
 //! the web frontend through `ipc`.
@@ -14,6 +20,7 @@ mod diff;
 mod explain;
 mod games;
 mod hardware;
+mod heroic;
 mod ipc;
 mod lint;
 mod params;
@@ -40,6 +47,7 @@ pub fn run() {
             ipc::bootstrap,
             ipc::rescan,
             ipc::build_command,
+            ipc::inject_heroic,
             ipc::parse_command,
             ipc::explain_command,
             ipc::launch_diff,

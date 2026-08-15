@@ -72,14 +72,18 @@ pub fn options_from_config(catalog: &Catalog, config: &Config) -> (Options, Vec<
     store::options_from_lists(catalog, &config.env, &config.wrappers)
 }
 
-/// Assemble the launch command for `config`. `proton_path` is the selected
-/// runtime's install dir, used as `PROTONPATH` in umu mode and ignored otherwise.
-pub fn assemble(
+/// Resolve a `Config` into the final environment variables and wrappers, the way
+/// the preview does. Shared by [`assemble`] and `ipc::inject_heroic` so what is
+/// written into a Heroic config is byte-identical to what the preview shows —
+/// including the #62 re-homing of catalog-forgotten keys into the env.
+///
+/// This is the *mode-agnostic* core: it excludes the umu lead vars
+/// (WINEPREFIX/GAMEID/PROTONPATH), which `assemble` adds only for umu mode and
+/// which Heroic owns itself.
+pub fn resolve_env_wrappers(
     catalog: &Catalog,
     config: &Config,
-    proton_path: Option<&str>,
-    bins: &builder::Bins,
-) -> String {
+) -> (Vec<(String, String)>, Vec<builder::Wrapper>) {
     let (options, leftover) = options_from_config(catalog, config);
     let (mut env, wrappers) = params::to_spec(catalog, &options);
     // One merge, so the preview and `ipc::apply_recipe` cannot disagree about
@@ -88,6 +92,18 @@ pub fn assemble(
         &config.extra_env,
         &leftover,
     )));
+    (env, wrappers)
+}
+
+/// Assemble the launch command for `config`. `proton_path` is the selected
+/// runtime's install dir, used as `PROTONPATH` in umu mode and ignored otherwise.
+pub fn assemble(
+    catalog: &Catalog,
+    config: &Config,
+    proton_path: Option<&str>,
+    bins: &builder::Bins,
+) -> String {
+    let (env, wrappers) = resolve_env_wrappers(catalog, config);
 
     if config.umu {
         let wineprefix = {
