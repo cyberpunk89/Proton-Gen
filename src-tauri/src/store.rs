@@ -321,7 +321,7 @@ mod tests {
         let back: Store = toml::from_str(&text).unwrap();
         assert_eq!(back.theme, "Dracula");
         assert_eq!(back.gpu_gen, "rdna4");
-        let gp = back.global_profile.expect("global_profile round-trips");
+        let gp = back.global_profile.as_ref().expect("global_profile round-trips");
         assert_eq!(gp.env, vec![("PROTON_USE_NTSYNC".to_string(), "1".to_string())]);
         assert_eq!(gp.wrappers, vec![("gamemoderun".to_string(), String::new())]);
         assert_eq!(back.presets.len(), 1);
