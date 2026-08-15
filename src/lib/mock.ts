@@ -181,6 +181,35 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
       },
+      // OptiScaler injection + inline config, so the OptiScaler builder dialog is
+      // reachable under `pnpm dev` (the real catalog carries these under
+      // "NVIDIA / Upscaling").
+      {
+        key: "PROTON_USE_OPTISCALER",
+        category: "NVIDIA",
+        default_value: "1",
+        values: ["1", "0"],
+        requires: null,
+        help: "CachyOS: auto-inject OptiScaler to swap/force upscalers (DLSS/FSR/XeSS).",
+        details: "Injects OptiScaler so a game's upscaler can be replaced or forced.",
+        example: "PROTON_USE_OPTISCALER=1 %command%",
+        url: "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md",
+        gpu: null,
+        needs: [],
+      },
+      {
+        key: "PROTON_OPTISCALER_CONFIG",
+        category: "NVIDIA",
+        default_value: "",
+        values: [],
+        requires: null,
+        help: "CachyOS: write OptiScaler.ini settings inline, e.g. 'Upscalers.Dx12Upscaler=fsr31'.",
+        details: "Semicolon-separated '{section}.{option}={value}' OptiScaler.ini entries.",
+        example: "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG='Upscalers.Dx12Upscaler=fsr31' %command%",
+        url: "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md",
+        gpu: null,
+        needs: [],
+      },
     ],
   },
   categories: ["Performance / Sync", "NVIDIA", "Display / HDR"],
@@ -333,6 +362,9 @@ export const mockBootstrap: Bootstrap = {
     show_irrelevant: false,
     hdr: false,
     fsr4: false,
+    // RDNA4 in the mock so the FSR4 options show while the RDNA3-only workaround
+    // stays hidden — the exact filtering the Settings selector drives.
+    gpu_gen: "rdna4",
     protondb_auto: false,
     // One favourite so the pin-to-top behaviour is visible under `pnpm dev`
     // without having to click a star first.
@@ -347,6 +379,7 @@ export const mockBootstrap: Bootstrap = {
       proton_dirs: ["/opt/proton-builds"],
       bins: {},
     },
+    global_profile: null,
   },
   // 553850 drifts against anything the builder produces; 1245620 is exactly
   // what `mockBuildCommand` emits for a freshly-reset config, so opening it

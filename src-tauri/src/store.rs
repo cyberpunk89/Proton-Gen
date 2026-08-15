@@ -103,8 +103,18 @@ pub struct Store {
     pub hdr: bool,
     /// User-declared FSR 3/4 upscaler-upgrade capability (RDNA3/RDNA4; opt-in,
     /// not reliably auto-detectable). Gates the FSR upgrade params/recipes.
+    ///
+    /// Superseded by [`Self::gpu_gen`] as the UI control, but kept as a legacy
+    /// fallback: a `state.toml` written before `gpu_gen` existed still carries
+    /// `fsr4 = true`, and the frontend derives the FSR4 capability from either.
     #[serde(default)]
     pub fsr4: bool,
+    /// User-declared AMD GPU generation: `""` (unset / not AMD), `"rdna3"`, or
+    /// `"rdna4"`. Set via the Settings generation selector. Drives two derived
+    /// frontend capabilities: FSR4 (either generation) and RDNA3-only (so the
+    /// RDNA3 FSR4 workaround hides on RDNA4). Opt-in, not reliably detectable.
+    #[serde(default)]
+    pub gpu_gen: String,
     /// Auto-fetch the ProtonDB tier when a Steam game is selected.
     #[serde(default)]
     pub protondb_auto: bool,
@@ -128,6 +138,12 @@ pub struct Store {
     /// User-supplied discovery paths. See [`Paths`].
     #[serde(default)]
     pub paths: Paths,
+    /// A reusable set of selections the user authors in Settings ("set from
+    /// current build") and applies to any game on demand via a button. Reuses
+    /// [`Config`], so it survives catalog drift the same way presets do. `None`
+    /// until the user saves one.
+    #[serde(default)]
+    pub global_profile: Option<Config>,
 }
 
 impl Store {
@@ -294,9 +310,20 @@ mod tests {
         s.favorites.insert(553850);
         s.favorites.insert(275850);
         s.library_sort = "recent".into();
+        s.gpu_gen = "rdna4".into();
+        s.global_profile = Some(Config {
+            umu: false,
+            env: vec![("PROTON_USE_NTSYNC".into(), "1".into())],
+            wrappers: vec![("gamemoderun".into(), String::new())],
+            ..Default::default()
+        });
         let text = toml::to_string_pretty(&s).unwrap();
         let back: Store = toml::from_str(&text).unwrap();
         assert_eq!(back.theme, "Dracula");
+        assert_eq!(back.gpu_gen, "rdna4");
+        let gp = back.global_profile.as_ref().expect("global_profile round-trips");
+        assert_eq!(gp.env, vec![("PROTON_USE_NTSYNC".to_string(), "1".to_string())]);
+        assert_eq!(gp.wrappers, vec![("gamemoderun".to_string(), String::new())]);
         assert_eq!(back.presets.len(), 1);
         assert_eq!(back.presets[0].name, "hd2");
         assert_eq!(back.recall(553850).unwrap().game_args, "-windowed");
@@ -332,6 +359,8 @@ show_irrelevant = true
         assert_eq!(s.library_sort, "");
         assert!(s.paths.steam_roots.is_empty());
         assert!(s.paths.bins.is_empty());
+        assert_eq!(s.gpu_gen, "");
+        assert!(s.global_profile.is_none());
     }
 
     #[test]

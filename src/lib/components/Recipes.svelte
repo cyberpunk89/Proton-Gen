@@ -26,20 +26,66 @@
     film: FilmSlate,
   };
 
+  // The IPC index is the stable identity used by apply_recipe/preview_recipe —
+  // it is captured here once and threaded through every filtered view. Never
+  // renumber off a filtered list.
   let indexed = $derived(app.recipes.map((r, i) => ({ r, i })));
-  let profiles = $derived(indexed.filter((x) => x.r.kind === "profile"));
-  let fixes = $derived(indexed.filter((x) => x.r.kind === "fix"));
 
-  let collapsed = $state(false);
+  // Collapsed by default so the recipe wall doesn't dominate the main view.
+  let collapsed = $state(true);
+
+  // Browse controls.
+  type Tab = "all" | "profile" | "fix";
+  let activeTab = $state<Tab>("all");
+  let gpuFilter = $state<string | null>(null); // null = every GPU
 
   function recipeIrrelevant(r: Recipe): string | null {
     return irrelevance(app.hwCaps, r.gpu === "any" ? null : r.gpu, r.needs);
   }
 
   let showAll = $derived(app.store.show_irrelevant);
-  let irrelevantTotal = $derived(
-    indexed.filter((x) => recipeIrrelevant(x.r)).length,
+
+  /** Recipes that pass the hardware-relevance gate (or all, when "Show all"). */
+  let relevant = $derived(indexed.filter((x) => showAll || !recipeIrrelevant(x.r)));
+  let irrelevantTotal = $derived(indexed.filter((x) => recipeIrrelevant(x.r)).length);
+
+  /** GPU vendors present among the relevant recipes, for the filter chips. */
+  let gpuOptions = $derived([
+    ...new Set(
+      relevant.map((x) => x.r.gpu).filter((g): g is string => !!g && g !== "any"),
+    ),
+  ]);
+
+  const GPU_LABELS: Record<string, string> = { nvidia: "NVIDIA", amd: "AMD", intel: "Intel" };
+
+  /** A recipe matches the GPU chip if it targets that vendor or is universal. */
+  function matchesGpu(r: Recipe): boolean {
+    if (gpuFilter === null) return true;
+    return r.gpu === gpuFilter || r.gpu === "any" || r.gpu === null;
+  }
+
+  let shown = $derived(
+    relevant.filter(
+      (x) => (activeTab === "all" || x.r.kind === activeTab) && matchesGpu(x.r),
+    ),
   );
+
+  let profiles = $derived(shown.filter((x) => x.r.kind === "profile"));
+  let fixes = $derived(shown.filter((x) => x.r.kind === "fix"));
+
+  // Tab counts respect the GPU chip but not the tab itself.
+  let gpuScoped = $derived(relevant.filter((x) => matchesGpu(x.r)));
+  let counts = $derived({
+    all: gpuScoped.length,
+    profile: gpuScoped.filter((x) => x.r.kind === "profile").length,
+    fix: gpuScoped.filter((x) => x.r.kind === "fix").length,
+  });
+
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "profile", label: "Profiles" },
+    { id: "fix", label: "Troubleshooter" },
+  ];
 
   async function apply(i: number, name: string) {
     await app.applyRecipe(i);
@@ -60,41 +106,88 @@
     <span class="ml-auto text-xs text-muted">{collapsed ? "Show" : "Hide"}</span>
   </button>
 
-  {#if !collapsed && irrelevantTotal > 0}
-    <div class="mt-3 flex items-center gap-2 text-xs text-muted">
-      {#if showAll}
-        <span>Showing all recipes, including unsupported ones.</span>
-        <button
-          onclick={() => app.setShowIrrelevant(false)}
-          class="font-medium text-accent hover:underline">Hide unsupported</button
-        >
-      {:else}
-        <span>{irrelevantTotal} hidden for your hardware.</span>
-        <button
-          onclick={() => app.setShowIrrelevant(true)}
-          class="font-medium text-accent hover:underline">Show all</button
-        >
-      {/if}
-    </div>
-  {/if}
-
   {#if !collapsed}
     <div id="recipes-body" class="mt-4 space-y-4">
-      {@render group("Profiles", profiles)}
-      {@render group("Troubleshooter", fixes)}
+      <!-- Type tabs -->
+      <div class="flex gap-1 rounded-lg bg-mantle p-0.5 text-xs">
+        {#each TABS as t (t.id)}
+          <button
+            onclick={() => (activeTab = t.id)}
+            class="flex-1 rounded-md px-2 py-1 font-medium transition"
+            class:bg-surface-2={activeTab === t.id}
+            class:text-text={activeTab === t.id}
+            class:text-muted={activeTab !== t.id}
+          >
+            {t.label}
+            <span class="opacity-60">({counts[t.id]})</span>
+          </button>
+        {/each}
+      </div>
+
+      <!-- GPU filter chips (only when there's more than one vendor to pick from) -->
+      {#if gpuOptions.length > 1}
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button
+            onclick={() => (gpuFilter = null)}
+            class="rounded-full px-2.5 py-0.5 text-[11px] transition"
+            class:bg-accent={gpuFilter === null}
+            class:text-on-accent={gpuFilter === null}
+            class:bg-surface-2={gpuFilter !== null}
+            class:text-muted={gpuFilter !== null}>All GPUs</button
+          >
+          {#each gpuOptions as g (g)}
+            <button
+              onclick={() => (gpuFilter = g)}
+              class="rounded-full px-2.5 py-0.5 text-[11px] transition"
+              class:bg-accent={gpuFilter === g}
+              class:text-on-accent={gpuFilter === g}
+              class:bg-surface-2={gpuFilter !== g}
+              class:text-muted={gpuFilter !== g}>{GPU_LABELS[g] ?? g}</button
+            >
+          {/each}
+        </div>
+      {/if}
+
+      {#if irrelevantTotal > 0}
+        <div class="flex items-center gap-2 text-xs text-muted">
+          {#if showAll}
+            <span>Showing all recipes, including unsupported ones.</span>
+            <button
+              onclick={() => app.setShowIrrelevant(false)}
+              class="font-medium text-accent hover:underline">Hide unsupported</button
+            >
+          {:else}
+            <span>{irrelevantTotal} hidden for your hardware.</span>
+            <button
+              onclick={() => app.setShowIrrelevant(true)}
+              class="font-medium text-accent hover:underline">Show all</button
+            >
+          {/if}
+        </div>
+      {/if}
+
+      {#if !shown.length}
+        <p class="py-8 text-center text-sm text-muted">No recipes match this filter.</p>
+      {:else if activeTab === "all"}
+        {@render group("Profiles", profiles)}
+        {@render group("Troubleshooter", fixes)}
+      {:else}
+        {@render group(null, shown)}
+      {/if}
     </div>
   {/if}
 </section>
 
-{#snippet group(title: string, items: { r: Recipe; i: number }[])}
-  {@const vis = showAll ? items : items.filter((x) => !recipeIrrelevant(x.r))}
-  {#if vis.length}
+{#snippet group(title: string | null, items: { r: Recipe; i: number }[])}
+  {#if items.length}
     <div>
-      <h3 class="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">
-        {title}
-      </h3>
+      {#if title}
+        <h3 class="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">
+          {title}
+        </h3>
+      {/if}
       <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-        {#each vis as { r, i } (r.name)}
+        {#each items as { r, i } (r.name)}
           {@const Icon = ICONS[r.icon ?? ""] ?? Sparkle}
           {@const dim = recipeIrrelevant(r)}
           {@const accent = r.accent ?? "var(--accent)"}

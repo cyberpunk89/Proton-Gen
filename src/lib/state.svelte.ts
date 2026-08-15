@@ -44,12 +44,14 @@ const EMPTY_STORE: Store = {
   show_irrelevant: false,
   hdr: false,
   fsr4: false,
+  gpu_gen: "",
   protondb_auto: false,
   favorites: [],
   library_sort: "",
   last_session: null,
   last_game_appid: null,
   paths: { steam_roots: [], steam_libraries: [], proton_dirs: [], bins: {} },
+  global_profile: null,
 };
 
 /** Library sort ids. Kept here because both the toolbar and the comparator in
@@ -887,6 +889,28 @@ class AppStore {
     this.persistStore();
   }
 
+  // --------------------------- global profile -------------------------------
+
+  /** Save the current build as the reusable global profile (Settings). */
+  setGlobalProfileFromCurrent() {
+    this.store.global_profile = this.toConfig();
+    this.persistStore();
+  }
+
+  clearGlobalProfile() {
+    this.store.global_profile = null;
+    this.persistStore();
+  }
+
+  /** Replace the current selection with the saved global profile. Undoable,
+   *  mirroring `loadPreset`. No-op when no profile is set. */
+  applyGlobalProfile() {
+    const gp = this.store.global_profile;
+    if (!gp) return;
+    this.loadConfig(gp);
+    this.mark("apply global profile");
+  }
+
   // ------------------------------- import -----------------------------------
 
   async importCommand(text: string) {
@@ -922,6 +946,22 @@ class AppStore {
     if (this.env["MANGOHUD_CONFIG"]) this.env["MANGOHUD_CONFIG"].enabled = false;
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
     this.mark("use MangoHud config file");
+  }
+
+  // ------------------------------ optiscaler --------------------------------
+
+  /** Apply a composed OptiScaler.ini config string, enabling OptiScaler
+   *  injection so the config has an effect. An empty string still enables
+   *  injection but clears the config (back to OptiScaler's own defaults). */
+  applyOptiScaler(config: string) {
+    if (this.env["PROTON_OPTISCALER_CONFIG"]) {
+      this.env["PROTON_OPTISCALER_CONFIG"] = { enabled: config !== "", value: config };
+    } else if (config) {
+      // Fall back to custom env if the catalog lacks the key.
+      this.extraEnv = `${this.extraEnv} PROTON_OPTISCALER_CONFIG='${config}'`.trim();
+    }
+    if (this.env["PROTON_USE_OPTISCALER"]) this.env["PROTON_USE_OPTISCALER"].enabled = true;
+    this.mark("apply OptiScaler config");
   }
 
   // ------------------------------- recipes ----------------------------------
@@ -993,9 +1033,18 @@ class AppStore {
     return true;
   }
 
-  /** Hardware facts plus the opt-in HDR/FSR capabilities, for relevance filtering. */
+  /** Hardware facts plus the opt-in HDR/FSR/GPU-generation capabilities, for
+   *  relevance filtering. `fsr4` is true for either RDNA generation (with the
+   *  legacy `store.fsr4` flag as a fallback for pre-`gpu_gen` state files);
+   *  `rdna3` is true only on RDNA3, so RDNA3-only params hide on RDNA4. */
   get hwCaps() {
-    return { ...this.hardware, hdr: this.store.hdr, fsr4: this.store.fsr4 };
+    const gen = this.store.gpu_gen;
+    return {
+      ...this.hardware,
+      hdr: this.store.hdr,
+      fsr4: gen === "rdna3" || gen === "rdna4" || this.store.fsr4,
+      rdna3: gen === "rdna3",
+    };
   }
 
   setShowIrrelevant(v: boolean) {
@@ -1008,6 +1057,13 @@ class AppStore {
   }
   setFsr4(v: boolean) {
     this.store.fsr4 = v;
+    this.persistStore();
+  }
+  /** Set the AMD GPU generation ("" | "rdna3" | "rdna4"). Clears the legacy
+   *  `fsr4` flag once a generation is chosen so the two can't disagree. */
+  setGpuGen(gen: string) {
+    this.store.gpu_gen = gen;
+    if (gen) this.store.fsr4 = false;
     this.persistStore();
   }
   setProtondbAuto(v: boolean) {
