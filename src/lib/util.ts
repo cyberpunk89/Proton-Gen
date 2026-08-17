@@ -1,7 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
 import { inTauri } from "./ipc";
-import type { Hardware } from "./types";
+import type { Hardware, HwCaps } from "./types";
 
 export async function copyText(text: string) {
   try {
@@ -60,12 +60,21 @@ export async function openSteamUrl(url: string): Promise<boolean> {
 }
 
 /**
- * Mirror of hardware.rs `irrelevance`: a reason an option doesn't apply here.
- * `hdr` is not backend-detectable, so it's an opt-in capability carried on the
- * hardware object the UI passes in (sourced from the Settings toggle).
+ * A reason an option doesn't apply on this machine, or null if it does.
+ *
+ * This is the *only* relevance filter in the app — there is deliberately no Rust
+ * mirror. `hardware.rs` used to carry one and it rotted into dead code three
+ * tags behind, because the opt-in capabilities (`hdr`, `fsr4`, `rdna3`,
+ * `rdna4`) live in the frontend store and never cross the IPC boundary.
+ *
+ * Unknown tags fall through as relevant, on purpose: `params.toml` is
+ * overridable from `$XDG_CONFIG_HOME`, so a user copy naming a capability a
+ * future build adds must still load rather than silently hiding rows. The
+ * *shipped* TOML is held to the known set by a Rust test instead
+ * (`params::tests::bundled_needs_tags_are_known`).
  */
 export function irrelevance(
-  hw: Hardware & { hdr?: boolean; fsr4?: boolean; rdna3?: boolean },
+  hw: Partial<HwCaps> & Hardware,
   gpu: string | null,
   needs: string[],
 ): string | null {
@@ -81,7 +90,11 @@ export function irrelevance(
     if (n === "ntsync" && !hw.ntsync) return "needs /dev/ntsync";
     if (n === "hdr" && !hw.hdr) return "needs HDR display";
     if (n === "fsr4" && !hw.fsr4) return "needs an RDNA3/RDNA4 GPU (FSR upgrades)";
-    if (n === "rdna3" && !hw.rdna3) return "RDNA3-only (hidden on RDNA4)";
+    // The two generations are mutually exclusive and both must filter, or the
+    // Settings selector is decorative: before `rdna4` existed, every RDNA4-only
+    // recipe stayed visible on RDNA3 because an unhandled tag reads as relevant.
+    if (n === "rdna3" && !hw.rdna3) return "RDNA3-only";
+    if (n === "rdna4" && !hw.rdna4) return "RDNA4-only";
   }
   return null;
 }

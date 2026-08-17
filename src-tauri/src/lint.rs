@@ -51,6 +51,14 @@ pub struct Ctx<'a> {
     catalog: &'a Catalog,
     options: &'a Options,
     hw: &'a Hardware,
+    /// The AMD generation the user declared in Settings (`store.gpu_gen`): "",
+    /// "rdna3" or "rdna4".
+    ///
+    /// Carried separately from `hw` because it is a *declaration*, not a
+    /// detection — nothing here can read it off the hardware. Without it the
+    /// FSR4 rules can only state both generations' caveats at once, which is
+    /// half noise for anyone who has actually picked one.
+    gpu_gen: &'a str,
 }
 
 impl Ctx<'_> {
@@ -149,21 +157,117 @@ const RULES: &[Rule] = &[
             })
         },
     },
-    // FSR4 hardware note. Not auto-fixable: RDNA3-vs-RDNA4 isn't detectable.
+    // FSR4 hardware note, for when we don't know which AMD generation this is.
+    //
+    // Deliberately silent once `gpu_gen` is set: the two generation-specific
+    // rules below say the one thing that actually applies. This rule used to
+    // fire unconditionally and recite both generations' caveats even to someone
+    // who had told us their card in Settings.
     Rule {
         id: "fsr4-hardware-note",
-        keys: &["PROTON_FSR4_UPGRADE", "DXIL_SPIRV_CONFIG"],
+        keys: &["PROTON_FSR4_UPGRADE"],
         prefixes: &[],
         check: |c| {
-            if !c.env_on("PROTON_FSR4_UPGRADE") {
+            if !c.env_on("PROTON_FSR4_UPGRADE") || !c.gpu_gen.is_empty() {
                 return None;
             }
             Some(Notice {
                 id: "fsr4-hardware-note".to_string(),
                 severity: Severity::Info,
-                message: "PROTON_FSR4_UPGRADE needs an FSR4-capable AMD GPU (RDNA3 or RDNA4); on RDNA3, MLFG also needs DXIL_SPIRV_CONFIG=wmma_rdna3_workaround.".to_string(),
+                message: "FSR 4 needs an RDNA3 or RDNA4 AMD GPU. Set your GPU generation in Settings and protongen will show only the options that fit it."
+                    .to_string(),
                 keys: vec!["PROTON_FSR4_UPGRADE".to_string()],
                 fix: None,
+            })
+        },
+    },
+    // RDNA3 + MLFG without the WMMA workaround. Auto-fixable now that the
+    // generation is a known quantity — the note this replaced could only
+    // describe the remedy in prose.
+    Rule {
+        id: "rdna3-mlfg-workaround",
+        keys: &["PROTON_MLFG_UPGRADE", "DXIL_SPIRV_CONFIG"],
+        prefixes: &[],
+        check: |c| {
+            if c.gpu_gen != "rdna3"
+                || !c.env_on("PROTON_MLFG_UPGRADE")
+                || c.env_on("DXIL_SPIRV_CONFIG")
+            {
+                return None;
+            }
+            Some(Notice {
+                id: "rdna3-mlfg-workaround".to_string(),
+                severity: Severity::Warning,
+                message: "On RDNA3, multi-frame generation also needs DXIL_SPIRV_CONFIG=wmma_rdna3_workaround."
+                    .to_string(),
+                keys: vec!["PROTON_MLFG_UPGRADE".to_string()],
+                fix: Some(Fix {
+                    label: "Add the RDNA3 workaround".to_string(),
+                    disable: Vec::new(),
+                    enable: vec![(
+                        "DXIL_SPIRV_CONFIG".to_string(),
+                        "wmma_rdna3_workaround".to_string(),
+                    )],
+                }),
+            })
+        },
+    },
+    // The mirror image: the workaround does nothing on RDNA4. The param row is
+    // hidden there, so this only fires on a command imported from an RDNA3 setup
+    // or a state file predating the generation selector — which is exactly when
+    // nothing else would explain the stray variable.
+    Rule {
+        id: "rdna4-workaround-noop",
+        keys: &["DXIL_SPIRV_CONFIG"],
+        prefixes: &[],
+        check: |c| {
+            if c.gpu_gen != "rdna4" || !c.env_on("DXIL_SPIRV_CONFIG") {
+                return None;
+            }
+            Some(Notice {
+                id: "rdna4-workaround-noop".to_string(),
+                severity: Severity::Info,
+                message: "DXIL_SPIRV_CONFIG is an RDNA3 workaround and does nothing on RDNA4."
+                    .to_string(),
+                keys: vec!["DXIL_SPIRV_CONFIG".to_string()],
+                fix: Some(Fix {
+                    label: "Remove DXIL_SPIRV_CONFIG".to_string(),
+                    disable: vec!["DXIL_SPIRV_CONFIG".to_string()],
+                    enable: Vec::new(),
+                }),
+            })
+        },
+    },
+    // OptiScaler settings without the injection that makes them do anything.
+    // The builder always enables it, so this catches the other routes in: an
+    // imported launch string, or a hand-edited row.
+    Rule {
+        id: "optiscaler-not-injected",
+        keys: &[
+            "PROTON_USE_OPTISCALER",
+            "PROTON_OPTISCALER_CONFIG",
+            "PROTON_OPTISCALER_NAME",
+        ],
+        prefixes: &[],
+        check: |c| {
+            if c.env_on("PROTON_USE_OPTISCALER") {
+                return None;
+            }
+            let on = c.envs_on(&["PROTON_OPTISCALER_CONFIG", "PROTON_OPTISCALER_NAME"]);
+            if on.is_empty() {
+                return None;
+            }
+            Some(Notice {
+                id: "optiscaler-not-injected".to_string(),
+                severity: Severity::Warning,
+                message: "OptiScaler is configured but not injected — set PROTON_USE_OPTISCALER=1 or the settings are ignored."
+                    .to_string(),
+                keys: on,
+                fix: Some(Fix {
+                    label: "Enable PROTON_USE_OPTISCALER".to_string(),
+                    disable: Vec::new(),
+                    enable: vec![("PROTON_USE_OPTISCALER".to_string(), "1".to_string())],
+                }),
             })
         },
     },
@@ -286,8 +390,11 @@ const RULES: &[Rule] = &[
 ];
 
 /// Produce structured notices for the current selection.
-pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware) -> Vec<Notice> {
-    let ctx = Ctx { catalog, options, hw };
+///
+/// `gpu_gen` is the user's declared AMD generation from the settings store —
+/// see [`Ctx::gpu_gen`].
+pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware, gpu_gen: &str) -> Vec<Notice> {
+    let ctx = Ctx { catalog, options, hw, gpu_gen };
     RULES.iter().filter_map(|r| (r.check)(&ctx)).collect()
 }
 
@@ -310,14 +417,20 @@ mod tests {
         panic!("{key} is not in the bundled catalog");
     }
 
-    /// Lint the bundled catalog with `keys` enabled, under `hw`.
+    /// Lint the bundled catalog with `keys` enabled, under `hw`, with no
+    /// declared GPU generation.
     fn lint_with(hw: Hardware, keys: &[&str]) -> Vec<Notice> {
+        lint_gen(hw, "", keys)
+    }
+
+    /// As [`lint_with`], with a declared AMD generation ("rdna3" | "rdna4").
+    fn lint_gen(hw: Hardware, gpu_gen: &str, keys: &[&str]) -> Vec<Notice> {
         let cat = Catalog::bundled();
         let mut opts = Options::from_catalog(&cat);
         for k in keys {
             enable(&cat, &mut opts, k, "1");
         }
-        warnings(&cat, &opts, &hw)
+        warnings(&cat, &opts, &hw, gpu_gen)
     }
 
     fn find<'a>(notices: &'a [Notice], id: &str) -> Option<&'a Notice> {
@@ -342,12 +455,108 @@ mod tests {
     }
 
     #[test]
-    fn flags_fsr4_hardware_note() {
-        let n = lint_with(Hardware::default(), &["PROTON_FSR4_UPGRADE"]);
-        let notice = find(&n, "fsr4-hardware-note").expect("rule fires");
+    fn fsr4_note_only_fires_without_a_declared_generation() {
+        let amd = Hardware { amd: true, ..Default::default() };
+        let notice = find(
+            &lint_gen(amd, "", &["PROTON_FSR4_UPGRADE"]),
+            "fsr4-hardware-note",
+        )
+        .expect("rule fires when the generation is unknown")
+        .clone();
         assert_eq!(notice.severity, Severity::Info);
-        // RDNA3 vs RDNA4 isn't detectable, so there's nothing to auto-apply.
-        assert!(notice.fix.is_none());
+        assert!(notice.fix.is_none(), "nothing to apply — we're asking a question");
+
+        // Once the user has told us, the generic both-generations sentence is
+        // pure noise and the specific rules take over.
+        // `gen` is a reserved keyword in edition 2024.
+        for generation in ["rdna3", "rdna4"] {
+            assert!(
+                find(&lint_gen(amd, generation, &["PROTON_FSR4_UPGRADE"]), "fsr4-hardware-note")
+                    .is_none(),
+                "generic note should be silent on {generation}"
+            );
+        }
+    }
+
+    #[test]
+    fn offers_the_rdna3_mlfg_workaround() {
+        let amd = Hardware { amd: true, ..Default::default() };
+        let notice = find(
+            &lint_gen(amd, "rdna3", &["PROTON_FSR4_UPGRADE", "PROTON_MLFG_UPGRADE"]),
+            "rdna3-mlfg-workaround",
+        )
+        .expect("rule fires")
+        .clone();
+        assert_eq!(notice.severity, Severity::Warning);
+        assert_eq!(
+            notice.fix.as_ref().map(|f| f.enable.clone()),
+            Some(vec![(
+                "DXIL_SPIRV_CONFIG".to_string(),
+                "wmma_rdna3_workaround".to_string()
+            )])
+        );
+
+        // Applying the fix silences it.
+        let fixed = lint_gen(
+            amd,
+            "rdna3",
+            &["PROTON_FSR4_UPGRADE", "PROTON_MLFG_UPGRADE", "DXIL_SPIRV_CONFIG"],
+        );
+        assert!(find(&fixed, "rdna3-mlfg-workaround").is_none());
+
+        // MLFG is what needs it — FSR4 alone does not.
+        let upscale_only = lint_gen(amd, "rdna3", &["PROTON_FSR4_UPGRADE"]);
+        assert!(find(&upscale_only, "rdna3-mlfg-workaround").is_none());
+
+        // And it is an RDNA3 remedy only.
+        let on_rdna4 = lint_gen(amd, "rdna4", &["PROTON_FSR4_UPGRADE", "PROTON_MLFG_UPGRADE"]);
+        assert!(find(&on_rdna4, "rdna3-mlfg-workaround").is_none());
+    }
+
+    #[test]
+    fn flags_the_rdna3_workaround_as_a_noop_on_rdna4() {
+        let amd = Hardware { amd: true, ..Default::default() };
+        let notice = find(
+            &lint_gen(amd, "rdna4", &["DXIL_SPIRV_CONFIG"]),
+            "rdna4-workaround-noop",
+        )
+        .expect("rule fires")
+        .clone();
+        assert_eq!(notice.severity, Severity::Info);
+        assert_eq!(
+            notice.fix.as_ref().map(|f| f.disable.clone()),
+            Some(vec!["DXIL_SPIRV_CONFIG".to_string()])
+        );
+
+        // On RDNA3 it is the correct setting, and with no declared generation we
+        // have no grounds to call it useless.
+        assert!(
+            find(&lint_gen(amd, "rdna3", &["DXIL_SPIRV_CONFIG"]), "rdna4-workaround-noop")
+                .is_none()
+        );
+        assert!(
+            find(&lint_gen(amd, "", &["DXIL_SPIRV_CONFIG"]), "rdna4-workaround-noop").is_none()
+        );
+    }
+
+    #[test]
+    fn flags_optiscaler_config_without_injection() {
+        let n = lint_with(Hardware::default(), &["PROTON_OPTISCALER_CONFIG"]);
+        let notice = find(&n, "optiscaler-not-injected").expect("rule fires");
+        assert_eq!(notice.severity, Severity::Warning);
+        assert_eq!(
+            notice.fix.as_ref().map(|f| f.enable.clone()),
+            Some(vec![("PROTON_USE_OPTISCALER".to_string(), "1".to_string())])
+        );
+
+        // Injection on: nothing to say.
+        let injected =
+            lint_with(Hardware::default(), &["PROTON_OPTISCALER_CONFIG", "PROTON_USE_OPTISCALER"]);
+        assert!(find(&injected, "optiscaler-not-injected").is_none());
+
+        // Injection alone is a valid, complete setup.
+        let bare = lint_with(Hardware::default(), &["PROTON_USE_OPTISCALER"]);
+        assert!(find(&bare, "optiscaler-not-injected").is_none());
     }
 
     #[test]
@@ -468,7 +677,8 @@ mod tests {
         // And the emitted keys must stay inside what the rule declared, so the
         // check above actually covers what the UI receives. Drive every rule
         // with the whole catalog enabled, under both a bare and a fully-featured
-        // machine, and inspect whatever fires.
+        // machine — and under every GPU generation, or the generation-gated
+        // rules would never fire here and go unchecked.
         let mut opts = Options::from_catalog(&cat);
         for e in opts.envs.iter_mut() {
             e.enabled = true;
@@ -488,20 +698,22 @@ mod tests {
             },
         ];
         for hw in hws {
-            let ctx = Ctx { catalog: &cat, options: &opts, hw: &hw };
-            for rule in RULES {
-                let Some(notice) = (rule.check)(&ctx) else { continue };
-                assert_eq!(notice.id, rule.id, "rule {} emits a mismatched id", rule.id);
-                let emitted = notice.keys.iter().chain(
-                    notice
-                        .fix
-                        .iter()
-                        .flat_map(|f| f.disable.iter().chain(f.enable.iter().map(|(k, _)| k))),
-                );
-                for key in emitted {
-                    let declared = rule.keys.contains(&key.as_str())
-                        || rule.prefixes.iter().any(|p| key.starts_with(p));
-                    assert!(declared, "rule {} emits undeclared key {key}", rule.id);
+            for gpu_gen in ["", "rdna3", "rdna4"] {
+                let ctx = Ctx { catalog: &cat, options: &opts, hw: &hw, gpu_gen };
+                for rule in RULES {
+                    let Some(notice) = (rule.check)(&ctx) else { continue };
+                    assert_eq!(notice.id, rule.id, "rule {} emits a mismatched id", rule.id);
+                    let emitted = notice.keys.iter().chain(
+                        notice
+                            .fix
+                            .iter()
+                            .flat_map(|f| f.disable.iter().chain(f.enable.iter().map(|(k, _)| k))),
+                    );
+                    for key in emitted {
+                        let declared = rule.keys.contains(&key.as_str())
+                            || rule.prefixes.iter().any(|p| key.starts_with(p));
+                        assert!(declared, "rule {} emits undeclared key {key}", rule.id);
+                    }
                 }
             }
         }

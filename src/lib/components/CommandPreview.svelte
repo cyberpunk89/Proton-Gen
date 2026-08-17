@@ -13,7 +13,7 @@
   } from "phosphor-svelte";
   import { fade } from "$lib/motion.svelte";
   import CommandBody from "./CommandBody.svelte";
-  import OpenInSteam from "./OpenInSteam.svelte";
+  import LauncherAction from "./LauncherAction.svelte";
   import SyncPill from "./SyncPill.svelte";
 
   /**
@@ -119,9 +119,9 @@
         <ArrowUUpRight size={14} />
       </button>
 
-      <!-- Copy, then land on the dialog you paste into. Hides itself when a
-           deep link would be meaningless. -->
-      <OpenInSteam collapsible />
+      <!-- Copy, then land on the dialog you paste into — or, for a Heroic game,
+           write it straight in. Hides itself when neither applies. -->
+      <LauncherAction collapsible />
       <button
         onclick={reset}
         title="Reset the command to defaults"

@@ -312,17 +312,22 @@ Best-effort, never-blocking detection:
 - **Session/desktop** via `XDG_SESSION_TYPE` / `WAYLAND_DISPLAY` / `XDG_CURRENT_DESKTOP`.
 - **ntsync** via `/dev/ntsync` existence.
 
-`irrelevance(gpu, needs)` returns a short reason ("needs NVIDIA GPU", "needs Wayland
-session", …) when an option doesn't apply to this machine, or `None`. **Unknown is
-treated as relevant** — detection never prevents toggling. The frontend uses this to
-grey out / hide irrelevant options and recipes (controlled by the `show_irrelevant`
-setting; `hdr` is an opt-in capability since it can't be auto-detected).
+`hardware.rs` **detects only**. The filter itself — `irrelevance(hw, gpu, needs)` in
+`src/lib/util.ts` — lives in the frontend and has no Rust mirror, because the opt-in
+capabilities (`hdr`, and `fsr4`/`rdna3`/`rdna4` derived from the Settings GPU-generation
+selector) are store fields that never cross the IPC boundary. It returns a short reason
+("needs NVIDIA GPU", "RDNA4-only", …) when an option doesn't apply, or `null`; the UI
+greys out or hides those, controlled by `show_irrelevant`. **Unknown tags are treated as
+relevant** so a user's `$XDG_CONFIG_HOME` override naming a future capability still
+loads — the shipped TOMLs are instead held to `params::KNOWN_NEEDS` by a Rust test.
 
 ### 4.8 `lint.rs` — conflict / footgun notices
 
-A pure function over `(catalog, enabled options, hardware)` returning human-readable
-warnings. Encodes domain knowledge such as: NVAPI/DLSS enabled without an NVIDIA GPU;
-`PROTON_FSR4_UPGRADE` needs RDNA4; `PROTON_USE_NTSYNC=1` without `/dev/ntsync`;
+A pure function over `(catalog, enabled options, hardware, gpu_gen)` returning
+human-readable warnings. Encodes domain knowledge such as: NVAPI/DLSS enabled without an
+NVIDIA GPU; FSR 4 needing a declared AMD generation, with the RDNA3 MLFG workaround
+offered as a one-click fix and flagged as a no-op on RDNA4; `PROTON_USE_NTSYNC=1`
+without `/dev/ntsync`;
 `wined3d` disabling DXVK options; obsolete `PROTON_ENABLE_HDR` alias; HDR without a
 presentation path; gamescope + native Wayland conflict; gplasync vs. kernel anti-cheat;
 mutually-exclusive DXVK forks. These surface in the **Notices** strip.

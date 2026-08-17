@@ -100,6 +100,11 @@ export function buildItems(): PaletteItem[] {
     });
   }
 
+  // Every parameter is listed here, including `tier = "advanced"` ones the
+  // panel hides. Deliberate: the palette is how you reach something by name, and
+  // filtering it by a tidiness preference would make advanced options
+  // unreachable rather than merely tucked away. `revealParam` flips
+  // `show_advanced` on the way in, so the row is actually there when you land.
   for (const e of app.catalog.envs) {
     const enabled = app.env[e.key]?.enabled ?? false;
     items.push({

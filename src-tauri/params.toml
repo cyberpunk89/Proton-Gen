@@ -21,6 +21,12 @@
 #   default_value  prefilled value (env) / args (gamescope)
 #   values         optional list of suggested values (combo box)
 #   requires       optional: binary that must be on PATH (drives installed/missing badge)
+#   gpu            optional relevance hint: nvidia | amd | intel | any
+#   needs          optional capabilities: wayland | kde | ntsync | hdr | fsr4 | rdna3 | rdna4
+#                  The last four are opt-in (Settings): `hdr` from its toggle,
+#                  and fsr4/rdna3/rdna4 derived from the AMD generation selector
+#                  — `fsr4` means either generation, rdna3/rdna4 are exclusive.
+#                  Entries not matching are hidden until "Show all".
 #   help           one-line description
 
 # Records the proton-cachyos build this catalog was last refreshed against.
@@ -88,6 +94,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_NO_FSYNC"
+tier = "advanced"
 category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
@@ -98,6 +105,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_FORCE_LARGE_ADDRESS_AWARE"
+tier = "advanced"
 category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
@@ -108,6 +116,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_HEAP_DELAY_FREE"
+tier = "advanced"
 category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
@@ -128,6 +137,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "LOW_LATENCY_LAYER"
+tier = "advanced"
 category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
@@ -138,6 +148,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_VKD3D_LOWLATENCY"
+tier = "advanced"
 category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
@@ -160,6 +171,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtim
 
 [[env]]
 key = "PROTON_NO_D3D12"
+tier = "advanced"
 category = "Render backend"
 default_value = "1"
 values = ["1", "0"]
@@ -170,6 +182,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtim
 
 [[env]]
 key = "PROTON_NO_D3D11"
+tier = "advanced"
 category = "Render backend"
 default_value = "1"
 values = ["1", "0"]
@@ -180,6 +193,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtim
 
 [[env]]
 key = "PROTON_NO_D3D10"
+tier = "advanced"
 category = "Render backend"
 default_value = "1"
 values = ["1", "0"]
@@ -190,6 +204,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtim
 
 [[env]]
 key = "PROTON_NO_D3D9"
+tier = "advanced"
 category = "Render backend"
 default_value = "1"
 values = ["1", "0"]
@@ -200,6 +215,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtim
 
 [[env]]
 key = "PROTON_DXVK_D3D8"
+tier = "advanced"
 category = "Render backend"
 default_value = "1"
 values = ["1", "0"]
@@ -210,6 +226,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_DXVK_SAREK"
+tier = "advanced"
 category = "Render backend"
 default_value = "auto"
 values = ["auto", "1", "0"]
@@ -220,6 +237,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_D7VK_DDRAW"
+tier = "advanced"
 category = "Render backend"
 default_value = "1"
 values = ["1", "0"]
@@ -230,6 +248,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "FNA3D_FORCE_DRIVER"
+tier = "advanced"
 category = "Render backend"
 default_value = "D3D11"
 values = ["D3D11", "Vulkan", "OpenGL"]
@@ -238,12 +257,17 @@ details = "FNA-based games (many indie titles — Stardew Valley, Celeste, Terra
 example = "FNA3D_FORCE_DRIVER=D3D11 %command%"
 url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md#runtime-config-options"
 
-# ====================== NVIDIA / Upscaling =======================
+# ============= Upscaling / frame-gen  +  NVIDIA ==================
+# Two categories, deliberately: every upscaler knob used to live under a
+# heading called "NVIDIA / Upscaling", so an AMD user navigating to their
+# FSR options landed on a nav row labelled NVIDIA — with the actual NVIDIA
+# entries hidden by the `gpu` filter, the label described nothing on screen.
 
 [[env]]
 key = "PROTON_DISABLE_NVAPI"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "Disable NVIDIA's NVAPI GPU support library (on by default; troubleshooting only)."
@@ -253,8 +277,9 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_FORCE_NVAPI"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "Force NVAPI on even when Proton's own heuristics would normally disable it."
@@ -265,7 +290,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 [[env]]
 key = "DXVK_ENABLE_NVAPI"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "Let DXVK expose NVAPI (NVAPI is on by default on NVIDIA)."
@@ -275,8 +300,9 @@ url = "https://github.com/doitsujin/dxvk/blob/master/README.md"
 
 [[env]]
 key = "PROTON_HIDE_NVIDIA_GPU"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "Hide the NVIDIA GPU from the game (forces fallback paths)."
@@ -287,7 +313,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 [[env]]
 key = "PROTON_DLSS_UPGRADE"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "Auto-upgrade the game's DLSS DLL to the latest version."
@@ -298,7 +324,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 [[env]]
 key = "PROTON_DLSS_INDICATOR"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "Show the DLSS overlay indicator (confirms DLSS version in use)."
@@ -310,7 +336,7 @@ url = "https://github.com/jp7677/dxvk-nvapi/blob/master/README.md"
 key = "PROTON_FSR4_UPGRADE"
 gpu = "amd"
 needs = ["fsr4"]
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: upgrade the game's FSR to FSR 4 (accepts 4.0.0 / 4.1.1). Works on RDNA3 & RDNA4."
@@ -322,7 +348,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 key = "PROTON_FFX4_UPGRADE"
 gpu = "amd"
 needs = ["fsr4"]
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: FidelityFX 4 auto-upgrade (newer naming; use latest or pin a version)."
@@ -332,7 +358,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_XESS_UPGRADE"
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: auto-upgrade Intel XeSS to the latest version."
@@ -342,8 +368,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
 [[env]]
 key = "__NV_PRIME_RENDER_OFFLOAD"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "PRIME render offload: run the game on the NVIDIA dGPU (hybrid laptops)."
@@ -353,8 +380,9 @@ url = "https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.
 
 [[env]]
 key = "__GLX_VENDOR_LIBRARY_NAME"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "nvidia"
 help = "PRIME offload GLX vendor; set with __NV_PRIME_RENDER_OFFLOAD on hybrid GPUs."
 details = "Sets the OpenGL/GLX library vendor when using NVIDIA PRIME render offload on hybrid systems. Should typically be set to 'nvidia' when using __NV_PRIME_RENDER_OFFLOAD=1. This tells the system to use NVIDIA's GLX implementation instead of other vendors, ensuring proper GPU routing for OpenGL-based games."
@@ -365,7 +393,7 @@ url = "https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.
 key = "PROTON_FFX3_UPGRADE"
 gpu = "amd"
 needs = ["fsr4"]
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: upgrade a game's FSR to FSR 3.1 (adds frame generation). Was PROTON_FSR3_UPGRADE."
@@ -375,8 +403,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_FSR4_INDICATOR"
+gpu = "amd"
 needs = ["fsr4"]
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: show the FSR 4 watermark (top-left) to confirm it's active."
@@ -388,7 +417,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 key = "PROTON_MLFG_UPGRADE"
 gpu = "amd"
 needs = ["fsr4"]
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable AMD multi-frame generation (needs amdxcffx64.dll >= 4.0.3)."
@@ -400,7 +429,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 key = "DXIL_SPIRV_CONFIG"
 gpu = "amd"
 needs = ["rdna3"]
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "wmma_rdna3_workaround"
 values = ["wmma_rdna3_workaround"]
 help = "CachyOS: RDNA3 workaround required for FSR4 multi-frame generation (MLFG)."
@@ -410,7 +439,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
 [[env]]
 key = "PROTON_USE_OPTISCALER"
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: auto-inject OptiScaler to swap/force upscalers (DLSS/FSR/XeSS)."
@@ -420,7 +449,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_OPTISCALER_NAME"
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = "dxgi.dll"
 values = ["dxgi.dll", "d3d12.dll", "dbghelp.dll"]
 help = "CachyOS: which DLL OptiScaler injects as (default dxgi.dll)."
@@ -430,7 +459,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_OPTISCALER_CONFIG"
-category = "NVIDIA / Upscaling"
+category = "Upscaling & frame-gen"
 default_value = ""
 help = "CachyOS: write OptiScaler.ini settings inline, e.g. 'Upscalers.Dx12Upscaler=fsr31'."
 details = "Pushes arbitrary OptiScaler.ini settings without editing the file by hand, as a semicolon-separated list of '{section}.{option}={value}' entries. Use it to pin the substitute upscaler or tune quality once OptiScaler is injected. Only meaningful with PROTON_USE_OPTISCALER=1. CachyOS-Proton only (added 11.0-20260601)."
@@ -440,7 +469,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 [[env]]
 key = "DXVK_NVAPI_VKREFLEX"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "Enable DXVK-NVAPI's Vulkan Reflex layer (NVIDIA Reflex in Vulkan games)."
@@ -450,8 +479,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_NVIDIA_LIBS"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable alternative NVIDIA libraries (PhysX, CUDA, NVENC, etc.)."
@@ -461,8 +491,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_NVIDIA_LIBS_NO_32BIT"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: with PROTON_NVIDIA_LIBS, load only the 64-bit alt NVIDIA libraries."
@@ -472,8 +503,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_NVIDIA_NVML"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: alternative nvml.dll (GPU telemetry). On by default; set 0 to disable."
@@ -483,8 +515,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_NVIDIA_NVCUDA"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable only the alternative nvcuda.dll (CUDA) without the rest of PROTON_NVIDIA_LIBS."
@@ -494,8 +527,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_NVIDIA_NVENC"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable only the alternative NVENC libraries (hardware video encode)."
@@ -505,8 +539,9 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_NVIDIA_NVOPTIX"
+tier = "advanced"
 gpu = "nvidia"
-category = "NVIDIA / Upscaling"
+category = "NVIDIA"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable only the alternative nvoptix.dll (OptiX ray-tracing denoiser)."
@@ -529,6 +564,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md#run
 
 [[env]]
 key = "PROTON_WAYLAND_MONITOR"
+tier = "advanced"
 needs = ["wayland"]
 category = "Display / Wayland / HDR"
 default_value = ""
@@ -572,6 +608,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "DXVK_NO_HDR"
+tier = "advanced"
 category = "Display / Wayland / HDR"
 default_value = "1"
 values = ["1", "0"]
@@ -582,6 +619,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "WINE_FULLSCREEN_INTEGER_SCALING"
+tier = "advanced"
 category = "Display / Wayland / HDR"
 default_value = "1"
 values = ["1", "0"]
@@ -592,6 +630,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "WINE_USE_KWIN_HACKS"
+tier = "advanced"
 needs = ["kde"]
 category = "Display / Wayland / HDR"
 default_value = "1"
@@ -603,6 +642,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "WINE_DISABLE_VULKAN_OPWR"
+tier = "advanced"
 category = "Display / Wayland / HDR"
 default_value = "1"
 values = ["1", "0"]
@@ -647,6 +687,7 @@ url = "https://github.com/doitsujin/dxvk/blob/master/README.md#hud"
 
 [[env]]
 key = "DXVK_CONFIG_FILE"
+tier = "advanced"
 category = "DXVK"
 default_value = ""
 help = "Path to a dxvk.conf for per-game DXVK tuning."
@@ -666,6 +707,7 @@ url = "https://github.com/doitsujin/dxvk/blob/master/README.md#debugging"
 
 [[env]]
 key = "DXVK_FILTER_DEVICE_NAME"
+tier = "advanced"
 category = "DXVK"
 default_value = ""
 help = "Force a specific GPU by substring of its Vulkan device name."
@@ -675,6 +717,7 @@ url = "https://github.com/doitsujin/dxvk/blob/master/README.md#device-filter"
 
 [[env]]
 key = "DXVK_CONFIG"
+tier = "advanced"
 category = "DXVK"
 default_value = ""
 help = "Set dxvk.conf options inline, e.g. 'dxgi.maxFrameLatency=1;dxvk.hud=fps'."
@@ -684,6 +727,7 @@ url = "https://github.com/doitsujin/dxvk/blob/master/dxvk.conf"
 
 [[env]]
 key = "PROTON_LOCAL_SHADER_CACHE"
+tier = "advanced"
 category = "DXVK"
 default_value = "1"
 values = ["1", "0"]
@@ -696,6 +740,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "VKD3D_CONFIG"
+tier = "advanced"
 category = "VKD3D (D3D12)"
 default_value = "dxr"
 values = ["dxr", "nodxr", "dxr12", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue"]
@@ -706,6 +751,7 @@ url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#e
 
 [[env]]
 key = "VKD3D_FRAME_RATE"
+tier = "advanced"
 category = "VKD3D (D3D12)"
 default_value = "60"
 help = "Cap the frame rate via vkd3d-proton for D3D12 games (0 = uncapped)."
@@ -715,6 +761,7 @@ url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#e
 
 [[env]]
 key = "VKD3D_FEATURE_LEVEL"
+tier = "advanced"
 category = "VKD3D (D3D12)"
 default_value = "12_2"
 values = ["12_0", "12_1", "12_2"]
@@ -725,6 +772,7 @@ url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/libs/vkd3d/
 
 [[env]]
 key = "VKD3D_SHADER_MODEL"
+tier = "advanced"
 category = "VKD3D (D3D12)"
 default_value = "6_6"
 values = ["6_0", "6_5", "6_6", "6_7"]
@@ -735,6 +783,7 @@ url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/libs/vkd3d/
 
 [[env]]
 key = "VKD3D_DEBUG"
+tier = "advanced"
 category = "VKD3D (D3D12)"
 default_value = "warn"
 values = ["none", "err", "warn", "info"]
@@ -747,6 +796,7 @@ url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#e
 
 [[env]]
 key = "WINEDLLOVERRIDES"
+tier = "advanced"
 category = "Wine / Overrides"
 default_value = ""
 help = "Override DLL load mode, e.g. 'winmm=n,b' (native then builtin)."
@@ -756,6 +806,7 @@ url = "https://wiki.archlinux.org/title/Wine"
 
 [[env]]
 key = "WINEDEBUG"
+tier = "advanced"
 category = "Wine / Overrides"
 default_value = "-all"
 values = ["-all", "fixme-all", "+seh", "warn+all"]
@@ -766,6 +817,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "WINE_BLOCK_HOSTS"
+tier = "advanced"
 category = "Wine / Overrides"
 default_value = ""
 help = "Block the game from reaching listed hosts (telemetry/DRM), comma-separated (max 16)."
@@ -791,6 +843,7 @@ url = "https://github.com/DadSchoorse/vkBasalt"
 
 [[env]]
 key = "VKBASALT_CONFIG_FILE"
+tier = "advanced"
 category = "Overlay / Post-processing"
 default_value = ""
 help = "Path to a specific vkBasalt.conf (otherwise the standard search path is used)."
@@ -800,6 +853,7 @@ url = "https://github.com/DadSchoorse/vkBasalt#configuration"
 
 [[env]]
 key = "VKBASALT_LOG_LEVEL"
+tier = "advanced"
 category = "Overlay / Post-processing"
 default_value = "info"
 values = ["trace", "debug", "info", "warn", "error", "none"]
@@ -810,6 +864,7 @@ url = "https://github.com/DadSchoorse/vkBasalt"
 
 [[env]]
 key = "VKBASALT_LOG_FILE"
+tier = "advanced"
 category = "Overlay / Post-processing"
 default_value = ""
 help = "Send vkBasalt's log to a file instead of stderr."
@@ -831,6 +886,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_LOG_DIR"
+tier = "advanced"
 category = "Logging / Debug"
 default_value = ""
 help = "Directory for Proton logs (overrides the default home location)."
@@ -840,6 +896,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_WAIT_ATTACH"
+tier = "advanced"
 category = "Logging / Debug"
 default_value = "1"
 values = ["1", "0"]
@@ -859,6 +916,7 @@ url = "https://github.com/flightlessmango/MangoHud/blob/master/README.md"
 
 [[env]]
 key = "MANGOHUD_CONFIGFILE"
+tier = "advanced"
 category = "Logging / Debug"
 default_value = ""
 help = "Path to a MangoHud .conf file (used when MANGOHUD_CONFIG is unset)."
@@ -868,6 +926,7 @@ url = "https://github.com/flightlessmango/MangoHud/blob/master/README.md#environ
 
 [[env]]
 key = "PROTON_CRASH_REPORT_DIR"
+tier = "advanced"
 category = "Logging / Debug"
 default_value = ""
 help = "Write Proton/Wine crash reports into this directory."
@@ -889,6 +948,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "WINE_AUDIO_DRIVER"
+tier = "advanced"
 category = "Audio"
 default_value = "pipewire,pulse,alsa"
 values = ["pipewire,pulse,alsa", "pulse,alsa", "pulse", "alsa"]
@@ -899,6 +959,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "WINEALSA_SPATIAL"
+tier = "advanced"
 category = "Audio"
 default_value = "1"
 values = ["1", "0"]
@@ -909,6 +970,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "WINEALSA_CHANNELS"
+tier = "advanced"
 category = "Audio"
 default_value = "6"
 values = ["2", "4", "6", "8"]
@@ -921,6 +983,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_ADD_CONFIG"
+tier = "advanced"
 category = "Compatibility / Misc"
 default_value = ""
 values = ["nativevulkanloader", "vkd3dfl12", "vkd3dbindlesstb", "oldglstr", "noforcelgadd"]
@@ -941,6 +1004,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "PROTON_OLD_GL_STRING"
+tier = "advanced"
 category = "Compatibility / Misc"
 default_value = "1"
 values = ["1", "0"]
@@ -961,6 +1025,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_DISCORD_BRIDGE"
+tier = "advanced"
 category = "Compatibility / Misc"
 default_value = "1"
 values = ["1", "0"]
@@ -991,6 +1056,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_USE_XALIA"
+tier = "advanced"
 category = "Compatibility / Misc"
 default_value = "1"
 values = ["1", "0"]
@@ -1011,6 +1077,7 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_GST_VIDEO_ORIENTATION"
+tier = "advanced"
 category = "Compatibility / Misc"
 default_value = "clockwise"
 values = ["none", "clockwise", "rotate-180", "counterclockwise", "horizontal-flip", "vertical-flip", "automatic"]
@@ -1031,6 +1098,7 @@ url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
 
 [[env]]
 key = "WINE_DO_NOT_CREATE_DXGI_DEVICE_MANAGER"
+tier = "advanced"
 category = "Compatibility / Misc"
 default_value = "1"
 values = ["1", "0"]

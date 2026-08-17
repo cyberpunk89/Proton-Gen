@@ -25,8 +25,10 @@ pub struct Recipe {
     /// Relevance hint: "nvidia" | "amd" | "intel" | "any" (or unset = any).
     #[serde(default)]
     pub gpu: Option<String>,
-    /// Capability requirements: "wayland" | "kde" | "ntsync" | "hdr". A recipe
-    /// whose needs aren't met is hidden (or dimmed) by the frontend.
+    /// Capability requirements from [`params::KNOWN_NEEDS`]. A recipe whose
+    /// needs aren't met is hidden (or dimmed) by the frontend. Generation-
+    /// specific AMD profiles must use `rdna3`/`rdna4` rather than `fsr4`, which
+    /// matches both.
     #[serde(default)]
     pub needs: Vec<String>,
     /// Optional Phosphor-style icon name for the card (frontend maps it).

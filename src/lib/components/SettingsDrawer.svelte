@@ -21,6 +21,7 @@
   import { inTauri } from "$lib/ipc";
   import Badges from "./Badges.svelte";
   import type { Component } from "svelte";
+  import type { GpuGen } from "$lib/types";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -33,6 +34,14 @@
 
   // Sections are collapsible; all start collapsed to keep the drawer tidy.
   let sections = $state({ appearance: false, behavior: false, paths: false });
+
+  // Typed rather than inlined in the {#each}, so the tuple widens to GpuGen
+  // instead of string and `setGpuGen` keeps its union.
+  const GPU_GENS: [GpuGen, string][] = [
+    ["", "Not AMD"],
+    ["rdna3", "RDNA3"],
+    ["rdna4", "RDNA4"],
+  ];
 </script>
 
 <!--
@@ -127,6 +136,12 @@
               "List recipes that don't match your detected hardware.",
               app.store.show_irrelevant,
               () => app.setShowIrrelevant(!app.store.show_irrelevant),
+            )}
+            {@render toggle(
+              "Show advanced options",
+              "Adds the debugging, logging and low-level tuning parameters.",
+              app.store.show_advanced,
+              () => app.setShowAdvanced(!app.store.show_advanced),
             )}
             {@render toggle(
               "I have an HDR display",
@@ -321,18 +336,19 @@
 {/snippet}
 
 <!-- AMD GPU generation selector. Replaces the old "I have an RDNA3/RDNA4 GPU"
-     toggle: picking a generation unlocks the FSR 3/4 upgrade options, and RDNA4
-     additionally hides the RDNA3-only FSR4 workaround. -->
+     toggle: picking a generation unlocks the FSR 3/4 upgrade options, and then
+     filters *both* ways — each generation's exclusive options and recipes hide
+     on the other. Only takes effect on a detected AMD GPU (see `hwCaps`). -->
 {#snippet gpuGen()}
   {@const gen = app.store.gpu_gen}
   <div class="rounded-lg px-1 py-1.5">
     <p class="text-sm text-subtext">AMD GPU generation</p>
     <p class="mb-1.5 text-[11px] leading-snug text-muted">
-      Unlocks FSR 3/4 upscaler-upgrade options (hidden by default). RDNA4 hides the
-      RDNA3-only workaround. Not auto-detected.
+      Unlocks FSR 3/4 upscaler-upgrade options (hidden by default), then shows only the
+      ones for the generation you pick. Not auto-detected.
     </p>
     <div class="flex gap-1 rounded-lg bg-mantle p-0.5 text-xs">
-      {#each [["", "Not AMD"], ["rdna3", "RDNA3"], ["rdna4", "RDNA4"]] as [value, label] (value)}
+      {#each GPU_GENS as [value, label] (value)}
         <button
           onclick={() => app.setGpuGen(value)}
           class="flex-1 rounded-md px-2 py-1 font-medium transition"

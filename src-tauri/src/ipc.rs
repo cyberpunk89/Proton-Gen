@@ -527,7 +527,10 @@ pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
     // Leftovers are discarded here on purpose: a rule is written against catalog
     // keys, so a key with no catalog entry has no rule that could name it.
     let (options, _) = compose::options_from_config(&state.catalog, &config);
-    lint::warnings(&state.catalog, &options, &state.hardware)
+    // The declared AMD generation is a store field, not a detected one, so it
+    // has to be read here rather than off `state.hardware`.
+    let gpu_gen = state.store.lock().unwrap().gpu_gen.clone();
+    lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen)
 }
 
 /// The ProtonDB community page URL for a Steam app id.

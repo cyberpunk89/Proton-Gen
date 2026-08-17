@@ -16,6 +16,38 @@ use crate::builder::Wrapper;
 /// The bundled default catalog.
 const BUNDLED: &str = include_str!("../params.toml");
 
+/// Every capability a `needs` tag may name, across `params.toml` and
+/// `recipes.toml`.
+///
+/// The filter that consumes these lives entirely in the frontend
+/// (`src/lib/util.ts irrelevance()`), because the last four are opt-in settings
+/// that never cross the IPC boundary. That split is why this list exists: a tag
+/// with no matching branch over there is silently treated as "always relevant",
+/// so a typo — or a capability that was only ever half-added — hides nothing and
+/// reports no error. `rdna4` shipped in the Settings selector but never in the
+/// filter for exactly that reason, which made the generation choice decorative.
+///
+/// Enforced against the bundled TOML by `bundled_needs_tags_are_known` below.
+/// Deliberately *not* enforced at load time: a user override in
+/// `$XDG_CONFIG_HOME` naming a capability from a newer build must still load.
+///
+/// Only the test suite reads it, hence the allow — like `Rule`'s declaration
+/// fields in `lint.rs`, this is documentation the tests happen to enforce.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const KNOWN_NEEDS: &[&str] = &["wayland", "kde", "ntsync", "hdr", "fsr4", "rdna3", "rdna4"];
+
+/// The one `tier` value that means anything: hide this entry until asked for.
+///
+/// Deliberately opt-*out* of prominence rather than opt-in. An untagged entry
+/// stays visible, so a user override or a catalog refresh that forgets the
+/// field degrades to today's behaviour (everything shown) rather than to an
+/// empty parameter list.
+///
+/// The filter itself is in the frontend (`isAdvanced` in `types.ts`), so as with
+/// [`KNOWN_NEEDS`] only the tests read this constant here.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const TIER_ADVANCED: &str = "advanced";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WrapperKind {
@@ -58,9 +90,13 @@ pub struct WrapperDef {
     /// Relevance hint: "nvidia" | "amd" | "intel" (unset = any GPU).
     #[serde(default)]
     pub gpu: Option<String>,
-    /// Relevance tags: e.g. "wayland", "kde", "ntsync" (unset = always).
+    /// Relevance tags from [`KNOWN_NEEDS`] (unset = always relevant).
     #[serde(default)]
     pub needs: Vec<String>,
+    /// `"advanced"` to hide this behind the UI's show-advanced toggle; anything
+    /// else (including unset) is a basic entry. See [`TIER_ADVANCED`].
+    #[serde(default)]
+    pub tier: String,
 }
 
 impl WrapperDef {
@@ -95,9 +131,13 @@ pub struct EnvDef {
     /// Relevance hint: "nvidia" | "amd" | "intel" (unset = any GPU).
     #[serde(default)]
     pub gpu: Option<String>,
-    /// Relevance tags: e.g. "wayland", "kde", "ntsync" (unset = always).
+    /// Relevance tags from [`KNOWN_NEEDS`] (unset = always relevant).
     #[serde(default)]
     pub needs: Vec<String>,
+    /// `"advanced"` to hide this behind the UI's show-advanced toggle; anything
+    /// else (including unset) is a basic entry. See [`TIER_ADVANCED`].
+    #[serde(default)]
+    pub tier: String,
 }
 
 impl EnvDef {
@@ -333,6 +373,96 @@ mod tests {
         assert!(keys.contains(&"gamescope"));
         assert!(keys.contains(&"mangohud"));
         assert!(keys.contains(&"gamemoderun"));
+    }
+
+    /// Guards `KNOWN_NEEDS` against the two shipped TOMLs.
+    ///
+    /// The frontend filter treats an unrecognised tag as "always relevant", so
+    /// this is the only place a bad tag can be caught: without it, tagging a
+    /// param `needs = ["rnda4"]` compiles, loads, renders, and quietly shows the
+    /// row to everyone. Recipes are covered too — they share the capability
+    /// vocabulary and had all four AMD profiles collapsed onto `fsr4`, so
+    /// picking a generation filtered none of them.
+    #[test]
+    fn bundled_needs_tags_are_known() {
+        let cat = Catalog::bundled();
+        let params = cat
+            .envs
+            .iter()
+            .map(|e| (e.key.as_str(), &e.needs))
+            .chain(cat.wrappers.iter().map(|w| (w.key.as_str(), &w.needs)));
+        let recipes = crate::recipes::Recipes::bundled();
+        let recipes = recipes.recipes.iter().map(|r| (r.name.as_str(), &r.needs));
+
+        for (owner, needs) in params.chain(recipes) {
+            for tag in needs {
+                assert!(
+                    KNOWN_NEEDS.contains(&tag.as_str()),
+                    "{owner} declares needs = [\"{tag}\"], which no relevance branch \
+                     handles — add it to KNOWN_NEEDS and to irrelevance() in util.ts, \
+                     or fix the typo",
+                );
+            }
+        }
+    }
+
+    /// `tier` is optional, and an entry without it must stay *visible*.
+    ///
+    /// Both directions matter: a user's `$XDG_CONFIG_HOME` override predates the
+    /// field entirely, and getting the default backwards would empty their
+    /// parameter list rather than merely un-tidy it.
+    #[test]
+    fn a_catalog_entry_without_a_tier_is_basic() {
+        let cat: Catalog = toml::from_str(
+            r#"
+            [[env]]
+            key = "FOO"
+            help = "no tier field here"
+
+            [[env]]
+            key = "BAR"
+            tier = "advanced"
+            "#,
+        )
+        .expect("a tier-less entry must parse");
+        assert_eq!(cat.envs[0].tier, "");
+        assert_ne!(cat.envs[0].tier, TIER_ADVANCED);
+        assert_eq!(cat.envs[1].tier, TIER_ADVANCED);
+    }
+
+    /// The tier split is only worth anything if it actually removes bulk, and
+    /// only trustworthy if it leaves the everyday options alone.
+    #[test]
+    fn bundled_tiers_hide_a_meaningful_share_without_burying_the_basics() {
+        let cat = Catalog::bundled();
+        let advanced =
+            cat.envs.iter().filter(|e| e.tier == TIER_ADVANCED).count();
+        assert!(
+            advanced * 3 > cat.envs.len(),
+            "only {advanced}/{} env params are advanced — the toggle barely reduces anything",
+            cat.envs.len()
+        );
+
+        // Wrappers are the three headline features; none of them is niche.
+        for w in &cat.wrappers {
+            assert_ne!(w.tier, TIER_ADVANCED, "wrapper {} should stay basic", w.key);
+        }
+
+        // Spot-check the options a first-time user reaches for.
+        for key in [
+            "PROTON_FSR4_UPGRADE",
+            "PROTON_NO_NTSYNC",
+            "PROTON_USE_WINED3D",
+            "PROTON_ENABLE_WAYLAND",
+            "PROTON_EAC_RUNTIME",
+        ] {
+            let e = cat
+                .envs
+                .iter()
+                .find(|e| e.key == key)
+                .unwrap_or_else(|| panic!("{key} should be in the bundled catalog"));
+            assert_ne!(e.tier, TIER_ADVANCED, "{key} should stay basic");
+        }
     }
 
     #[test]

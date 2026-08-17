@@ -1,6 +1,15 @@
-//! Best-effort, read-only hardware/session detection used to mark options as
-//! relevant to this machine. Never blocks toggling — unknown is treated as
-//! relevant.
+//! Best-effort, read-only hardware/session detection.
+//!
+//! Detection only — the relevance *filter* that consumes this lives in
+//! `src/lib/util.ts irrelevance()` and has no Rust counterpart. There used to be
+//! one here; it went three capability tags stale and rotted into dead code,
+//! because `hdr`/`fsr4`/`rdna3`/`rdna4` are opt-in settings held in the frontend
+//! store that never reach this side. `lint.rs` is the one Rust consumer, and it
+//! reads the fields directly.
+//!
+//! Note what is *not* detected: GPU architecture. `amdgpu` is loaded for
+//! everything from GCN onwards and nothing here reads PCI ids, so the RDNA
+//! generation is a user declaration (`store.gpu_gen`), not a fact.
 
 use std::path::Path;
 
@@ -37,34 +46,7 @@ pub fn detect() -> Hardware {
 }
 
 impl Hardware {
-    /// If an option (with optional gpu hint + needs tags) is **not** relevant to
-    /// this machine, return a short reason; otherwise `None`.
-    pub fn irrelevance(&self, gpu: Option<&str>, needs: &[String]) -> Option<String> {
-        if let Some(g) = gpu {
-            let (ok, label) = match g.to_lowercase().as_str() {
-                "nvidia" => (self.nvidia, "NVIDIA GPU"),
-                "amd" => (self.amd, "AMD GPU"),
-                "intel" => (self.intel, "Intel GPU"),
-                _ => (true, ""),
-            };
-            if !ok {
-                return Some(format!("needs {label}"));
-            }
-        }
-        for n in needs {
-            let (ok, label) = match n.as_str() {
-                "wayland" => (self.wayland, "Wayland session"),
-                "kde" => (self.kde, "KDE Plasma"),
-                "ntsync" => (self.ntsync, "/dev/ntsync"),
-                _ => (true, ""),
-            };
-            if !ok {
-                return Some(format!("needs {label}"));
-            }
-        }
-        None
-    }
-
+    /// One-line description for the `--list` CLI.
     pub fn summary(&self) -> String {
         let mut gpus = Vec::new();
         if self.nvidia {

@@ -6,9 +6,13 @@
 # Applying a recipe MERGES onto the current selection (enables + sets the listed
 # keys; it does not disable anything you already turned on). `gpu` is an optional
 # relevance hint (nvidia|amd|intel|any). `needs` is an optional list of required
-# capabilities (wayland|kde|ntsync|hdr) — a recipe whose needs aren't met is
-# hidden by default (HDR is an opt-in capability in Settings). env/wrappers are
-# [key, value] pairs; wrapper value is "" for plain wrappers, args for gamescope.
+# capabilities (wayland|kde|ntsync|hdr|fsr4|rdna3|rdna4) — a recipe whose needs
+# aren't met is hidden by default. The last four are opt-in capabilities set in
+# Settings: `hdr` from its toggle, and fsr4/rdna3/rdna4 derived from the AMD
+# generation selector (`fsr4` = either generation, rdna3/rdna4 exclusive). Tag a
+# recipe with the exclusive capability when it only applies to one generation —
+# `fsr4` alone would leave it visible on both. env/wrappers are [key, value]
+# pairs; wrapper value is "" for plain wrappers, args for gamescope.
 #
 # Presentation (all optional): `icon` (sparkle|lightning|rocket|monitor|gauge|
 # wrench|shield|film), `accent` (hex color for the card), `tags` (chips).
@@ -34,7 +38,7 @@ wrappers = []
 name = "AMD: FSR 4 upgrade"
 kind = "profile"
 gpu = "amd"
-needs = ["fsr4"]
+needs = ["rdna4"]
 icon = "rocket"
 accent = "#e0234e"
 tags = ["FSR 4", "RDNA4", "frame-gen"]
@@ -49,7 +53,7 @@ wrappers = []
 name = "AMD: FSR 4 on RDNA3"
 kind = "profile"
 gpu = "amd"
-needs = ["fsr4"]
+needs = ["rdna3"]
 icon = "rocket"
 accent = "#e0234e"
 tags = ["FSR 4", "RDNA3", "frame-gen"]
@@ -69,7 +73,11 @@ needs = ["fsr4"]
 icon = "sparkle"
 accent = "#e0234e"
 tags = ["OptiScaler", "FSR 4", "DLSS→FSR"]
-description = "For games that only expose DLSS: inject OptiScaler to redirect it to FSR 4 + multi-frame generation (RDNA4). Single-player only — OptiScaler can trip kernel anti-cheat."
+# Stays on `fsr4` rather than a generation tag: OptiScaler redirects DLSS on both
+# RDNA3 and RDNA4. It deliberately does *not* set DXIL_SPIRV_CONFIG — on RDNA3 the
+# rdna3-mlfg-workaround lint fires with a one-click fix, and hardcoding it here
+# would put a no-op env var on every RDNA4 command instead.
+description = "For games that only expose DLSS: inject OptiScaler to redirect it to FSR 4 + multi-frame generation. Single-player only — OptiScaler can trip kernel anti-cheat."
 env = [
     ["PROTON_USE_OPTISCALER", "1"],
     ["PROTON_FSR4_UPGRADE", "1"],
@@ -81,7 +89,7 @@ wrappers = []
 name = "My RDNA4 default"
 kind = "profile"
 gpu = "amd"
-needs = ["fsr4"]
+needs = ["rdna4"]
 icon = "sparkle"
 accent = "#a6e3a1"
 tags = ["RDNA4", "GameMode", "MangoHud"]

@@ -8,6 +8,8 @@
     FG_INPUTS,
     FG_OUTPUTS,
     SHARPEN_SHADERS,
+    OPTI_FIXES,
+    PROXY_DLLS,
     parseOptiScaler,
     buildOptiScaler,
     type OptiScalerConfig,
@@ -22,7 +24,17 @@
 
   let c = $state<OptiScalerConfig>(seed);
 
+  // The proxy DLL is its own env var, not an ini key, so it is tracked beside
+  // the config rather than inside it.
+  let proxy = $state(
+    app.env["PROTON_OPTISCALER_NAME"]?.enabled
+      ? (app.env["PROTON_OPTISCALER_NAME"]?.value ?? "")
+      : "",
+  );
+
   let config = $derived(buildOptiScaler(c));
+
+  let fixCount = $derived(OPTI_FIXES.filter((f) => c.fixes[f.id]).length);
 
   // Re-seed when the env changes underneath us — an undo, a recipe, a preset, or
   // a hand edit on the PROTON_OPTISCALER_CONFIG row while this panel is open.
@@ -35,8 +47,20 @@
     c = parseOptiScaler(src);
   });
 
+  // Same treatment for the proxy DLL, which lives on its own row.
+  let sourceProxy = $derived(
+    app.env["PROTON_OPTISCALER_NAME"]?.enabled
+      ? (app.env["PROTON_OPTISCALER_NAME"]?.value ?? "")
+      : "",
+  );
+  $effect(() => {
+    const src = sourceProxy;
+    if (src === untrack(() => proxy)) return;
+    proxy = src;
+  });
+
   function apply() {
-    app.applyOptiScaler(config);
+    app.applyOptiScaler(config, proxy);
     toast.success("OptiScaler config applied");
     onapply?.();
   }
@@ -57,6 +81,11 @@
         {@render pick("DirectX 12", DX12_UPSCALERS, () => c.dx12Upscaler, (v) => (c.dx12Upscaler = v))}
         {@render pick("DirectX 11", DX11_UPSCALERS, () => c.dx11Upscaler, (v) => (c.dx11Upscaler = v))}
         {@render pick("Vulkan", VULKAN_UPSCALERS, () => c.vulkanUpscaler, (v) => (c.vulkanUpscaler = v))}
+        {@render pick("Inject as", PROXY_DLLS, () => proxy, (v) => (proxy = v))}
+        <p class="text-[11px] leading-snug text-muted">
+          Change “Inject as” if OptiScaler never loads at all — some games already own
+          <span class="font-mono">dxgi.dll</span>.
+        </p>
       </div>
 
       <!-- Output scaling -->
@@ -162,16 +191,54 @@
       </div>
     </div>
 
-    <!-- Resulting string -->
-    <div class="space-y-1.5 md:sticky md:top-0 md:self-start">
-      <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Result</p>
-      <p class="overflow-x-auto rounded-lg bg-mantle p-2 font-mono text-xs text-muted">
-        PROTON_OPTISCALER_CONFIG={config || "none"}
-      </p>
-      <p class="text-[11px] leading-snug text-muted">
-        Applying also enables <span class="font-mono">PROTON_USE_OPTISCALER</span>, so the injected
-        config takes effect.
-      </p>
+    <div class="space-y-4">
+      <!--
+        Compatibility fixes, labelled by symptom. These are the settings people
+        come here for when a game misbehaves, and none of them is guessable from
+        its ini key — so the key is not shown at all; it is in the Result pane
+        below for anyone who wants to check.
+      -->
+      <div class="space-y-2">
+        <p class="text-[11px] font-medium uppercase tracking-wider text-muted">
+          Compatibility fixes{fixCount ? ` · ${fixCount} on` : ""}
+        </p>
+        <p class="text-[11px] leading-snug text-muted">
+          Only turn these on for a problem you're actually seeing — each one trades
+          something away.
+        </p>
+        {#each OPTI_FIXES as f (f.id)}
+          <label class="flex gap-2">
+            <input
+              type="checkbox"
+              checked={!!c.fixes[f.id]}
+              onchange={(e) => (c.fixes[f.id] = e.currentTarget.checked)}
+              class="mt-0.5 shrink-0 accent-[var(--accent)]"
+            />
+            <span class="min-w-0">
+              <span class="block text-sm leading-snug text-subtext">{f.label}</span>
+              <span class="block text-[11px] leading-snug text-muted">{f.note}</span>
+            </span>
+          </label>
+        {/each}
+      </div>
+
+      <!-- Resulting string -->
+      <div class="space-y-1.5 border-t border-border/60 pt-3">
+        <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Result</p>
+        <p class="overflow-x-auto rounded-lg bg-mantle p-2 font-mono text-xs break-all text-muted">
+          PROTON_OPTISCALER_CONFIG={config || "none"}
+        </p>
+        <p class="text-[11px] leading-snug text-muted">
+          Applying also enables <span class="font-mono">PROTON_USE_OPTISCALER</span>, so the
+          injected config takes effect.
+        </p>
+        {#if c.passthrough.length}
+          <p class="text-[11px] leading-snug text-muted">
+            {c.passthrough.length} setting{c.passthrough.length === 1 ? "" : "s"} this builder doesn't
+            model {c.passthrough.length === 1 ? "is" : "are"} kept as-is.
+          </p>
+        {/if}
+      </div>
     </div>
   </div>
 

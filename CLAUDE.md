@@ -85,12 +85,18 @@ extra `--` into cargo).
   returns `mock.ts` data so the whole UI can be iterated with `pnpm dev`. Mock data has a
   reduced catalog — FSR/large catalogs and the native file dialog only exist in the real
   shell.
-- **Relevance & opt-in capabilities.** `hardware.rs` detects GPU/session/ntsync;
-  `util.ts irrelevance()` mirrors it for the UI. Capabilities that can't be auto-detected
-  are **opt-in store flags** surfaced in Settings (`hdr`, `fsr4`). To hide a parameter by
-  default, tag it `needs = ["<cap>"]` and thread the cap through `store.rs`, `types.ts`,
-  `state.svelte.ts` (`EMPTY_STORE` + `hwCaps` + setter), `util.ts`, `mock.ts`, and a
-  `SettingsDrawer.svelte` toggle. (Hidden options stay revealable via "Show all".)
+- **Relevance & opt-in capabilities.** `hardware.rs` **detects only**; the filter is
+  `util.ts irrelevance()` and is frontend-only by design — there is deliberately no Rust
+  mirror, because the opt-in capabilities live in the store. (A mirror existed, went three
+  tags stale, and became dead code.) Capabilities that can't be auto-detected are **opt-in
+  store flags** surfaced in Settings: `hdr`, and `fsr4`/`rdna3`/`rdna4` derived from the
+  AMD generation selector. To hide a parameter by default, tag it `needs = ["<cap>"]` and
+  thread the cap through `store.rs`, `types.ts`, `state.svelte.ts` (`EMPTY_STORE` +
+  `hwCaps` + setter), `util.ts`, `mock.ts`, and a `SettingsDrawer.svelte` toggle. **Also
+  add it to `params::KNOWN_NEEDS`** — `irrelevance()` treats an unhandled tag as *relevant*,
+  so a half-added capability filters nothing and reports no error (that is exactly how
+  `rdna4` shipped in the selector but never in the filter); the `bundled_needs_tags_are_known`
+  test is the guard. Hidden options stay revealable via "Show all".
   The same six layers apply to any new `Store` field — `store.paths` is a nested struct,
   so it also needs a "partial table still loads" test, and remember `save_store`
   overwrites the store wholesale (#43): anything the frontend doesn't round-trip is lost.

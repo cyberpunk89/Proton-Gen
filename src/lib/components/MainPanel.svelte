@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { irrelevance } from "$lib/util";
+  import { isAdvanced } from "$lib/types";
   import { fuzzy } from "$lib/fuzzy";
   import OptionRow from "./OptionRow.svelte";
   import Recipes from "./Recipes.svelte";
@@ -23,6 +24,7 @@
   let optiOpen = $state(false);
 
   let showAll = $derived(app.store.show_irrelevant);
+  let showAdvanced = $derived(app.store.show_advanced);
   const q = $derived(app.paramQuery);
   const searching = $derived(q.trim().length > 0);
 
@@ -53,6 +55,15 @@
     helpRanges: [number, number][];
     /** Filtered out by hardware relevance unless "Show all" is on. */
     hidden: boolean;
+    /**
+     * Tagged `tier = "advanced"`; filtered out unless "Show advanced" is on.
+     *
+     * Kept separate from `hidden` rather than folded into it: the two answer
+     * different questions ("does this apply to my machine?" vs "do I want to see
+     * the long tail?"), have separate toggles, and share the summary row below —
+     * one flag would make its counts lie.
+     */
+    advanced: boolean;
   }
 
   /**
@@ -86,6 +97,7 @@
           titleRanges: t?.ranges ?? [],
           helpRanges: h?.ranges ?? [],
           hidden: !!reason(e),
+          advanced: isAdvanced(e),
         });
       } else {
         out.push({
@@ -98,6 +110,7 @@
           titleRanges: [],
           helpRanges: [],
           hidden: !!reason(e),
+          advanced: isAdvanced(e),
         });
       }
     }
@@ -119,6 +132,7 @@
           titleRanges: t?.ranges ?? [],
           helpRanges: h?.ranges ?? [],
           hidden: !!reason(w),
+          advanced: isAdvanced(w),
         });
       } else {
         out.push({
@@ -131,14 +145,22 @@
           titleRanges: [],
           helpRanges: [],
           hidden: !!reason(w),
+          advanced: isAdvanced(w),
         });
       }
     }
     return out;
   });
 
-  let visible = $derived(hits.filter((h) => showAll || !h.hidden));
+  let visible = $derived(
+    hits.filter((h) => (showAll || !h.hidden) && (showAdvanced || !h.advanced)),
+  );
   let hiddenCount = $derived(hits.filter((h) => h.hidden).length);
+  // Counted only among rows the hardware filter would have shown anyway, so the
+  // two numbers in the summary row never double-count the same option.
+  let advancedCount = $derived(
+    hits.filter((h) => h.advanced && (showAll || !h.hidden)).length,
+  );
   let anyShown = $derived(visible.length > 0);
 
   /** Search results grouped by category, groups ordered by their best member. */
@@ -199,20 +221,47 @@
       {/if}
     </div>
 
-    {#if hiddenCount > 0}
-      <div class="mb-3 flex items-center gap-2 text-xs text-muted">
-        {#if showAll}
-          <span>Showing all, including unsupported options.</span>
-          <button
-            onclick={() => app.setShowIrrelevant(false)}
-            class="font-medium text-accent hover:underline">Hide unsupported</button
-          >
-        {:else}
-          <span>{hiddenCount} hidden for your hardware.</span>
-          <button
-            onclick={() => app.setShowIrrelevant(true)}
-            class="font-medium text-accent hover:underline">Show all</button
-          >
+    <!-- Two independent filters, one line. Each half only appears when it has
+         something to say, so the common case is a single short sentence. -->
+    {#if hiddenCount > 0 || advancedCount > 0 || showAdvanced}
+      <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        {#if hiddenCount > 0}
+          <span class="inline-flex items-center gap-2">
+            {#if showAll}
+              <span>Showing all, including unsupported options.</span>
+              <button
+                onclick={() => app.setShowIrrelevant(false)}
+                class="font-medium text-accent hover:underline">Hide unsupported</button
+              >
+            {:else}
+              <span>{hiddenCount} hidden for your hardware.</span>
+              <button
+                onclick={() => app.setShowIrrelevant(true)}
+                class="font-medium text-accent hover:underline">Show all</button
+              >
+            {/if}
+          </span>
+        {/if}
+        {#if advancedCount > 0}
+          <span class="inline-flex items-center gap-2">
+            {#if showAdvanced}
+              <span>{advancedCount} advanced shown.</span>
+              <button
+                onclick={() => app.setShowAdvanced(false)}
+                class="font-medium text-accent hover:underline">Hide advanced</button
+              >
+            {:else}
+              <span>{advancedCount} advanced hidden.</span>
+              <button
+                onclick={() => app.setShowAdvanced(true)}
+                class="font-medium text-accent hover:underline">Show advanced</button
+              >
+            {/if}
+          </span>
+        {:else if showAdvanced}
+          <!-- Nothing advanced in this section, but the toggle is on globally —
+               say so, or "Show advanced" looks like it did nothing. -->
+          <span>Advanced options are shown; this section has none.</span>
         {/if}
       </div>
     {/if}
@@ -220,10 +269,17 @@
     {#if !anyShown}
       <div class="flex flex-col items-center gap-2 py-12 text-center">
         <MagnifyingGlass size={26} class="text-muted" />
+        <!-- Name the filter that actually emptied this, rather than blaming
+             hardware for what the advanced tier did. Whole sections (VKD3D,
+             Wine / Overrides) are advanced end to end, so the wrong reason here
+             would send you looking for a hardware problem you don't have. The
+             matching "Show advanced" link is in the summary row above. -->
         <p class="text-sm text-muted">
           {searching
             ? `No parameters match “${q.trim()}”.`
-            : "Nothing to show here for your hardware."}
+            : advancedCount > 0
+              ? "Everything here is an advanced option."
+              : "Nothing to show here for your hardware."}
         </p>
         {#if searching}
           <button

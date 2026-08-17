@@ -98,6 +98,13 @@ pub struct Store {
     /// Show recipes/options that don't apply to the detected hardware (default: hide).
     #[serde(default)]
     pub show_irrelevant: bool,
+    /// Show catalog entries tagged `tier = "advanced"` (default: hide).
+    ///
+    /// Independent of [`Self::show_irrelevant`]: that one is about *this
+    /// machine*, this one is about *this user*. Folding them together would make
+    /// the "N hidden for your hardware" count wrong.
+    #[serde(default)]
+    pub show_advanced: bool,
     /// User-declared HDR display capability (not auto-detectable; opt-in).
     #[serde(default)]
     pub hdr: bool,
@@ -110,9 +117,10 @@ pub struct Store {
     #[serde(default)]
     pub fsr4: bool,
     /// User-declared AMD GPU generation: `""` (unset / not AMD), `"rdna3"`, or
-    /// `"rdna4"`. Set via the Settings generation selector. Drives two derived
-    /// frontend capabilities: FSR4 (either generation) and RDNA3-only (so the
-    /// RDNA3 FSR4 workaround hides on RDNA4). Opt-in, not reliably detectable.
+    /// `"rdna4"`. Set via the Settings generation selector. Drives three derived
+    /// frontend capabilities: `fsr4` (either generation) plus the exclusive
+    /// `rdna3`/`rdna4`, so each generation's options hide on the other. Opt-in,
+    /// not reliably detectable. Also read by `lint.rs` for the FSR4 notices.
     #[serde(default)]
     pub gpu_gen: String,
     /// Auto-fetch the ProtonDB tier when a Steam game is selected.

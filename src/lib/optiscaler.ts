@@ -73,6 +73,81 @@ export const SHARPEN_SHADERS: Choice[] = [
   { value: "lcda", label: "LCDA" },
 ];
 
+/**
+ * Compatibility fixes, described by the symptom rather than the ini key.
+ *
+ * These are the settings people actually reach for when a game misbehaves, and
+ * every one of them is documented upstream against a *symptom*, not a feature —
+ * so that is how they're labelled here. Nobody types "RestoreComputeSignature"
+ * into a search box; they search for the game that crashed.
+ *
+ * Each fix is one or more `Section.Key=Value` pairs, applied together and
+ * detected as "on" when the first pair matches. Keys are from the OptiScaler.ini
+ * reference (github.com/optiscaler/OptiScaler) — if proton-cachyos ships a build
+ * that moves one between sections, it fails silently, so the pairs are kept
+ * here in one list rather than spread through the component.
+ */
+export interface Fix {
+  id: string;
+  /** The symptom, as the user would describe it. */
+  label: string;
+  /** Which games or engines this usually affects. */
+  note: string;
+  pairs: [string, string][];
+}
+
+export const OPTI_FIXES: Fix[] = [
+  {
+    id: "reEngine",
+    label: "Crashes or hangs in RE Engine games",
+    note: "Resident Evil, Monster Hunter, Devil May Cry 5 — especially with DLSS inputs.",
+    pairs: [
+      ["Hotfix.RestoreComputeSignature", "true"],
+      ["Hotfix.RestoreGraphicSignature", "true"],
+    ],
+  },
+  {
+    id: "colorBarrier",
+    label: "Coloured blocks or bands at the screen edge",
+    note: "Common in Unreal Engine titles: the DLSS plugin hands over resources in the wrong state.",
+    pairs: [["Hotfix.ColorResourceBarrier", "4"]],
+  },
+  {
+    id: "autoExposure",
+    label: "Crushed blacks, or a white screen",
+    note: "The game's exposure texture isn't usable; compute it instead.",
+    pairs: [["InitFlags.AutoExposure", "true"]],
+  },
+  {
+    id: "xessPipelines",
+    label: "XeSS crashes, or slows down the longer you play",
+    note: "Skips XeSS pipeline pre-building. Mostly older GPUs.",
+    pairs: [["XeSS.BuildPipelines", "false"]],
+  },
+  {
+    id: "motionBlur",
+    label: "Excessive motion blur",
+    note: "The game reports display-resolution motion vectors when it shouldn't.",
+    pairs: [["InitFlags.DisplayResolution", "true"]],
+  },
+  {
+    id: "arcSpoofing",
+    label: "Rainbow artifacts on an Intel Arc GPU",
+    note: "Turns off DXGI spoofing, which Arc doesn't tolerate when posing as NVIDIA.",
+    pairs: [["Spoofing.Dxgi", "false"]],
+  },
+];
+
+/** [PROTON_OPTISCALER_NAME] the DLL OptiScaler injects as. Not part of the ini —
+ *  it is its own env var, but it belongs next to the upscaler pickers because
+ *  it is the first thing to change when injection doesn't happen at all. */
+export const PROXY_DLLS: Choice[] = [
+  { value: "", label: "Default (dxgi.dll)" },
+  { value: "dxgi.dll", label: "dxgi.dll" },
+  { value: "d3d12.dll", label: "d3d12.dll" },
+  { value: "dbghelp.dll", label: "dbghelp.dll" },
+];
+
 /** Everything the OptiScaler builder can express, as plain data. */
 export interface OptiScalerConfig {
   dx12Upscaler: string;
@@ -88,6 +163,18 @@ export interface OptiScalerConfig {
   fgOutput: string;
   dlssPresetOn: boolean;
   dlssPreset: string; // "0" – "15"
+  /** Which entries of `OPTI_FIXES` are on, keyed by `Fix.id`. */
+  fixes: Record<string, boolean>;
+  /**
+   * `Section.Key=Value` entries this builder doesn't model, preserved verbatim.
+   *
+   * Without this the round-trip is lossy in the one direction that costs real
+   * work: opening the dialog on a config someone hand-tuned (or copied from a
+   * game's wiki page) and pressing Apply would silently delete every key
+   * outside the whitelist. The upstream ini has hundreds of keys and this
+   * builder covers a couple of dozen, so that is the common case, not the edge.
+   */
+  passthrough: string[];
 }
 
 export function emptyOptiScaler(): OptiScalerConfig {
@@ -105,16 +192,39 @@ export function emptyOptiScaler(): OptiScalerConfig {
     fgOutput: "fsrfg",
     dlssPresetOn: false,
     dlssPreset: "0",
+    fixes: {},
+    passthrough: [],
   };
 }
+
+/** Every `Section.Key` the builder models, lowercased — anything else is
+ *  passthrough. Derived from the fix table so the two can't drift. */
+const KNOWN_KEYS = new Set(
+  [
+    "upscalers.dx12upscaler",
+    "upscalers.dx11upscaler",
+    "upscalers.vulkanupscaler",
+    "outputscaling.enabled",
+    "outputscaling.multiplier",
+    "sharpness.overridesharpness",
+    "sharpness.shader",
+    "sharpness.sharpness",
+    "framegen.enabled",
+    "framegen.fginput",
+    "framegen.fgoutput",
+    "dlss.renderpresetoverride",
+    "dlss.renderpresetforall",
+    ...OPTI_FIXES.flatMap((f) => f.pairs.map(([k]) => k)),
+  ].map((k) => k.toLowerCase()),
+);
 
 /**
  * Parse a `PROTON_OPTISCALER_CONFIG` string into the builder's state.
  *
- * Tolerant on purpose: unknown `Section.Key` entries are ignored (they round to
- * nothing on the way back out — a hand-written config with exotic keys is
- * better edited on the raw row), section/key matching is case-insensitive, and
- * whitespace around tokens is trimmed.
+ * Tolerant on purpose: section/key matching is case-insensitive and whitespace
+ * around tokens is trimmed. Entries outside the modelled set are kept in
+ * `passthrough` and re-emitted unchanged rather than dropped, so opening this
+ * dialog can never destroy a config someone wrote by hand.
  */
 export function parseOptiScaler(str: string): OptiScalerConfig {
   const c = emptyOptiScaler();
@@ -122,9 +232,13 @@ export function parseOptiScaler(str: string): OptiScalerConfig {
   for (const entry of str.split(";")) {
     const eq = entry.indexOf("=");
     if (eq < 0) continue;
-    const key = entry.slice(0, eq).trim().toLowerCase();
+    const key = entry.slice(0, eq).trim();
     const val = entry.slice(eq + 1).trim();
-    if (key) map.set(key, val);
+    if (!key) continue;
+    const lower = key.toLowerCase();
+    if (KNOWN_KEYS.has(lower)) map.set(lower, val);
+    // Original casing kept: these go back out untouched.
+    else c.passthrough.push(`${key}=${val}`);
   }
   const get = (k: string) => map.get(k.toLowerCase());
   const bool = (v: string | undefined) => v?.toLowerCase() === "true";
@@ -153,6 +267,16 @@ export function parseOptiScaler(str: string): OptiScalerConfig {
   if (map.has("dlss.renderpresetoverride")) {
     c.dlssPresetOn = bool(get("dlss.renderpresetoverride"));
     if (get("dlss.renderpresetforall")) c.dlssPreset = get("dlss.renderpresetforall")!;
+  }
+
+  // A fix is on when its first pair is present with the expected value. Only the
+  // first is checked: the pairs are applied together, so a partial match means
+  // someone edited it by hand and the checkbox should reflect their intent to
+  // have the fix rather than silently un-tick and drop the rest.
+  for (const f of OPTI_FIXES) {
+    const [key, want] = f.pairs[0];
+    const got = get(key);
+    if (got !== undefined && got.toLowerCase() === want.toLowerCase()) c.fixes[f.id] = true;
   }
 
   return c;
@@ -194,6 +318,15 @@ export function buildOptiScaler(c: OptiScalerConfig): string {
     parts.push("DLSS.RenderPresetOverride=true");
     if (c.dlssPreset.trim()) parts.push(`DLSS.RenderPresetForAll=${c.dlssPreset.trim()}`);
   }
+
+  for (const f of OPTI_FIXES) {
+    if (!c.fixes[f.id]) continue;
+    for (const [k, v] of f.pairs) parts.push(`${k}=${v}`);
+  }
+
+  // Last, so the builder's own output stays in a stable, readable order and the
+  // foreign keys are visibly a tail rather than interleaved.
+  parts.push(...c.passthrough);
 
   return parts.join(";");
 }

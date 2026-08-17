@@ -16,6 +16,9 @@ export interface WrapperDef {
   url: string | null;
   gpu: string | null;
   needs: string[];
+  /** `"advanced"` hides this behind the show-advanced toggle; anything else
+   *  (including the `""` an entry without the field produces) is basic. */
+  tier: string;
 }
 
 export interface EnvDef {
@@ -30,6 +33,21 @@ export interface EnvDef {
   url: string | null;
   gpu: string | null;
   needs: string[];
+  /** `"advanced"` hides this behind the show-advanced toggle; anything else
+   *  (including the `""` an entry without the field produces) is basic. */
+  tier: string;
+}
+
+/**
+ * True when an entry should stay hidden behind the "show advanced" toggle.
+ *
+ * A predicate rather than a bare `=== "advanced"` at each call site so the
+ * default direction is stated once: anything unrecognised — including the empty
+ * string a pre-`tier` catalog or a user's own `params.toml` override produces —
+ * is basic, i.e. visible. Mirrors `params::TIER_ADVANCED`.
+ */
+export function isAdvanced(def: { tier: string }): boolean {
+  return def.tier === "advanced";
 }
 
 export interface Meta {
@@ -65,6 +83,21 @@ export interface Hardware {
   kde: boolean;
   ntsync: boolean;
 }
+
+/** The AMD generation the user declared in Settings; "" when unset or not AMD.
+ *  Not auto-detectable — `/sys/module/amdgpu` is loaded for everything from GCN
+ *  onwards, and nothing in the app reads PCI ids. */
+export type GpuGen = "" | "rdna3" | "rdna4";
+
+/**
+ * The `needs` tags a catalog entry or recipe may declare. Kept in lockstep with
+ * the branches in `util.ts irrelevance()` and with `KNOWN_NEEDS` in
+ * `src-tauri/src/params.rs`, which asserts the shipped TOML only uses these.
+ */
+export type Capability = "wayland" | "kde" | "ntsync" | "hdr" | "fsr4" | "rdna3" | "rdna4";
+
+/** Detected hardware plus the opt-in capabilities, as `irrelevance()` sees it. */
+export type HwCaps = Hardware & Record<Exclude<Capability, "wayland" | "kde" | "ntsync">, boolean>;
 
 export interface RuntimeDto {
   internal_name: string;
@@ -149,13 +182,18 @@ export interface Store {
   dismissed_cachyos_build: string;
   dismissed_update_version: string;
   show_irrelevant: boolean;
+  /** Show catalog entries tagged `tier = "advanced"`. Separate from
+   *  `show_irrelevant`: that's about this machine, this is about this user. */
+  show_advanced: boolean;
   hdr: boolean;
   /** Legacy "RDNA3/RDNA4" capability flag, superseded by `gpu_gen` as the UI
    *  control but still read as a fallback for pre-`gpu_gen` state files. */
   fsr4: boolean;
-  /** AMD GPU generation: "" (unset) | "rdna3" | "rdna4". Drives the FSR4 and
-   *  RDNA3-only relevance capabilities. */
-  gpu_gen: string;
+  /** AMD GPU generation. Drives three relevance capabilities: `fsr4` (either
+   *  generation), `rdna3` and `rdna4` (generation-exclusive). A union rather
+   *  than a bare string so a typo can't silently become "unset" — Rust keeps it
+   *  a `String`, and `options_from_lists` treats anything unrecognised as "". */
+  gpu_gen: GpuGen;
   protondb_auto: boolean;
   /** Appids pinned to the top of the library under every sort. A Rust
    *  `BTreeSet<u32>`, so it arrives sorted and must be sent back without

@@ -48,6 +48,7 @@ export const mockBootstrap: Bootstrap = {
         url: "https://github.com/ValveSoftware/gamescope",
         gpu: null,
         needs: [],
+        tier: "",
       },
       {
         key: "gamemoderun",
@@ -61,6 +62,7 @@ export const mockBootstrap: Bootstrap = {
         url: "https://github.com/FeralInteractive/gamemode",
         gpu: null,
         needs: [],
+        tier: "",
       },
       {
         key: "mangohud",
@@ -74,6 +76,7 @@ export const mockBootstrap: Bootstrap = {
         url: "https://github.com/flightlessmango/MangoHud",
         gpu: null,
         needs: [],
+        tier: "",
       },
     ],
     envs: [
@@ -89,6 +92,7 @@ export const mockBootstrap: Bootstrap = {
         url: null,
         gpu: null,
         needs: ["ntsync"],
+        tier: "",
       },
       {
         key: "DXVK_ASYNC",
@@ -102,6 +106,7 @@ export const mockBootstrap: Bootstrap = {
         url: null,
         gpu: null,
         needs: [],
+        tier: "",
       },
       {
         key: "DXVK_ENABLE_NVAPI",
@@ -115,6 +120,7 @@ export const mockBootstrap: Bootstrap = {
         url: null,
         gpu: "nvidia",
         needs: [],
+        tier: "",
       },
       {
         key: "PROTON_LOG",
@@ -128,6 +134,7 @@ export const mockBootstrap: Bootstrap = {
         url: null,
         gpu: null,
         needs: [],
+        tier: "",
       },
       {
         key: "PROTON_ENABLE_WAYLAND",
@@ -141,6 +148,7 @@ export const mockBootstrap: Bootstrap = {
         url: null,
         gpu: null,
         needs: ["wayland"],
+        tier: "",
       },
       {
         key: "DXVK_HDR",
@@ -154,6 +162,7 @@ export const mockBootstrap: Bootstrap = {
         url: null,
         gpu: null,
         needs: ["hdr"],
+        tier: "",
       },
       {
         key: "MANGOHUD_CONFIG",
@@ -167,6 +176,7 @@ export const mockBootstrap: Bootstrap = {
         url: "https://github.com/flightlessmango/MangoHud",
         gpu: null,
         needs: [],
+        tier: "",
       },
       {
         key: "MANGOHUD_CONFIGFILE",
@@ -180,13 +190,16 @@ export const mockBootstrap: Bootstrap = {
         url: "https://github.com/flightlessmango/MangoHud",
         gpu: null,
         needs: [],
+        // One advanced entry in the mock so the show/hide affordance has
+        // something to count under `pnpm dev`.
+        tier: "advanced",
       },
       // OptiScaler injection + inline config, so the OptiScaler builder dialog is
-      // reachable under `pnpm dev` (the real catalog carries these under
-      // "NVIDIA / Upscaling").
+      // reachable under `pnpm dev` (the real catalog files these under
+      // "Upscaling & frame-gen").
       {
         key: "PROTON_USE_OPTISCALER",
-        category: "NVIDIA",
+        category: "Upscaling & frame-gen",
         default_value: "1",
         values: ["1", "0"],
         requires: null,
@@ -196,10 +209,11 @@ export const mockBootstrap: Bootstrap = {
         url: "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md",
         gpu: null,
         needs: [],
+        tier: "",
       },
       {
         key: "PROTON_OPTISCALER_CONFIG",
-        category: "NVIDIA",
+        category: "Upscaling & frame-gen",
         default_value: "",
         values: [],
         requires: null,
@@ -209,10 +223,37 @@ export const mockBootstrap: Bootstrap = {
         url: "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md",
         gpu: null,
         needs: [],
+        tier: "",
+      },
+      // The builder's "Inject as" picker writes this one. Absent from the mock
+      // until now, which made that control a no-op under `pnpm dev` — it fell
+      // through to the extraEnv fallback instead of the catalog row.
+      {
+        key: "PROTON_OPTISCALER_NAME",
+        category: "Upscaling & frame-gen",
+        default_value: "dxgi.dll",
+        values: ["dxgi.dll", "d3d12.dll", "dbghelp.dll"],
+        requires: null,
+        help: "CachyOS: which DLL OptiScaler injects as (default dxgi.dll).",
+        details: "Change this when a game already ships its own dxgi.dll and OptiScaler never loads.",
+        example: "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_NAME=d3d12.dll %command%",
+        url: "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md",
+        gpu: null,
+        needs: [],
+        tier: "",
       },
     ],
   },
-  categories: ["Performance / Sync", "NVIDIA", "Display / HDR"],
+  // Must list every `category` used above, or those entries get no nav row and
+  // become unreachable — "Logging / Debug" was missing, hiding both MangoHud
+  // params (and with them the only advanced-tier entry in the mock).
+  categories: [
+    "Performance / Sync",
+    "NVIDIA",
+    "Upscaling & frame-gen",
+    "Display / HDR",
+    "Logging / Debug",
+  ],
   recipes: [
     {
       name: "NVIDIA: DLSS + Reflex",
@@ -326,9 +367,13 @@ export const mockBootstrap: Bootstrap = {
       heroic_id: "7Hm5qmyaYmaSZ45Mqo3u4s",
     },
   ],
+  // Both vendors on, so the dev path exercises the NVAPI/DLSS *and* the AMD
+  // FSR/MLFG families at once. `amd` is load-bearing beyond its own rows: the
+  // `rdna3`/`rdna4` capabilities are gated on it (see `hwCaps`), so with it
+  // false the generation selector below would filter nothing.
   hardware: {
     nvidia: true,
-    amd: false,
+    amd: true,
     intel: false,
     wayland: true,
     kde: true,
@@ -360,10 +405,12 @@ export const mockBootstrap: Bootstrap = {
     dismissed_cachyos_build: "",
     dismissed_update_version: "",
     show_irrelevant: false,
+    show_advanced: false,
     hdr: false,
     fsr4: false,
-    // RDNA4 in the mock so the FSR4 options show while the RDNA3-only workaround
-    // stays hidden — the exact filtering the Settings selector drives.
+    // RDNA4 in the mock so the FSR4 options show while the RDNA3-only ones
+    // (DXIL_SPIRV_CONFIG, the "FSR 4 on RDNA3" recipe) stay hidden — the exact
+    // two-way filtering the Settings selector drives.
     gpu_gen: "rdna4",
     protondb_auto: false,
     // One favourite so the pin-to-top behaviour is visible under `pnpm dev`

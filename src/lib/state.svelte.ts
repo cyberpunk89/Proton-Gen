@@ -4,13 +4,15 @@ import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { irrelevance, mergeIntoExtraEnv, splitExtraEnv, tokenizeEnv } from "./util";
-import { emptyConfig } from "./types";
+import { emptyConfig, isAdvanced } from "./types";
 import type {
   Catalog,
   Config,
   DiffStatus,
   GameDto,
+  GpuGen,
   Hardware,
+  HwCaps,
   Notice,
   LaunchDiff,
   Recipe,
@@ -42,6 +44,7 @@ const EMPTY_STORE: Store = {
   dismissed_cachyos_build: "",
   dismissed_update_version: "",
   show_irrelevant: false,
+  show_advanced: false,
   hdr: false,
   fsr4: false,
   gpu_gen: "",
@@ -462,6 +465,30 @@ class AppStore {
     return this.catalog.envs.filter(
       (e) => e.category === category && this.env[e.key]?.enabled,
     ).length;
+  }
+
+  /**
+   * Categories with at least one entry this machine can actually use.
+   *
+   * The nav rail listed every category unconditionally, so a section whose
+   * every parameter was filtered out still got a row — clicking it landed on an
+   * empty panel. On an AMD box that is the whole NVIDIA section: thirteen
+   * `gpu = "nvidia"` entries, none of them rendered, under a heading promising
+   * NVIDIA options.
+   *
+   * Filtered on hardware relevance only, deliberately not on `tier`: a section
+   * that is entirely advanced still deserves its row, because the panel there
+   * shows a "N advanced hidden · Show advanced" affordance. Hiding it would make
+   * those parameters unreachable by browsing. `show_irrelevant` restores every
+   * row, so nothing is permanently out of reach either way.
+   */
+  get visibleCategories(): string[] {
+    if (this.store.show_irrelevant) return this.categories;
+    return this.categories.filter((c) =>
+      this.catalog.envs.some(
+        (e) => e.category === c && !irrelevance(this.hwCaps, e.gpu, e.needs),
+      ),
+    );
   }
 
   // ------------------------------- config I/O -------------------------------
@@ -950,15 +977,27 @@ class AppStore {
 
   // ------------------------------ optiscaler --------------------------------
 
-  /** Apply a composed OptiScaler.ini config string, enabling OptiScaler
-   *  injection so the config has an effect. An empty string still enables
-   *  injection but clears the config (back to OptiScaler's own defaults). */
-  applyOptiScaler(config: string) {
+  /**
+   * Apply a composed OptiScaler.ini config string, enabling OptiScaler
+   * injection so the config has an effect. An empty string still enables
+   * injection but clears the config (back to OptiScaler's own defaults).
+   *
+   * `proxy` is the DLL OptiScaler injects as (`PROTON_OPTISCALER_NAME`); blank
+   * means "leave it at OptiScaler's default", which is expressed by turning the
+   * row off rather than writing `dxgi.dll` explicitly — the builder shouldn't
+   * add a variable that changes nothing.
+   */
+  applyOptiScaler(config: string, proxy = "") {
     if (this.env["PROTON_OPTISCALER_CONFIG"]) {
       this.env["PROTON_OPTISCALER_CONFIG"] = { enabled: config !== "", value: config };
     } else if (config) {
       // Fall back to custom env if the catalog lacks the key.
       this.extraEnv = `${this.extraEnv} PROTON_OPTISCALER_CONFIG='${config}'`.trim();
+    }
+    if (this.env["PROTON_OPTISCALER_NAME"]) {
+      this.env["PROTON_OPTISCALER_NAME"] = { enabled: proxy !== "", value: proxy };
+    } else if (proxy) {
+      this.extraEnv = `${this.extraEnv} PROTON_OPTISCALER_NAME=${proxy}`.trim();
     }
     if (this.env["PROTON_USE_OPTISCALER"]) this.env["PROTON_USE_OPTISCALER"].enabled = true;
     this.mark("apply OptiScaler config");
@@ -996,6 +1035,17 @@ class AppStore {
   }
 
   /**
+   * Whether the "Apply to Heroic?" confirmation is up.
+   *
+   * Lives on the store rather than inside `LauncherAction` because that button
+   * is mounted at two call sites at once and both unmount on a routine view
+   * change. The dialog it drives is mounted once, at the app root
+   * (`HeroicConfirm`), so a view change can never destroy an open bits-ui modal
+   * and strand `body { pointer-events: none }`.
+   */
+  heroicConfirmOpen = $state(false);
+
+  /**
    * The row `revealParam` last asked for. `OptionRow` watches this and scrolls,
    * focuses and flashes itself on a match.
    *
@@ -1027,28 +1077,47 @@ class AppStore {
     if (!this.store.show_irrelevant && irrelevance(this.hwCaps, def.gpu, def.needs)) {
       this.setShowIrrelevant(true);
     }
+    // Same problem, second filter: the advanced tier hides rows too, and a lint
+    // fix or palette jump has no reason to respect a tidiness preference.
+    if (!this.store.show_advanced && isAdvanced(def)) {
+      this.setShowAdvanced(true);
+    }
 
     this.setSection(env ? env.category : "Wrappers");
     this.focusParam = { key, nonce: ++this.focusNonce };
     return true;
   }
 
-  /** Hardware facts plus the opt-in HDR/FSR/GPU-generation capabilities, for
-   *  relevance filtering. `fsr4` is true for either RDNA generation (with the
-   *  legacy `store.fsr4` flag as a fallback for pre-`gpu_gen` state files);
-   *  `rdna3` is true only on RDNA3, so RDNA3-only params hide on RDNA4. */
-  get hwCaps() {
+  /**
+   * Hardware facts plus the opt-in HDR/FSR/GPU-generation capabilities, for
+   * relevance filtering. `fsr4` is true for either RDNA generation (with the
+   * legacy `store.fsr4` flag as a fallback for pre-`gpu_gen` state files);
+   * `rdna3` and `rdna4` are exclusive, so each generation's options hide on the
+   * other.
+   *
+   * Both generation flags are gated on `hardware.amd`. `gpu_gen` is a persisted
+   * free string that nothing re-validates against the detected GPU, so a state
+   * file carried to an NVIDIA machine would otherwise keep unlocking AMD-only
+   * rows — including `PROTON_FSR4_INDICATOR`, which had no `gpu` hint of its own.
+   */
+  get hwCaps(): HwCaps {
     const gen = this.store.gpu_gen;
+    const amd = this.hardware.amd;
     return {
       ...this.hardware,
       hdr: this.store.hdr,
-      fsr4: gen === "rdna3" || gen === "rdna4" || this.store.fsr4,
-      rdna3: gen === "rdna3",
+      fsr4: amd && (gen === "rdna3" || gen === "rdna4" || this.store.fsr4),
+      rdna3: amd && gen === "rdna3",
+      rdna4: amd && gen === "rdna4",
     };
   }
 
   setShowIrrelevant(v: boolean) {
     this.store.show_irrelevant = v;
+    this.persistStore();
+  }
+  setShowAdvanced(v: boolean) {
+    this.store.show_advanced = v;
     this.persistStore();
   }
   setHdr(v: boolean) {
@@ -1059,9 +1128,9 @@ class AppStore {
     this.store.fsr4 = v;
     this.persistStore();
   }
-  /** Set the AMD GPU generation ("" | "rdna3" | "rdna4"). Clears the legacy
-   *  `fsr4` flag once a generation is chosen so the two can't disagree. */
-  setGpuGen(gen: string) {
+  /** Set the AMD GPU generation. Clears the legacy `fsr4` flag once a
+   *  generation is chosen so the two can't disagree. */
+  setGpuGen(gen: GpuGen) {
     this.store.gpu_gen = gen;
     if (gen) this.store.fsr4 = false;
     this.persistStore();

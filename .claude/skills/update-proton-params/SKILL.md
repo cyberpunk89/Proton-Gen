@@ -34,9 +34,16 @@ Use WebFetch on each, preferring the newest stable Proton branch:
    default, or accepted values changed, (c) variables removed/deprecated upstream.
 4. **Edit `params.toml`** (the repo-root file — the single source of truth):
    - Add new `[[env]]` entries with a sensible `category` (reuse existing category
-     names: Performance / Sync, Render backend, NVIDIA / Upscaling,
+     names: Performance / Sync, Render backend, Upscaling & frame-gen, NVIDIA,
      Display / Wayland / HDR, Anti-cheat, DXVK, VKD3D (D3D12), Wine / Overrides,
-     Logging / Debug — add a new category only if nothing fits).
+     Overlay / Post-processing, Logging / Debug, Audio, Compatibility / Misc —
+     add a new category only if nothing fits). **Upscaling & frame-gen is
+     vendor-neutral** (FSR, DLSS, XeSS, OptiScaler, MLFG — each entry carries its
+     own `gpu` hint and self-filters); **NVIDIA** is for NVAPI, the NVIDIA
+     runtime libs and PRIME offload. Do not merge them back: a single
+     "NVIDIA / Upscaling" heading meant AMD users navigated to a row labelled
+     NVIDIA to find their FSR options, while every NVIDIA entry under it was
+     hidden by the relevance filter.
    - Each entry needs `key`, `category`, `default_value`, a one-line `help`, and
      `values = [...]` when there's a small fixed set (drives the GUI combo box).
    - Also author the **rich info** fields used by the GUI's per-parameter info popup:
@@ -45,8 +52,20 @@ Use WebFetch on each, preferring the newest stable Proton branch:
      (canonical doc link). Keep these populated for every entry.
    - Set the **relevance hints** when a parameter is vendor/session-specific so the GUI can
      grey it out on irrelevant hardware: `gpu = "nvidia"|"amd"|"intel"` (e.g. NVAPI/DLSS →
-     nvidia, FSR/MLFG → amd) and/or `needs = ["wayland"|"kde"|"ntsync"]`. Leave both unset
-     for universal options.
+     nvidia, FSR/MLFG → amd) and/or `needs = [...]` from the capability list
+     `wayland|kde|ntsync|hdr|fsr4|rdna3|rdna4`. Leave both unset for universal options.
+     **Only those seven values are valid** — `params::KNOWN_NEEDS` is asserted against this
+     file by `cargo test`, because an unrecognised tag reads as "always relevant" at
+     runtime and would silently filter nothing. For AMD generation-specific options use
+     `rdna3` / `rdna4`, not `fsr4` (which matches both).
+   - **Preserve `tier` on existing entries.** `tier = "advanced"` hides an entry behind the
+     GUI's show-advanced toggle, and roughly 57 of the ~93 entries carry it. This refresh
+     rewrites `params.toml` wholesale, so dropping the field would un-hide the entire long
+     tail in one go. Diff the tags before and after. Assign `tier = "advanced"` to new
+     entries that are debugging, logging, low-level tuning, or a niche variant of something
+     already listed; leave it off for anything a gamer would plausibly toggle on purpose.
+     `params::tests::bundled_tiers_hide_a_meaningful_share_without_burying_the_basics`
+     catches wholesale loss, but not a handful of individually-dropped tags.
    - For deprecated vars, remove them or note the deprecation in `help`.
    - Keep wrappers' `requires = "<binary>"` so the installed/missing badge keeps working.
    - Update the **dated header comment** at the top (`updated YYYY-MM-DD`) and the

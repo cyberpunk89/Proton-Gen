@@ -78,7 +78,9 @@
       Parameters
     </p>
     {@render catItem("Wrappers", wrapCount)}
-    {#each app.categories as c (c)}
+    <!-- `visibleCategories`, not `categories`: a section with nothing your
+         hardware can use shouldn't get a row that leads to an empty panel. -->
+    {#each app.visibleCategories as c (c)}
       {@render catItem(c, app.enabledCountInCategory(c))}
     {/each}
 
