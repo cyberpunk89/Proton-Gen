@@ -1,6 +1,6 @@
 [package]
 name = "protongen"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 description = "A polished GUI for building Steam / umu-launcher Proton commands on CachyOS"
 license = "GPL-3.0-or-later"
