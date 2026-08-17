@@ -1,3 +1,7 @@
+# pnpm 10.16+ reads build approvals from `allowBuilds`; `onlyBuiltDependencies`
+# below is kept for older pnpm. Both name esbuild for the same reason.
+allowBuilds:
+  esbuild: true
 # pnpm settings (its new home as of pnpm 10.16+; the `pnpm` field in
 # package.json is ignored by newer pnpm). Approve esbuild's postinstall so a
 # clean `pnpm install --frozen-lockfile` in CI doesn't fail with
