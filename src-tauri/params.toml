@@ -1,5 +1,5 @@
 # protongen parameter catalog
-# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-08-10
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-08-19
 #
 # Sources (refresh with the /update-proton-params Claude skill):
 #   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
@@ -34,7 +34,7 @@
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
 proton_cachyos_build = "20260703"
-updated = "2026-08-15"
+updated = "2026-08-19"
 
 # ============================ Wrappers ============================
 
@@ -153,7 +153,7 @@ category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable the vkd3d-low-latency fork for better D3D12 frame pacing / input lag."
-details = "CachyOS-specific (added 11.0-20260703): swaps in the vkd3d-low-latency fork, giving hardware-agnostic low-latency frame pacing for D3D12 titles — the VKD3D counterpart to PROTON_DXVK_LOWLATENCY. Disable if you see artifacts or regressions. CachyOS-Proton only."
+details = "CachyOS-specific (added 11.0-20260703): swaps in the vkd3d-low-latency fork, giving hardware-agnostic low-latency frame pacing for D3D12 titles — the VKD3D counterpart to PROTON_DXVK_LOWLATENCY. It natively implements the NVIDIA Reflex API inside the translation layer (bypassing conversion into VK_NV_low_latency2) and adds advanced frame pacing via waitable DXGI swapchains to cut input lag; AMD users should check the upstream discussion for caveats first. Disable if you see artifacts or regressions. CachyOS-Proton only."
 example = "PROTON_VKD3D_LOWLATENCY=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
@@ -317,8 +317,8 @@ category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "Auto-upgrade the game's DLSS DLL to the latest version."
-details = "Automatically downloads and installs the latest available DLSS Super Resolution DLL for a game, replacing the bundled version. This ensures you get performance improvements and bug fixes from newer DLSS versions without waiting for game updates. Set to a specific version number (e.g., '3.8.10') to pin a version, or '1' for the latest."
-example = "PROTON_DLSS_UPGRADE=1 %command%"
+details = "Automatically downloads and installs the latest available nvngx_dlss(d|g).dll for a game, replacing the bundled version. This ensures you get performance improvements and bug fixes from newer DLSS versions without waiting for game updates. Set to a specific version (e.g., '310.2') to pin one, or '1' for the latest; also sets DXVK_NVAPI_DRS_SETTINGS to the latest preset unless you override it yourself."
+example = "PROTON_DLSS_UPGRADE=310.2 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
 [[env]]
@@ -328,7 +328,7 @@ category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "Show the DLSS overlay indicator (confirms DLSS version in use)."
-details = "Shows an overlay indicator in the top-left corner of the screen displaying which version of DLSS is active in the game. Useful for confirming that DLSS is enabled and which version is running. The indicator appears automatically without any additional configuration beyond setting this to 1."
+details = "Shows an overlay indicator in the bottom-left corner of the screen displaying which version of DLSS is active in the game. Useful for confirming that DLSS is enabled and which version is running. The indicator appears automatically without any additional configuration beyond setting this to 1."
 example = "PROTON_DLSS_INDICATOR=1 %command%"
 url = "https://github.com/jp7677/dxvk-nvapi/blob/master/README.md"
 
@@ -340,7 +340,7 @@ category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: upgrade the game's FSR to FSR 4 (accepts 4.0.0 / 4.1.1). Works on RDNA3 & RDNA4."
-details = "CachyOS-specific: automatically upgrades AMD FidelityFX Super Resolution to FSR 4, improving image quality and scaling. As of 11.0-20260702 it accepts only '4.0.0' and '4.1.1' (or '1' for the latest), and the required amdxcffx64.dll is copied in automatically. The separate PROTON_FSR4_RDNA3_UPGRADE knob was removed — this variable now covers both RDNA3 and RDNA4 (pair with PROTON_MLFG_UPGRADE for frame generation)."
+details = "CachyOS-specific: automatically upgrades AMD FidelityFX Super Resolution to FSR 4, improving image quality and scaling. As of 11.0-20260702 the required amdxcffx64.dll is always copied in, so this only accepts '4.0.0' or '4.1.1' (or '1' for the latest) by default; with PROTON_USE_OPTISCALER enabled it accepts the same wider version range as PROTON_FFX4_UPGRADE. The separate PROTON_FSR4_RDNA3_UPGRADE knob was removed — this variable now covers both RDNA3 and RDNA4 (pair with PROTON_MLFG_UPGRADE for frame generation)."
 example = "PROTON_FSR4_UPGRADE=4.1.1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
@@ -352,7 +352,7 @@ category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: FidelityFX 4 auto-upgrade (newer naming; use latest or pin a version)."
-details = "CachyOS-specific: auto-downloads and installs the latest AMD FidelityFX Super Resolution 4 package under the newer FFX naming scheme. Companion to PROTON_FFX3_UPGRADE. Set '1' for the latest or a version string to pin one. Use PROTON_FSR4_UPGRADE if a title only recognizes the older FSR4 upgrade path. CachyOS-Proton only."
+details = "CachyOS-specific: controls the FidelityFX SDK dll version under the newer FFX naming scheme (companion to PROTON_FFX3_UPGRADE). Since 11.0-20260702 the amdxcffx64.dll is always copied in, so this and PROTON_FSR4_UPGRADE both work without OptiScaler; with PROTON_USE_OPTISCALER enabled, PROTON_FSR4_UPGRADE also gains the ability to set this same version. Set '1' for the latest or a version string to pin one. CachyOS-Proton only."
 example = "PROTON_FFX4_UPGRADE=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
@@ -397,7 +397,7 @@ category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: upgrade a game's FSR to FSR 3.1 (adds frame generation). Was PROTON_FSR3_UPGRADE."
-details = "Replaces a game's bundled AMD FSR with FSR 3.1, adding frame generation and improved upscaling where supported. Renamed from PROTON_FSR3_UPGRADE in 11.0-20260519. Use as a stepping stone when a game can't run FSR 4. CachyOS-Proton only."
+details = "Replaces a game's bundled AMD FSR with FSR 3.1, adding frame generation and improved upscaling where supported. Renamed from PROTON_FSR3_UPGRADE in 11.0-20260702 (you shouldn't need this under normal circumstances). Use as a stepping stone when a game can't run FSR 4. CachyOS-Proton only."
 example = "PROTON_FFX3_UPGRADE=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
@@ -409,7 +409,7 @@ category = "Upscaling & frame-gen"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: show the FSR 4 watermark (top-left) to confirm it's active."
-details = "Displays an FSR 4 watermark in the top-left corner so you can confirm the FSR4 upgrade is actually running. Purely diagnostic; turn it off once verified. CachyOS-Proton only."
+details = "Displays an FSR 4 watermark in the top-left corner so you can confirm the FSR4 upgrade is actually running — shorthand for setting FSR_WATERMARK=1 and FSR_FG_WATERMARK=1 directly. Purely diagnostic; turn it off once verified. CachyOS-Proton only."
 example = "PROTON_FSR4_INDICATOR=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
@@ -716,6 +716,26 @@ example = "DXVK_FILTER_DEVICE_NAME=RTX3080 %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/README.md#device-filter"
 
 [[env]]
+key = "DXVK_FILTER_DEVICE_UUID"
+tier = "advanced"
+category = "DXVK"
+default_value = ""
+help = "Force a specific GPU by exact Vulkan device UUID (32 hex chars, no dashes)."
+details = "Forces DXVK to use a specific GPU by its exact Vulkan device UUID, a precise alternative to DXVK_FILTER_DEVICE_NAME's substring match. Find your GPU's UUID with `vulkaninfo | grep deviceUUID`. Useful on multi-GPU systems (e.g. hybrid laptops or multiple discrete cards) where a name substring is ambiguous."
+example = "DXVK_FILTER_DEVICE_UUID=00000000000000000000000000000000 %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md#device-filter"
+
+[[env]]
+key = "DXVK_SHADER_CACHE_PATH"
+tier = "advanced"
+category = "DXVK"
+default_value = ""
+help = "Directory for DXVK's on-disk shader cache (default: game working directory)."
+details = "Overrides where DXVK writes its on-disk shader cache, instead of the game's working directory. Useful for redirecting caches to faster storage (e.g. an NVMe drive) or consolidating them outside per-game folders. Pair with DXVK_SHADER_CACHE=0 to disable caching entirely instead."
+example = "DXVK_SHADER_CACHE_PATH=/home/user/.cache/dxvk %command%"
+url = "https://github.com/doitsujin/dxvk/blob/master/README.md#hud"
+
+[[env]]
 key = "DXVK_CONFIG"
 tier = "advanced"
 category = "DXVK"
@@ -790,6 +810,26 @@ values = ["none", "err", "warn", "info"]
 help = "vkd3d-proton log verbosity."
 details = "Controls the verbosity of vkd3d-proton debug logging output. Accepts 'none' (silent), 'err' (errors only), 'warn' (warnings and errors), 'info' (informational), 'fixme', and 'trace' (very verbose). Default is 'warn'. Increasing verbosity helps diagnose compatibility issues but may impact performance slightly and generate large log files."
 example = "VKD3D_DEBUG=warn %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
+
+[[env]]
+key = "VKD3D_FILTER_DEVICE_NAME"
+tier = "advanced"
+category = "VKD3D (D3D12)"
+default_value = ""
+help = "Force a specific GPU by substring of its Vulkan device name (D3D12 titles)."
+details = "Skips Vulkan devices whose name doesn't contain this substring — the vkd3d-proton counterpart to DXVK_FILTER_DEVICE_NAME, for Direct3D 12 titles. Useful on multi-GPU systems where the game picks the wrong adapter."
+example = "VKD3D_FILTER_DEVICE_NAME=RTX3080 %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
+
+[[env]]
+key = "VKD3D_VULKAN_DEVICE"
+tier = "advanced"
+category = "VKD3D (D3D12)"
+default_value = ""
+help = "Force a specific GPU by zero-based Vulkan device index (D3D12 titles)."
+details = "Forces vkd3d-proton to use the Vulkan device at this zero-based index, an alternative to VKD3D_FILTER_DEVICE_NAME when you know the enumeration order (check with `vulkaninfo --summary`). Useful for pinning a D3D12 game to a specific GPU on multi-GPU systems."
+example = "VKD3D_VULKAN_DEVICE=0 %command%"
 url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
 
 # ====================== Wine / DLL overrides =====================
@@ -1106,3 +1146,14 @@ help = "Work around video glitches from incomplete IMFDXGIDeviceManager support.
 details = "Stops Wine from creating a DXGI device manager, working around video/playback corruption in games that use Media Foundation with incomplete IMFDXGIDeviceManager support. Enable if videos render garbled."
 example = "WINE_DO_NOT_CREATE_DXGI_DEVICE_MANAGER=1 %command%"
 url = "https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md"
+
+[[env]]
+key = "PROTON_DLL_COPY"
+tier = "advanced"
+category = "Compatibility / Misc"
+default_value = ""
+values = ["*"]
+help = "Copy all DLLs into the prefix instead of symlinking (fixes some custom protonfixes)."
+details = "Forces Proton to copy every DLL into the wineprefix instead of the normal symlink-into-prefix behavior. Needed if you run custom local protonfixes that install a .NET runtime (per umu-protonfixes#557) via the command line rather than Steam's built-in fixes. Considerably increases prefix size, so leave it unset unless you hit missing-DLL errors from a custom fix. Must be quoted on the command line: PROTON_DLL_COPY=\"*\"."
+example = "PROTON_DLL_COPY=\"*\" %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
