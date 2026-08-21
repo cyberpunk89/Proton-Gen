@@ -58,6 +58,7 @@ pub fn run() {
             ipc::protondb_url,
             ipc::protondb_fetch,
             ipc::game_art,
+            ipc::read_proton_log,
             ipc::save_store,
             ipc::check_for_update,
             ipc::run_update,

@@ -58,6 +58,30 @@ pub struct GameDto {
     pub heroic_id: Option<String>,
 }
 
+/// One game's Proton log, read for the diagnostics viewer.
+///
+/// `PROTON_LOG=1` writes `~/steam-<appid>.log`. This is a read-only view of that
+/// file; a missing file is a normal `present: false` result, not an error, so
+/// the viewer can say "no log yet — enable logging and relaunch" rather than
+/// showing a failure.
+#[derive(Clone, Serialize)]
+pub struct ProtonLog {
+    /// Whether the log file exists.
+    pub present: bool,
+    /// The path we looked at, shown even when absent so the user knows where the
+    /// log will appear.
+    pub path: String,
+    /// The tail of the log (last [`LOG_TAIL_BYTES`]), or empty when absent.
+    pub tail: String,
+    /// Total size in bytes.
+    pub size: u64,
+    /// True when the file was larger than the tail we returned (the head was cut).
+    pub truncated: bool,
+    /// Lines from the tail matching common error/warning markers, surfaced first
+    /// so the likely-relevant bits are one glance away.
+    pub error_lines: Vec<String>,
+}
+
 /// The "catalog refreshed for an older build" banner data.
 #[derive(Clone, Serialize)]
 pub struct StaleInfo {
@@ -417,6 +441,7 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
         .iter()
         .map(|w| match w {
             Wrapper::Gamescope(a) => ("gamescope".to_string(), a.clone()),
+            Wrapper::GamePerformance => ("game-performance".to_string(), String::new()),
             Wrapper::Gamemoderun => ("gamemoderun".to_string(), String::new()),
             Wrapper::Mangohud => ("mangohud".to_string(), String::new()),
         })
@@ -563,6 +588,120 @@ pub async fn game_art(
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+/// Bytes of log tail to return. Proton logs can reach hundreds of MB over a long
+/// session; the viewer only ever needs the end, and the head is stale by then.
+const LOG_TAIL_BYTES: u64 = 64 * 1024;
+/// Cap on surfaced error lines, so a log that is nothing but warnings can't
+/// balloon the payload the frontend has to render.
+const LOG_ERROR_LINES: usize = 200;
+
+/// The default Proton log path for an app id — `$HOME/steam-<appid>.log`, where
+/// `PROTON_LOG=1` writes with no `PROTON_LOG_DIR`. `None` only when `$HOME` is
+/// unset, which on a desktop session does not happen.
+fn proton_log_path(app_id: u32) -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(std::path::PathBuf::from(home).join(format!("steam-{app_id}.log")))
+}
+
+/// True when a log line looks like something worth reading first. Case-folded
+/// substring match on a small marker set — deliberately conservative so the
+/// "problems" list stays short enough to scan.
+fn is_error_line(line: &str) -> bool {
+    const MARKERS: [&str; 8] =
+        ["err", "fail", "crash", "fixme", "abort", "assert", "unsupported", "not found"];
+    let lower = line.to_ascii_lowercase();
+    MARKERS.iter().any(|m| lower.contains(m))
+}
+
+/// Read the tail of `app_id`'s Proton log. Pure filesystem work, split out so the
+/// command is just the `spawn_blocking` wrapper.
+fn read_proton_log_blocking(app_id: u32) -> ProtonLog {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let absent = |path: String| ProtonLog {
+        present: false,
+        path,
+        tail: String::new(),
+        size: 0,
+        truncated: false,
+        error_lines: Vec::new(),
+    };
+
+    let Some(path) = proton_log_path(app_id) else {
+        return absent("$HOME/steam-<appid>.log".to_string());
+    };
+    let path_str = path.display().to_string();
+
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return absent(path_str);
+    };
+    let size = meta.len();
+    let truncated = size > LOG_TAIL_BYTES;
+
+    let mut file = match std::fs::File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return absent(path_str),
+    };
+    if truncated {
+        // Seek to the last window; a failed seek just means we read from 0.
+        let _ = file.seek(SeekFrom::Start(size - LOG_TAIL_BYTES));
+    }
+    let mut buf = Vec::new();
+    if file.read_to_end(&mut buf).is_err() {
+        return absent(path_str);
+    }
+
+    let mut tail = String::from_utf8_lossy(&buf).into_owned();
+    // When we seeked mid-file we almost certainly landed inside a line; drop that
+    // partial fragment so the first shown line is whole.
+    if truncated {
+        if let Some(nl) = tail.find('\n') {
+            tail = tail[nl + 1..].to_string();
+        }
+    }
+
+    let error_lines = tail
+        .lines()
+        .filter(|l| is_error_line(l))
+        .take(LOG_ERROR_LINES)
+        .map(|l| l.trim().to_string())
+        .collect();
+
+    ProtonLog {
+        present: true,
+        path: path_str,
+        tail,
+        size,
+        truncated,
+        error_lines,
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+
+    #[test]
+    fn error_lines_match_the_common_markers_case_insensitively() {
+        assert!(is_error_line("wine: FIXME:module stub"));
+        assert!(is_error_line("err:  vulkan device lost"));
+        assert!(is_error_line("Assertion failed"));
+        assert!(is_error_line("file not found"));
+        assert!(!is_error_line("info: loaded 42 shaders"));
+        assert!(!is_error_line("frame time 16ms"));
+    }
+}
+
+/// Read the Proton log for `app_id` (`PROTON_LOG=1` writes `~/steam-<appid>.log`).
+/// Read-only and off the UI thread; a missing file is a normal `present: false`
+/// result, not an error.
+#[tauri::command]
+pub async fn read_proton_log(app_id: u32) -> Result<ProtonLog, String> {
+    tauri::async_runtime::spawn_blocking(move || read_proton_log_blocking(app_id))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Replace and persist the whole store (theme, presets, per-game memory, dismissals).

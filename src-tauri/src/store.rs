@@ -143,6 +143,11 @@ pub struct Store {
     /// can be re-selected on launch.
     #[serde(default)]
     pub last_game_appid: Option<u32>,
+    /// UI density mode: `"simple"` (curated cards) or `"advanced"` (the full
+    /// NavRail + catalog). Any other/absent value is treated as `"simple"` by
+    /// the frontend, so an older `state.toml` opens in the friendlier view.
+    #[serde(default)]
+    pub ui_mode: String,
     /// User-supplied discovery paths. See [`Paths`].
     #[serde(default)]
     pub paths: Paths,
@@ -318,6 +323,7 @@ mod tests {
         s.favorites.insert(553850);
         s.favorites.insert(275850);
         s.library_sort = "recent".into();
+        s.ui_mode = "advanced".into();
         s.gpu_gen = "rdna4".into();
         s.global_profile = Some(Config {
             umu: false,
@@ -329,6 +335,7 @@ mod tests {
         let back: Store = toml::from_str(&text).unwrap();
         assert_eq!(back.theme, "Dracula");
         assert_eq!(back.gpu_gen, "rdna4");
+        assert_eq!(back.ui_mode, "advanced");
         let gp = back.global_profile.as_ref().expect("global_profile round-trips");
         assert_eq!(gp.env, vec![("PROTON_USE_NTSYNC".to_string(), "1".to_string())]);
         assert_eq!(gp.wrappers, vec![("gamemoderun".to_string(), String::new())]);
@@ -368,6 +375,7 @@ show_irrelevant = true
         assert!(s.paths.steam_roots.is_empty());
         assert!(s.paths.bins.is_empty());
         assert_eq!(s.gpu_gen, "");
+        assert_eq!(s.ui_mode, "");
         assert!(s.global_profile.is_none());
     }
 

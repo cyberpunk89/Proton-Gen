@@ -21,6 +21,7 @@ pub struct Parsed {
     /// on its own enough to call a command drifted.
     pub unknown: Vec<String>,
     pub gamescope: Option<String>,
+    pub game_performance: bool,
     pub gamemoderun: bool,
     pub mangohud: bool,
     pub game_args: String,
@@ -40,6 +41,9 @@ impl Parsed {
         let mut v = Vec::new();
         if let Some(args) = &self.gamescope {
             v.push(Wrapper::Gamescope(args.clone()));
+        }
+        if self.game_performance {
+            v.push(Wrapper::GamePerformance);
         }
         if self.gamemoderun {
             v.push(Wrapper::Gamemoderun);
@@ -106,6 +110,10 @@ pub(crate) fn basename(tok: &str) -> &str {
 /// `gamescope`, collects args from `iter` up to the `--` separator.
 fn take_wrapper(tok: &str, iter: &mut std::iter::Peekable<std::slice::Iter<String>>, p: &mut Parsed) -> bool {
     match basename(tok) {
+        "game-performance" => {
+            p.game_performance = true;
+            true
+        }
         "gamemoderun" => {
             p.gamemoderun = true;
             true
@@ -304,5 +312,14 @@ mod tests {
         // Unrecognised, so its args are not consumed as wrapper args either —
         // they stay visible in `unknown` rather than being swallowed.
         assert_eq!(p.unknown, vec!["gamescope-git", "-f", "--"]);
+    }
+
+    #[test]
+    fn parses_game_performance_wrapper() {
+        let p = parse("game-performance mangohud %command%");
+        assert!(p.game_performance);
+        assert!(p.mangohud);
+        assert!(!p.gamemoderun);
+        assert!(p.unknown.is_empty());
     }
 }

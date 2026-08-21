@@ -14,6 +14,10 @@
 pub enum Wrapper {
     /// `gamescope <args> --` — the outermost wrapper, owns the `--` separator.
     Gamescope(String),
+    /// `game-performance` — CachyOS's performance wrapper (power profile +
+    /// sched-ext gaming scheduler for the game's lifetime). The modern
+    /// replacement for `gamemoderun` on CachyOS.
+    GamePerformance,
     /// `gamemoderun`
     Gamemoderun,
     /// `mangohud`
@@ -93,8 +97,12 @@ impl Wrapper {
     fn rank(&self) -> u8 {
         match self {
             Wrapper::Gamescope(_) => 0,
-            Wrapper::Gamemoderun => 1,
-            Wrapper::Mangohud => 2,
+            // game-performance and gamemoderun are alternatives; if both are on,
+            // game-performance sits just outside gamemoderun. Both stay inside
+            // gamescope and outside mangohud.
+            Wrapper::GamePerformance => 1,
+            Wrapper::Gamemoderun => 2,
+            Wrapper::Mangohud => 3,
         }
     }
 }
@@ -124,6 +132,9 @@ fn env_and_wrappers(env: &[(String, String)], wrappers: &[Wrapper], bins: &Bins)
                     parts.push(format!("{} {args} --", bins.gamescope));
                 }
             }
+            // A fixed CachyOS system binary in /usr/bin, so — unlike the others —
+            // it has no Settings override slot; emit the bare name.
+            Wrapper::GamePerformance => parts.push("game-performance".to_string()),
             Wrapper::Gamemoderun => parts.push(bins.gamemoderun.clone()),
             Wrapper::Mangohud => parts.push(bins.mangohud.clone()),
         }
@@ -242,6 +253,21 @@ mod tests {
         assert_eq!(
             build_command(&[], &w, "", &bins()),
             "gamemoderun mangohud %command%"
+        );
+    }
+
+    #[test]
+    fn game_performance_sits_inside_gamescope_and_outside_mangohud() {
+        // Toggled in "wrong" order; ranks must place it gamescope > game-performance
+        // > mangohud, and it emits the bare CachyOS binary name.
+        let w = vec![
+            Wrapper::Mangohud,
+            Wrapper::GamePerformance,
+            Wrapper::Gamescope("-f".to_string()),
+        ];
+        assert_eq!(
+            build_command(&[], &w, "", &bins()),
+            "gamescope -f -- game-performance mangohud %command%"
         );
     }
 

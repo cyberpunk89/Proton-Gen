@@ -85,6 +85,9 @@ fn normal_form(p: &Parsed) -> BTreeMap<String, String> {
             Wrapper::Gamescope(args) => {
                 map.insert("gamescope".to_string(), squash(&args));
             }
+            Wrapper::GamePerformance => {
+                map.insert("game-performance".to_string(), String::new());
+            }
             Wrapper::Gamemoderun => {
                 map.insert("gamemoderun".to_string(), String::new());
             }

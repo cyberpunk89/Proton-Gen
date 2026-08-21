@@ -182,6 +182,21 @@ wrappers = [["gamemoderun", ""]]
 # =========================== Troubleshooter =========================
 
 [[recipe]]
+name = "RE Engine: ray tracing / DLSS won't show (experimental)"
+kind = "fix"
+symptom = "An RE Engine game (Resident Evil, Monster Hunter) hides its ray-tracing or DLSS options on a Radeon GPU."
+icon = "sparkle"
+accent = "#f5c2e7"
+tags = ["RE Engine", "ray tracing", "DLSS", "OptiScaler", "experimental"]
+description = "Forces NVAPI on and loads a native dxgi so the engine exposes RT/DLSS, which OptiScaler then maps to FSR. Also: enable OptiScaler with GPU spoofing on, and add the game argument /WineDetectionEnabled:False in Game arguments. Full path tracing currently needs an experimental OptiScaler build."
+env = [
+    ["WINEDLLOVERRIDES", "dxgi=n,b"],
+    ["PROTON_FORCE_NVAPI", "1"],
+    ["DXVK_ENABLE_NVAPI", "1"],
+]
+wrappers = []
+
+[[recipe]]
 name = "Black or missing cutscenes / videos"
 kind = "fix"
 symptom = "Pre-rendered movies (intro/FMV) are black or absent."

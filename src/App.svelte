@@ -6,6 +6,7 @@
   import Header from "$lib/components/Header.svelte";
   import NavRail from "$lib/components/NavRail.svelte";
   import MainPanel from "$lib/components/MainPanel.svelte";
+  import SimplePanel from "$lib/components/SimplePanel.svelte";
   import Library from "$lib/components/Library.svelte";
   import CommandPreview from "$lib/components/CommandPreview.svelte";
   import Notices from "$lib/components/Notices.svelte";
@@ -15,6 +16,8 @@
   import ShortcutsSheet from "$lib/components/ShortcutsSheet.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
+  import DefaultProfilePrompt from "$lib/components/DefaultProfilePrompt.svelte";
+  import LogViewer from "$lib/components/LogViewer.svelte";
   import ResizeGrips from "$lib/components/ResizeGrips.svelte";
   import { CircleNotch, WarningCircle, ArrowsClockwise, Copy } from "phosphor-svelte";
   import { copyText } from "$lib/util";
@@ -134,7 +137,11 @@
       </div>
     {:else}
       <div class="flex min-h-0 flex-1" in:fade={{ duration: 120 }}>
-        <NavRail />
+        <!-- Advanced mode keeps the category rail; Simple mode drops it for a
+             full-width curated card view. -->
+        {#if app.uiMode === "advanced"}
+          <NavRail />
+        {/if}
         <main class="flex min-h-0 min-w-0 flex-1 flex-col">
           <!-- The single scrolling region: nothing else clips. -->
           <div class="min-h-0 flex-1 overflow-y-auto">
@@ -143,7 +150,11 @@
               <UpdateBanner />
               <StaleBanner />
               <Notices />
-              <MainPanel />
+              {#if app.uiMode === "simple"}
+                <SimplePanel />
+              {:else}
+                <MainPanel />
+              {/if}
             </div>
           </div>
 
@@ -164,6 +175,8 @@
 <!-- Mounted here, away from its two triggers in LauncherAction, so a view or
      section change can't unmount an open bits-ui modal — see HeroicConfirm. -->
 <HeroicConfirm />
+<DefaultProfilePrompt />
+<LogViewer />
 <Toast />
 <!-- Outside the init-error / loading branches above on purpose: both of those
      are full-screen and were unresizable too, which is exactly when you want to

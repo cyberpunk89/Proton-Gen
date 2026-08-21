@@ -419,6 +419,9 @@ export const mockBootstrap: Bootstrap = {
     library_sort: "",
     last_session: null,
     last_game_appid: null,
+    // Open the browser-dev preview on the new Simple view; toggle to Advanced
+    // in the header to iterate the full catalog.
+    ui_mode: "simple",
     // One seeded entry so the Paths section isn't empty under `pnpm dev`.
     paths: {
       steam_roots: [],

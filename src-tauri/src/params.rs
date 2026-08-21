@@ -343,6 +343,7 @@ pub fn to_spec(cat: &Catalog, opts: &Options) -> (Vec<(String, String)>, Vec<Wra
         match def.kind {
             WrapperKind::Gamescope => wrappers.push(Wrapper::Gamescope(st.value.clone())),
             WrapperKind::Plain => match def.key.as_str() {
+                "game-performance" => wrappers.push(Wrapper::GamePerformance),
                 "gamemoderun" => wrappers.push(Wrapper::Gamemoderun),
                 "mangohud" => wrappers.push(Wrapper::Mangohud),
                 _ => {}

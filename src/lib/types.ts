@@ -89,6 +89,11 @@ export interface Hardware {
  *  onwards, and nothing in the app reads PCI ids. */
 export type GpuGen = "" | "rdna3" | "rdna4";
 
+/** UI density mode. Mirrors `store::Store.ui_mode` (a Rust `String`); the
+ *  frontend treats anything unrecognised — including the `""` an older
+ *  `state.toml` carries — as `"simple"` via `app.uiMode`. */
+export type UiMode = "simple" | "advanced";
+
 /**
  * The `needs` tags a catalog entry or recipe may declare. Kept in lockstep with
  * the branches in `util.ts irrelevance()` and with `KNOWN_NEEDS` in
@@ -129,6 +134,21 @@ export interface StaleInfo {
   installed: string;
   catalog: string;
   updated: string;
+}
+
+/** One game's Proton log, for the diagnostics viewer. Mirrors ipc::ProtonLog.
+ *  A missing file is `present: false` (not an error), so the viewer can prompt
+ *  to enable logging rather than showing a failure. */
+export interface ProtonLog {
+  present: boolean;
+  path: string;
+  /** Tail of the log (last ~64 KB); empty when absent. */
+  tail: string;
+  size: number;
+  /** True when the head was cut to fit the tail window. */
+  truncated: boolean;
+  /** Lines from the tail matching common error/warning markers. */
+  error_lines: string[];
 }
 
 export interface UpdateInfo {
@@ -203,6 +223,10 @@ export interface Store {
   library_sort: string;
   last_session: Config | null;
   last_game_appid: number | null;
+  /** UI density: "simple" | "advanced". A bare string (Rust keeps it a
+   *  `String`); read through `app.uiMode`, which normalises the empty/unknown
+   *  case to "simple". */
+  ui_mode: string;
   paths: Paths;
   /** A reusable selection authored in Settings and applied to a game via a
    *  button. Null until the user saves one. Mirrors store::Store.global_profile

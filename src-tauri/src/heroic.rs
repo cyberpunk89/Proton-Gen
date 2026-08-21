@@ -156,6 +156,11 @@ pub fn apply_to_config(
         match w {
             Wrapper::Mangohud => mangohud = true,
             Wrapper::Gamemoderun => gamemode = true,
+            // Heroic has no native game-performance toggle, so pass it as a
+            // generic prefix wrapper it runs the game through.
+            Wrapper::GamePerformance => {
+                wrapper_opts.push(json!({ "exe": "game-performance", "args": "" }));
+            }
             Wrapper::Gamescope(args) => {
                 let args = args.trim();
                 // Trailing `--` so Heroic's `exe args %command%` composition

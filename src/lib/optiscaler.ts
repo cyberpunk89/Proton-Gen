@@ -163,6 +163,14 @@ export interface OptiScalerConfig {
   fgOutput: string;
   dlssPresetOn: boolean;
   dlssPreset: string; // "0" – "15"
+  /**
+   * `Spoofing.StreamlineSpoofing=true` — makes the engine's Streamline layer see
+   * an NVIDIA GPU so DLSS / ray-reconstruction menus unlock on a Radeon card,
+   * which OptiScaler then translates to FSR/XeSS. Upstream's default is already
+   * true; emitting it explicitly is what some RE Engine / Streamline titles (and
+   * configs that disabled it) need to expose those options.
+   */
+  spoofUnlock: boolean;
   /** Which entries of `OPTI_FIXES` are on, keyed by `Fix.id`. */
   fixes: Record<string, boolean>;
   /**
@@ -192,6 +200,7 @@ export function emptyOptiScaler(): OptiScalerConfig {
     fgOutput: "fsrfg",
     dlssPresetOn: false,
     dlssPreset: "0",
+    spoofUnlock: false,
     fixes: {},
     passthrough: [],
   };
@@ -214,6 +223,7 @@ const KNOWN_KEYS = new Set(
     "framegen.fgoutput",
     "dlss.renderpresetoverride",
     "dlss.renderpresetforall",
+    "spoofing.streamlinespoofing",
     ...OPTI_FIXES.flatMap((f) => f.pairs.map(([k]) => k)),
   ].map((k) => k.toLowerCase()),
 );
@@ -269,6 +279,8 @@ export function parseOptiScaler(str: string): OptiScalerConfig {
     if (get("dlss.renderpresetforall")) c.dlssPreset = get("dlss.renderpresetforall")!;
   }
 
+  if (map.has("spoofing.streamlinespoofing")) c.spoofUnlock = bool(get("spoofing.streamlinespoofing"));
+
   // A fix is on when its first pair is present with the expected value. Only the
   // first is checked: the pairs are applied together, so a partial match means
   // someone edited it by hand and the checkbox should reflect their intent to
@@ -318,6 +330,8 @@ export function buildOptiScaler(c: OptiScalerConfig): string {
     parts.push("DLSS.RenderPresetOverride=true");
     if (c.dlssPreset.trim()) parts.push(`DLSS.RenderPresetForAll=${c.dlssPreset.trim()}`);
   }
+
+  if (c.spoofUnlock) parts.push("Spoofing.StreamlineSpoofing=true");
 
   for (const f of OPTI_FIXES) {
     if (!c.fixes[f.id]) continue;

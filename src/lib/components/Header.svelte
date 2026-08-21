@@ -4,6 +4,7 @@
   import Popover from "./Popover.svelte";
   import Dialog from "./Dialog.svelte";
   import SettingsDrawer from "./SettingsDrawer.svelte";
+  import UiModeToggle from "./UiModeToggle.svelte";
   import { autofocus } from "$lib/actions";
   import { inTauri } from "$lib/ipc";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -15,6 +16,7 @@
     FloppyDisk,
     ArrowsClockwise,
     GlobeHemisphereWest,
+    FileText,
     Minus,
     Square,
     X,
@@ -61,6 +63,8 @@
 
   <div class="ml-auto flex items-center gap-1.5">
     {#if app.view === "builder"}
+    <UiModeToggle />
+
     <button
       onclick={() => (app.showImport = true)}
       class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
@@ -116,6 +120,16 @@
         </button>
       </div>
     </Popover>
+
+    <!-- Per-game Proton log viewer. Only meaningful with a game selected. -->
+    <button
+      onclick={() => (app.showLogs = true)}
+      disabled={app.selectedAppId == null}
+      class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 disabled:opacity-50"
+      title={app.selectedAppId == null ? "Select a game to view its Proton log" : "View this game's Proton log"}
+    >
+      <FileText size={14} /> Logs
+    </button>
     {/if}
 
     <!-- Refresh library (available on both library and builder views) -->

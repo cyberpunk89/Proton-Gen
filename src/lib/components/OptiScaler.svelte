@@ -189,6 +189,21 @@
           </label>
         {/if}
       </div>
+
+      <!-- GPU spoofing: unlock DLSS/RT on Radeon -->
+      <div class="space-y-2 border-t border-border/60 pt-3">
+        <label class="flex gap-2">
+          <input type="checkbox" bind:checked={c.spoofUnlock} class="mt-0.5 shrink-0 accent-[var(--accent)]" />
+          <span class="min-w-0">
+            <span class="block text-sm leading-snug text-subtext">Unlock DLSS / RT on Radeon</span>
+            <span class="block text-[11px] leading-snug text-muted">
+              Streamline GPU spoofing, so RE Engine / Streamline games expose their DLSS and
+              ray-tracing options for OptiScaler to translate. On by default upstream — set it here
+              when a game hides them.
+            </span>
+          </span>
+        </label>
+      </div>
     </div>
 
     <div class="space-y-4">

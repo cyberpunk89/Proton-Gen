@@ -6,6 +6,7 @@ import type {
   HeroicInjectResult,
   LaunchDiff,
   Notice,
+  ProtonLog,
   RecipeChange,
   Store,
   Tier,
@@ -114,6 +115,20 @@ export const ipc = {
     inTauri
       ? invoke<string | null>("game_art", { appId, source, kind, online })
       : Promise.resolve(null),
+
+  // Read a game's Proton log (~/steam-<appid>.log) for the diagnostics viewer.
+  // The mock has no filesystem, so browser-dev always reports "no log yet".
+  readProtonLog: (appId: number) =>
+    inTauri
+      ? invoke<ProtonLog>("read_proton_log", { appId })
+      : Promise.resolve<ProtonLog>({
+          present: false,
+          path: "~/steam-" + appId + ".log",
+          tail: "",
+          size: 0,
+          truncated: false,
+          error_lines: [],
+        }),
 
   saveStore: (store: Store) =>
     inTauri ? invoke<void>("save_store", { store }) : Promise.resolve(),

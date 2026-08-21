@@ -173,7 +173,7 @@ pub fn explain(command: &str) -> Vec<Token> {
         } else if prog == "gamescope" {
             in_gamescope_args = true;
             (TokenKind::Wrapper, Some(prog.clone()))
-        } else if prog == "gamemoderun" || prog == "mangohud" {
+        } else if prog == "game-performance" || prog == "gamemoderun" || prog == "mangohud" {
             (TokenKind::Wrapper, Some(prog.clone()))
         } else if let Some(k) = env_key(&bare) {
             (TokenKind::Env, Some(k.to_string()))

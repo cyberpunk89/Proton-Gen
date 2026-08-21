@@ -39,6 +39,16 @@ updated = "2026-08-19"
 # ============================ Wrappers ============================
 
 [[wrapper]]
+key = "game-performance"
+label = "Game Performance (CachyOS)"
+kind = "plain"
+requires = "game-performance"
+help = "CachyOS wrapper: performance power profile + gaming scheduler for the game's lifetime."
+details = "CachyOS's native gaming wrapper, the modern replacement for gamemoderun on CachyOS. Switches power-profiles-daemon to the 'performance' profile and activates the CachyOS sched-ext gaming scheduler (e.g. scx_lavd) for the duration of the game, restoring the previous settings on exit. Pick this over gamemoderun on CachyOS; don't stack both."
+example = "game-performance %command%"
+url = "https://wiki.cachyos.org/configuration/gaming/"
+
+[[wrapper]]
 key = "gamemoderun"
 label = "GameMode"
 kind = "plain"

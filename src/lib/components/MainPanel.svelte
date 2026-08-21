@@ -1,7 +1,9 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { toast } from "$lib/toast.svelte";
   import { irrelevance } from "$lib/util";
   import { isAdvanced } from "$lib/types";
+  import type { Recipe } from "$lib/types";
   import { fuzzy } from "$lib/fuzzy";
   import OptionRow from "./OptionRow.svelte";
   import Recipes from "./Recipes.svelte";
@@ -152,6 +154,38 @@
     return out;
   });
 
+  /**
+   * Recipes matching the query, so a search for "hdr" or "gamemode" also turns
+   * up the one-click bundles, not only the raw env vars. Kept separate from the
+   * env/wrapper `hits` because a recipe applies as a unit rather than toggling a
+   * single key — and crucially we keep the *original* index into `app.recipes`,
+   * which is the stable handle `applyRecipe` needs (never a filtered index).
+   */
+  interface RecipeHit {
+    index: number;
+    recipe: Recipe;
+    score: number;
+  }
+  let recipeHits = $derived.by((): RecipeHit[] => {
+    if (!searching) return [];
+    const query = q.trim();
+    const out: RecipeHit[] = [];
+    app.recipes.forEach((r, index) => {
+      // Respect the hardware filter, matching the parameter rows above.
+      if (!showAll && irrelevance(app.hwCaps, r.gpu, r.needs)) return;
+      const t = fuzzy(r.name, query, r.tags);
+      const h = fuzzy(r.description, query, r.symptom ? [r.symptom] : []);
+      if (!t && !h) return;
+      out.push({ index, recipe: r, score: (t?.score ?? 0) * 2 + (h?.score ?? 0) });
+    });
+    return out.sort((a, b) => b.score - a.score);
+  });
+
+  function applyRecipe(index: number, name: string) {
+    app.applyRecipe(index);
+    toast.success(`Applied “${name}”`);
+  }
+
   let visible = $derived(
     hits.filter((h) => (showAll || !h.hidden) && (showAdvanced || !h.advanced)),
   );
@@ -161,7 +195,7 @@
   let advancedCount = $derived(
     hits.filter((h) => h.advanced && (showAll || !h.hidden)).length,
   );
-  let anyShown = $derived(visible.length > 0);
+  let anyShown = $derived(visible.length > 0 || recipeHits.length > 0);
 
   /** Search results grouped by category, groups ordered by their best member. */
   let groups = $derived.by(() => {
@@ -185,6 +219,8 @@
   let resultSummary = $derived(
     `${visible.length} match${visible.length === 1 ? "" : "es"} in ${groups.length} categor${
       groups.length === 1 ? "y" : "ies"
+    }${
+      recipeHits.length ? ` · ${recipeHits.length} recipe${recipeHits.length === 1 ? "" : "s"}` : ""
     }`,
   );
 
@@ -292,6 +328,18 @@
       <!-- Grouped so a 40-result query reads as a map of the catalog rather than
            a flat wall. Groups ordered by their best member, items by score. -->
       <div class="space-y-4">
+        {#if recipeHits.length}
+          <div>
+            <p class="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted">
+              Recipes
+            </p>
+            <div class="space-y-1">
+              {#each recipeHits as rh (rh.recipe.name)}
+                {@render recipeRow(rh.index, rh.recipe)}
+              {/each}
+            </div>
+          </div>
+        {/if}
         {#each groups as g (g.name)}
           <div>
             <p class="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted">
@@ -361,6 +409,29 @@
 >
   <OptiScaler onapply={() => (optiOpen = false)} />
 </Dialog>
+
+{#snippet recipeRow(index: number, r: Recipe)}
+  <div class="flex items-center gap-3 rounded-lg px-3 py-2 transition hover:bg-surface-2/50">
+    <span class="min-w-0 flex-1">
+      <span class="flex items-center gap-1.5 text-sm text-text">
+        <Sparkle size={13} class="shrink-0 text-accent" />
+        <span class="truncate">{r.name}</span>
+        <span
+          class="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
+          style="background: color-mix(in srgb, var(--surface-2) 70%, transparent)"
+          >{r.kind === "fix" ? "fix" : "profile"}</span
+        >
+      </span>
+      <span class="mt-0.5 block truncate text-xs text-muted">{r.description}</span>
+    </span>
+    <button
+      onclick={() => applyRecipe(index, r.name)}
+      class="shrink-0 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-subtext transition hover:border-accent/50 hover:text-text"
+    >
+      Apply
+    </button>
+  </div>
+{/snippet}
 
 {#snippet row(h: Hit)}
   {#if h.kind === "wrap"}

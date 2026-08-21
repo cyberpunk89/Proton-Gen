@@ -23,6 +23,7 @@ import type {
   SyncState,
   Tier,
   Token,
+  UiMode,
   UpdateInfo,
 } from "./types";
 
@@ -53,6 +54,7 @@ const EMPTY_STORE: Store = {
   library_sort: "",
   last_session: null,
   last_game_appid: null,
+  ui_mode: "simple",
   paths: { steam_roots: [], steam_libraries: [], proton_dirs: [], bins: {} },
   global_profile: null,
 };
@@ -145,6 +147,12 @@ class AppStore {
   showSettings = $state(false);
   showPalette = $state(false);
   showShortcuts = $state(false);
+  /** The per-game Proton log viewer (opened from the header, for the selected
+   *  game). Lives here so the palette can open it too. */
+  showLogs = $state(false);
+  /** True while the "apply your default profile?" prompt is up for a
+   *  freshly-opened game that had no saved config. Ephemeral, never persisted. */
+  pendingDefaultPrompt = $state(false);
 
   // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
   //   undefined = not requested/loading · null = none found · string = data URL
@@ -840,6 +848,9 @@ class AppStore {
       this.persistStore();
     }
 
+    // Any pending prompt belonged to the game we're leaving.
+    this.pendingDefaultPrompt = false;
+
     if (!game) {
       this.selectedAppId = null;
       this.selectedGameName = null;
@@ -861,6 +872,10 @@ class AppStore {
       // Heroic launches its games itself via umu/Proton; Steam mode's `%command%`
       // is meaningless for them, so default a freshly-opened Heroic game to umu.
       if (game.source === "heroic") this.umu = true;
+      // No saved tuning for this game: offer the default profile if the user has
+      // authored one. Prompt-each-time rather than auto-apply, so it never
+      // silently overwrites what a first-time game should start clean with.
+      if (this.store.global_profile) this.pendingDefaultPrompt = true;
     }
 
     // Undoable on purpose: "I switched games and lost my tuning" is exactly the
@@ -1110,6 +1125,16 @@ class AppStore {
       rdna3: amd && gen === "rdna3",
       rdna4: amd && gen === "rdna4",
     };
+  }
+
+  /** The UI density mode, normalised: anything other than "advanced" (including
+   *  the "" an older state.toml carries) is "simple". */
+  get uiMode(): UiMode {
+    return this.store.ui_mode === "advanced" ? "advanced" : "simple";
+  }
+  setUiMode(m: UiMode) {
+    this.store.ui_mode = m;
+    this.persistStore();
   }
 
   setShowIrrelevant(v: boolean) {
