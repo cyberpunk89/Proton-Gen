@@ -165,6 +165,20 @@ export const mockBootstrap: Bootstrap = {
         tier: "",
       },
       {
+        key: "PROTON_DISCORD_BRIDGE",
+        category: "Compatibility / Misc",
+        default_value: "1",
+        values: ["1", "0"],
+        requires: null,
+        help: "CachyOS: enable Discord Rich Presence for Proton games (rpc-bridge).",
+        details: null,
+        example: "PROTON_DISCORD_BRIDGE=1 %command%",
+        url: null,
+        gpu: null,
+        needs: [],
+        tier: "",
+      },
+      {
         key: "MANGOHUD_CONFIG",
         category: "Logging / Debug",
         default_value: "fps_limit=0,cpu_temp,gpu_temp,ram,vram",
@@ -413,6 +427,11 @@ export const mockBootstrap: Bootstrap = {
     // two-way filtering the Settings selector drives.
     gpu_gen: "rdna4",
     protondb_auto: false,
+    // Enabled in the mock so the "Analyze with AI" button is visible under
+    // `pnpm dev` (the mock IPC returns a canned suggestion).
+    llm_enabled: true,
+    llm_endpoint: "http://127.0.0.1:1234/v1",
+    llm_model: "gpt-oss-20b",
     // One favourite so the pin-to-top behaviour is visible under `pnpm dev`
     // without having to click a star first.
     favorites: [275850],

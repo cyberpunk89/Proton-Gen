@@ -15,6 +15,7 @@ import type {
   HwCaps,
   Notice,
   LaunchDiff,
+  LlmSuggestion,
   Recipe,
   RuntimeDto,
   ConfigWarning,
@@ -23,6 +24,7 @@ import type {
   SyncState,
   Tier,
   Token,
+  TroubleshootResult,
   UiMode,
   UpdateInfo,
 } from "./types";
@@ -50,6 +52,9 @@ const EMPTY_STORE: Store = {
   fsr4: false,
   gpu_gen: "",
   protondb_auto: false,
+  llm_enabled: false,
+  llm_endpoint: "http://127.0.0.1:1234/v1",
+  llm_model: "gpt-oss-20b",
   favorites: [],
   library_sort: "",
   last_session: null,
@@ -150,6 +155,15 @@ class AppStore {
   /** The per-game Proton log viewer (opened from the header, for the selected
    *  game). Lives here so the palette can open it too. */
   showLogs = $state(false);
+  // ---- local-LLM log coach (opt-in; driven from the log viewer) ----
+  aiLoading = $state(false);
+  aiResult = $state<LlmSuggestion | null>(null);
+  aiError = $state<string | null>(null);
+  // ---- local-LLM symptom troubleshooter (opt-in; its own header dialog) ----
+  showTroubleshooter = $state(false);
+  tsLoading = $state(false);
+  tsResult = $state<TroubleshootResult | null>(null);
+  tsError = $state<string | null>(null);
   /** True while the "apply your default profile?" prompt is up for a
    *  freshly-opened game that had no saved config. Ephemeral, never persisted. */
   pendingDefaultPrompt = $state(false);
@@ -1164,6 +1178,18 @@ class AppStore {
     this.store.protondb_auto = v;
     this.persistStore();
   }
+  setLlmEnabled(v: boolean) {
+    this.store.llm_enabled = v;
+    this.persistStore();
+  }
+  setLlmEndpoint(v: string) {
+    this.store.llm_endpoint = v;
+    this.persistStore();
+  }
+  setLlmModel(v: string) {
+    this.store.llm_model = v;
+    this.persistStore();
+  }
 
   // ------------------------------ paths -------------------------------------
 
@@ -1323,6 +1349,116 @@ class AppStore {
     this.tierRequested.delete(appId);
     delete this.tierCache[String(appId)];
     this.requestTier(appId);
+  }
+
+  /**
+   * Send the current game's log (plus the built command) to the local LLM and
+   * store its suggestions. The backend adds the catalog allow-list and hardware
+   * summary and reads the endpoint/model from the store; we just forward the log
+   * content already on screen. Advisory only — applying a suggested change is a
+   * separate, explicit user click (`applyLlmChange`).
+   */
+  async analyzeLog(log: {
+    error_lines: string[];
+    tail: string;
+  }): Promise<void> {
+    this.aiLoading = true;
+    this.aiError = null;
+    try {
+      this.aiResult = await ipc.llmAnalyze({
+        command: this.command,
+        game_name: this.selectedGameName ?? "",
+        error_lines: log.error_lines,
+        log_tail: log.tail,
+      });
+    } catch (e) {
+      console.error("llmAnalyze failed", e);
+      this.aiError = String(e);
+      this.aiResult = null;
+    } finally {
+      this.aiLoading = false;
+    }
+  }
+
+  /** Clear the last analysis (e.g. when the log dialog closes or the game
+   *  changes) so a stale suggestion never shows against a different game. */
+  clearAnalysis() {
+    this.aiResult = null;
+    this.aiError = null;
+    this.aiLoading = false;
+  }
+
+  /**
+   * Diagnose a free-text symptom. Pulls the current game's log in as optional
+   * context (the diagnosis is better with it, but works without — the user may
+   * be troubleshooting before a first launch), then asks the backend, which
+   * offers the Fix recipes and catalog allow-list to constrain the answer.
+   */
+  async troubleshoot(symptom: string): Promise<void> {
+    this.tsLoading = true;
+    this.tsError = null;
+    try {
+      let errorLines: string[] = [];
+      let hasLog = false;
+      if (this.selectedAppId != null) {
+        try {
+          const log = await ipc.readProtonLog(this.selectedAppId);
+          if (log.present) {
+            hasLog = true;
+            errorLines = log.error_lines;
+          }
+        } catch {
+          // The log is optional context; a read failure must not block the
+          // symptom-only diagnosis.
+        }
+      }
+      this.tsResult = await ipc.llmTroubleshoot({
+        symptom,
+        command: this.command,
+        game_name: this.selectedGameName ?? "",
+        error_lines: errorLines,
+        has_log: hasLog,
+      });
+    } catch (e) {
+      console.error("llmTroubleshoot failed", e);
+      this.tsError = String(e);
+      this.tsResult = null;
+    } finally {
+      this.tsLoading = false;
+    }
+  }
+
+  /** Reset the troubleshooter (e.g. when its dialog closes). */
+  clearTroubleshoot() {
+    this.tsResult = null;
+    this.tsError = null;
+    this.tsLoading = false;
+  }
+
+  /**
+   * Apply one AI-suggested change by toggling the catalog key it names. Only
+   * keys the catalog actually has can be applied; `kind` is re-derived from the
+   * live env/wrapper maps rather than trusting the model's hint. Returns whether
+   * the change was applied.
+   */
+  applyLlmChange(change: { key: string; value: string }): boolean {
+    if (this.env[change.key]) {
+      if (!this.env[change.key].enabled) this.toggleEnv(change.key);
+      if (change.value) this.setEnvValue(change.key, change.value);
+      return true;
+    }
+    if (this.wrap[change.key]) {
+      if (!this.wrap[change.key].enabled) this.toggleWrap(change.key);
+      if (change.value) this.setWrapValue(change.key, change.value);
+      return true;
+    }
+    return false;
+  }
+
+  /** True when the catalog has the key an AI change names, so the UI can show a
+   *  clickable "Apply" chip (vs. plain advisory text for unknown keys). */
+  hasCatalogKey(key: string): boolean {
+    return !!this.env[key] || !!this.wrap[key];
   }
 
   dismissStale() {

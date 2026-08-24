@@ -126,6 +126,19 @@ pub struct Store {
     /// Auto-fetch the ProtonDB tier when a Steam game is selected.
     #[serde(default)]
     pub protondb_auto: bool,
+    /// Opt-in local-LLM "log coach". Off by default — it needs a local
+    /// OpenAI-compatible server running, so it only appears once the user enables
+    /// it in Settings.
+    #[serde(default)]
+    pub llm_enabled: bool,
+    /// Base URL of the local LLM endpoint (LM Studio / Ollama / llama.cpp). The
+    /// `/v1` base; `/chat/completions` and `/models` hang off it. A non-empty
+    /// serde default so a state file predating the field still gets a working URL.
+    #[serde(default = "default_llm_endpoint")]
+    pub llm_endpoint: String,
+    /// Model id to request from the endpoint.
+    #[serde(default = "default_llm_model")]
+    pub llm_model: String,
     /// Games pinned to the top of the library grid, under every sort. A
     /// `BTreeSet` for the same reason `game_memory` is a `BTreeMap`: stable,
     /// diffable TOML output rather than whatever order the frontend sent.
@@ -159,14 +172,29 @@ pub struct Store {
     pub global_profile: Option<Config>,
 }
 
+fn default_llm_endpoint() -> String {
+    crate::llm::DEFAULT_ENDPOINT.to_string()
+}
+fn default_llm_model() -> String {
+    crate::llm::DEFAULT_MODEL.to_string()
+}
+
 impl Store {
+    /// A fresh store with serde field defaults applied. Routed through an empty
+    /// TOML parse rather than `Self::default()` so the non-empty `#[serde(default
+    /// = ...)]` fields (the LLM endpoint/model) get their real defaults, which a
+    /// derived `Default` would leave blank.
+    fn fresh() -> Self {
+        toml::from_str("").unwrap_or_default()
+    }
+
     pub fn load() -> Self {
         let Some(path) = params::config_file("state.toml") else {
-            return Self::default();
+            return Self::fresh();
         };
         match std::fs::read_to_string(&path) {
-            Ok(text) => toml::from_str(&text).unwrap_or_default(),
-            Err(_) => Self::default(),
+            Ok(text) => toml::from_str(&text).unwrap_or_else(|_| Self::fresh()),
+            Err(_) => Self::fresh(),
         }
     }
 

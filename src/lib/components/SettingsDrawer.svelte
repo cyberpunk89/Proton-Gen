@@ -15,10 +15,11 @@
     CaretDown,
     FolderOpen,
     Trash,
+    Robot,
   } from "phosphor-svelte";
   // Aliased: `open` is already the drawer's own bindable prop.
   import { open as pickPath } from "@tauri-apps/plugin-dialog";
-  import { inTauri } from "$lib/ipc";
+  import { inTauri, ipc } from "$lib/ipc";
   import Badges from "./Badges.svelte";
   import type { Component } from "svelte";
   import type { GpuGen } from "$lib/types";
@@ -33,7 +34,27 @@
   });
 
   // Sections are collapsible; all start collapsed to keep the drawer tidy.
-  let sections = $state({ appearance: false, behavior: false, paths: false });
+  let sections = $state({ appearance: false, behavior: false, ai: false, paths: false });
+
+  // Local-LLM connection test (populates the model picker from GET /models).
+  let llmModels = $state<string[]>([]);
+  let llmTest = $state<"idle" | "loading" | "ok" | "err">("idle");
+  let llmTestMsg = $state("");
+  async function testLlm() {
+    llmTest = "loading";
+    llmTestMsg = "";
+    try {
+      llmModels = await ipc.llmModels();
+      llmTest = "ok";
+      llmTestMsg = llmModels.length
+        ? `${llmModels.length} model${llmModels.length === 1 ? "" : "s"} available`
+        : "Connected, but the server lists no models.";
+    } catch (e) {
+      llmTest = "err";
+      llmTestMsg = String(e);
+      llmModels = [];
+    }
+  }
 
   // Typed rather than inlined in the {#each}, so the tuple widens to GpuGen
   // instead of string and `setGpuGen` keeps its union.
@@ -157,6 +178,29 @@
               () => app.setProtondbAuto(!app.store.protondb_auto),
             )}
             {@render globalProfile()}
+          </div>
+          {/if}
+        </section>
+
+        <!-- AI assistant -->
+        <section>
+          {@render sectionHeading(
+            Robot,
+            "AI assistant",
+            sections.ai,
+            () => (sections.ai = !sections.ai),
+          )}
+          {#if sections.ai}
+          <div id="drawer-section-ai-assistant" class="mt-2 space-y-0.5">
+            {@render toggle(
+              "Enable AI log coach",
+              "Send a game's Proton log to a local LLM for tuning suggestions. Needs a running OpenAI-compatible server (LM Studio, Ollama, llama.cpp).",
+              app.store.llm_enabled,
+              () => app.setLlmEnabled(!app.store.llm_enabled),
+            )}
+            {#if app.store.llm_enabled}
+              {@render aiAssistant()}
+            {/if}
           </div>
           {/if}
         </section>
@@ -391,6 +435,68 @@
         >
           Clear
         </button>
+      {/if}
+    </div>
+  </div>
+{/snippet}
+
+<!-- Local-LLM endpoint + model, shown when the AI coach is enabled. The endpoint
+     is the `/v1` base; "Test connection" lists the models the server is serving
+     so the user can pick one without typing the exact id. -->
+{#snippet aiAssistant()}
+  <div class="space-y-2 rounded-lg px-1 py-1.5">
+    <div>
+      <p class="text-[11px] font-medium text-subtext">Endpoint</p>
+      <p class="mb-1.5 text-[11px] leading-snug text-muted">
+        The <code class="font-mono">/v1</code> base URL of your local server.
+      </p>
+      <input
+        value={app.store.llm_endpoint}
+        oninput={(e) => app.setLlmEndpoint(e.currentTarget.value)}
+        placeholder="http://127.0.0.1:1234/v1"
+        aria-label="LLM endpoint"
+        spellcheck="false"
+        class="w-full rounded-lg border border-border bg-surface-2/60 px-2 py-1 font-mono text-[11px] text-text"
+      />
+    </div>
+    <div>
+      <p class="text-[11px] font-medium text-subtext">Model</p>
+      <div class="flex gap-1">
+        <input
+          value={app.store.llm_model}
+          oninput={(e) => app.setLlmModel(e.currentTarget.value)}
+          placeholder="gpt-oss-20b"
+          aria-label="LLM model"
+          spellcheck="false"
+          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-2/60 px-2 py-1 font-mono text-[11px] text-text"
+        />
+        <button
+          onclick={testLlm}
+          disabled={llmTest === "loading"}
+          class="shrink-0 rounded-lg border border-border px-2 py-1 text-[11px] text-subtext transition hover:border-accent/50 hover:text-text disabled:opacity-60"
+        >
+          {llmTest === "loading" ? "Testing…" : "Test connection"}
+        </button>
+      </div>
+      {#if llmTest === "ok"}
+        <p class="mt-1 text-[11px] text-green">{llmTestMsg}</p>
+      {:else if llmTest === "err"}
+        <p class="mt-1 text-[11px] leading-snug text-red">Couldn't connect: {llmTestMsg}</p>
+      {/if}
+      {#if llmModels.length > 0}
+        <div class="mt-1.5 flex flex-wrap gap-1">
+          {#each llmModels as m (m)}
+            <button
+              onclick={() => app.setLlmModel(m)}
+              class="rounded-lg border px-2 py-0.5 text-[11px] font-mono transition {app.store
+                .llm_model === m
+                ? 'border-accent text-text'
+                : 'border-border text-subtext hover:border-accent/50'}"
+            >
+              {m}
+            </button>
+          {/each}
+        </div>
       {/if}
     </div>
   </div>

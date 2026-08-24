@@ -18,6 +18,7 @@ use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
 use crate::heroic;
 use crate::lint;
+use crate::llm::{self, LlmRequest, LlmSuggestion, RecipeRef, TroubleshootRequest, TroubleshootResult};
 use crate::params::{Catalog, ConfigWarning};
 use crate::parser;
 use crate::protondb::{self, Tier};
@@ -702,6 +703,79 @@ pub async fn read_proton_log(app_id: u32) -> Result<ProtonLog, String> {
     tauri::async_runtime::spawn_blocking(move || read_proton_log_blocking(app_id))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Analyze a game's Proton log with the configured local LLM (off the UI thread).
+/// Opt-in: the endpoint/model come from the store, while the catalog allow-list
+/// and detected-hardware summary are added here from `AppState`. Read-only — the
+/// result is advice; the frontend applies a change only when the user clicks.
+#[tauri::command]
+pub async fn llm_analyze(
+    state: State<'_, AppState>,
+    req: LlmRequest,
+) -> Result<LlmSuggestion, String> {
+    let (endpoint, model) = {
+        let s = state.store.lock().unwrap();
+        (s.llm_endpoint.clone(), s.llm_model.clone())
+    };
+    let hardware = state.hardware.summary();
+    let mut catalog_keys: Vec<String> =
+        state.catalog.envs.iter().map(|e| e.key.clone()).collect();
+    catalog_keys.extend(state.catalog.wrappers.iter().map(|w| w.key.clone()));
+    tauri::async_runtime::spawn_blocking(move || {
+        llm::suggest_blocking(req, &endpoint, &model, &hardware, &catalog_keys)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Diagnose a free-text symptom with the local LLM (off the UI thread),
+/// recommending existing Fix recipes (by IPC index) where they fit and proposing
+/// catalog changes otherwise. Opt-in; endpoint/model from the store, the Fix
+/// recipe list + hardware summary + catalog allow-list from `AppState`.
+#[tauri::command]
+pub async fn llm_troubleshoot(
+    state: State<'_, AppState>,
+    req: TroubleshootRequest,
+) -> Result<TroubleshootResult, String> {
+    let (endpoint, model) = {
+        let s = state.store.lock().unwrap();
+        (s.llm_endpoint.clone(), s.llm_model.clone())
+    };
+    let hardware = state.hardware.summary();
+    // Only Fix recipes are offered, tagged with their stable IPC index (position
+    // in the full recipe list, which `apply_recipe` indexes by).
+    let recipes: Vec<RecipeRef> = state
+        .recipes
+        .recipes
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.kind == recipes::RecipeKind::Fix)
+        .map(|(i, r)| RecipeRef {
+            index: i as u32,
+            name: r.name.clone(),
+            symptom: r.symptom.clone().unwrap_or_default(),
+            description: r.description.clone(),
+        })
+        .collect();
+    let mut catalog_keys: Vec<String> =
+        state.catalog.envs.iter().map(|e| e.key.clone()).collect();
+    catalog_keys.extend(state.catalog.wrappers.iter().map(|w| w.key.clone()));
+    tauri::async_runtime::spawn_blocking(move || {
+        llm::troubleshoot_blocking(req, &recipes, &endpoint, &model, &hardware, &catalog_keys)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// List the models the configured local LLM endpoint is serving (off the UI
+/// thread), for the Settings model picker / connection test.
+#[tauri::command]
+pub async fn llm_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let endpoint = state.store.lock().unwrap().llm_endpoint.clone();
+    tauri::async_runtime::spawn_blocking(move || llm::list_models_blocking(&endpoint))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Replace and persist the whole store (theme, presets, per-game memory, dismissals).

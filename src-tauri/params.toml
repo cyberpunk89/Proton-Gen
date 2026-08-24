@@ -34,7 +34,7 @@
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
 proton_cachyos_build = "20260703"
-updated = "2026-08-19"
+updated = "2026-08-24"
 
 # ============================ Wrappers ============================
 
@@ -1075,7 +1075,6 @@ url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
 [[env]]
 key = "PROTON_DISCORD_BRIDGE"
-tier = "advanced"
 category = "Compatibility / Misc"
 default_value = "1"
 values = ["1", "0"]

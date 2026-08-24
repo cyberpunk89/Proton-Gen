@@ -18,6 +18,7 @@
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
   import DefaultProfilePrompt from "$lib/components/DefaultProfilePrompt.svelte";
   import LogViewer from "$lib/components/LogViewer.svelte";
+  import Troubleshooter from "$lib/components/Troubleshooter.svelte";
   import ResizeGrips from "$lib/components/ResizeGrips.svelte";
   import { CircleNotch, WarningCircle, ArrowsClockwise, Copy } from "phosphor-svelte";
   import { copyText } from "$lib/util";
@@ -177,6 +178,7 @@
 <HeroicConfirm />
 <DefaultProfilePrompt />
 <LogViewer />
+<Troubleshooter />
 <Toast />
 <!-- Outside the init-error / loading branches above on purpose: both of those
      are full-screen and were unresizable too, which is exactly when you want to

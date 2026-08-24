@@ -5,8 +5,12 @@ import type {
   DiffStatus,
   HeroicInjectResult,
   LaunchDiff,
+  LlmRequest,
+  LlmSuggestion,
   Notice,
   ProtonLog,
+  TroubleshootRequest,
+  TroubleshootResult,
   RecipeChange,
   Store,
   Tier,
@@ -117,18 +121,72 @@ export const ipc = {
       : Promise.resolve(null),
 
   // Read a game's Proton log (~/steam-<appid>.log) for the diagnostics viewer.
-  // The mock has no filesystem, so browser-dev always reports "no log yet".
+  // The mock has no filesystem, so it returns a small canned "present" log — just
+  // enough to exercise the viewer and the AI coach (present + a couple of error
+  // lines) under `pnpm dev`.
   readProtonLog: (appId: number) =>
     inTauri
       ? invoke<ProtonLog>("read_proton_log", { appId })
       : Promise.resolve<ProtonLog>({
-          present: false,
+          present: true,
           path: "~/steam-" + appId + ".log",
-          tail: "",
-          size: 0,
+          tail:
+            "info:  Game: eldenring.exe\n" +
+            "info:  DXVK: v2.4\n" +
+            "warn:  D3D11: unsupported feature level\n" +
+            "err:   vulkan: device lost while presenting\n" +
+            "info:  shader cache: 1423 entries\n",
+          size: 4096,
           truncated: false,
-          error_lines: [],
+          error_lines: [
+            "warn:  D3D11: unsupported feature level",
+            "err:   vulkan: device lost while presenting",
+          ],
         }),
+
+  // Analyze a game's Proton log with the configured local LLM. The mock returns
+  // a canned suggestion (with one apply-able change) so the UI is exercisable in
+  // browser-dev without a running server.
+  llmAnalyze: (req: LlmRequest) =>
+    inTauri
+      ? invoke<LlmSuggestion>("llm_analyze", { req })
+      : Promise.resolve<LlmSuggestion>({
+          text: "**Mock analysis.** The log shows a 'device lost while presenting' error — a GPU hang, often driver or shader-cache related. As a first step, add the MangoHud overlay to watch frame times and confirm where the hitching starts.\n\n(Connect a local LLM in the real app for real suggestions.)",
+          changes: [
+            {
+              key: "mangohud",
+              value: "",
+              kind: "wrap",
+              reason: "Show frame times on-screen to pinpoint the stutter.",
+            },
+          ],
+        }),
+
+  // Diagnose a free-text symptom: recommend existing Fix recipes (by index) and
+  // propose catalog changes. Mock recommends the "Game crashes at launch" fix
+  // (index 3 in mock recipes) plus one change, to exercise both result types.
+  llmTroubleshoot: (req: TroubleshootRequest) =>
+    inTauri
+      ? invoke<TroubleshootResult>("llm_troubleshoot", { req })
+      : Promise.resolve<TroubleshootResult>({
+          text:
+            "**Mock diagnosis.** A crash right at launch is most often a shader-cache or runtime mismatch. The 'Game crashes at launch' recipe below applies the usual first-line fixes; if it persists, forcing the Wayland driver can help on some setups.\n\n(Connect a local LLM in the real app for real diagnoses.)",
+          recipes: [3],
+          changes: [
+            {
+              key: "PROTON_ENABLE_WAYLAND",
+              value: "1",
+              kind: "env",
+              reason: "Use the native Wayland driver — sometimes avoids launch crashes.",
+            },
+          ],
+        }),
+
+  // List models the local LLM endpoint is serving (Settings picker / test).
+  llmModels: () =>
+    inTauri
+      ? invoke<string[]>("llm_models")
+      : Promise.resolve<string[]>(["gpt-oss-20b", "google/gemma-3-12b-qat"]),
 
   saveStore: (store: Store) =>
     inTauri ? invoke<void>("save_store", { store }) : Promise.resolve(),

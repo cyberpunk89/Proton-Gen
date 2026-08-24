@@ -151,6 +151,52 @@ export interface ProtonLog {
   error_lines: string[];
 }
 
+/** Mirrors llm::LlmRequest. The context the frontend hands the backend for one
+ *  analysis; the backend adds the catalog allow-list + hardware summary. */
+export interface LlmRequest {
+  command: string;
+  game_name: string;
+  error_lines: string[];
+  log_tail: string;
+}
+
+/** Mirrors llm::LlmChange. One concrete, catalog-backed change the model
+ *  recommends. `kind` is "env" | "wrap" (a hint; the UI re-checks the key). */
+export interface LlmChange {
+  key: string;
+  value: string;
+  kind: string;
+  reason: string;
+}
+
+/** Mirrors llm::LlmSuggestion. */
+export interface LlmSuggestion {
+  /** The model's markdown analysis. */
+  text: string;
+  /** Catalog-backed changes parsed from the model's JSON block. */
+  changes: LlmChange[];
+}
+
+/** Mirrors llm::TroubleshootRequest. A free-text symptom plus optional log
+ *  signal; the backend adds the recipe list, hardware and catalog allow-list. */
+export interface TroubleshootRequest {
+  symptom: string;
+  command: string;
+  game_name: string;
+  error_lines: string[];
+  has_log: boolean;
+}
+
+/** Mirrors llm::TroubleshootResult. */
+export interface TroubleshootResult {
+  /** The model's markdown explanation. */
+  text: string;
+  /** Recommended Fix-recipe IPC indices (into `app.recipes`). */
+  recipes: number[];
+  /** Extra catalog-backed changes no recipe covers. */
+  changes: LlmChange[];
+}
+
 export interface UpdateInfo {
   available: boolean;
   current: string;
@@ -215,6 +261,12 @@ export interface Store {
    *  a `String`, and `options_from_lists` treats anything unrecognised as "". */
   gpu_gen: GpuGen;
   protondb_auto: boolean;
+  /** Opt-in local-LLM log coach. Off by default (needs a local server). */
+  llm_enabled: boolean;
+  /** Base URL of the local LLM endpoint (the `/v1` base). */
+  llm_endpoint: string;
+  /** Model id to request from the endpoint. */
+  llm_model: string;
   /** Appids pinned to the top of the library under every sort. A Rust
    *  `BTreeSet<u32>`, so it arrives sorted and must be sent back without
    *  duplicates. */

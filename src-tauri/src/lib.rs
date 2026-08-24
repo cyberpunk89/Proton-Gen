@@ -23,6 +23,7 @@ mod hardware;
 mod heroic;
 mod ipc;
 mod lint;
+mod llm;
 mod params;
 mod parser;
 mod protondb;
@@ -59,6 +60,9 @@ pub fn run() {
             ipc::protondb_fetch,
             ipc::game_art,
             ipc::read_proton_log,
+            ipc::llm_analyze,
+            ipc::llm_troubleshoot,
+            ipc::llm_models,
             ipc::save_store,
             ipc::check_for_update,
             ipc::run_update,

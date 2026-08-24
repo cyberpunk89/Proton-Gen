@@ -9,6 +9,7 @@
   import { inTauri } from "$lib/ipc";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
+    ArrowLeft,
     BookmarkSimple,
     ClipboardText,
     GearSix,
@@ -17,6 +18,7 @@
     ArrowsClockwise,
     GlobeHemisphereWest,
     FileText,
+    Robot,
     Minus,
     Square,
     X,
@@ -63,6 +65,15 @@
 
   <div class="ml-auto flex items-center gap-1.5">
     {#if app.view === "builder"}
+    <button
+      onclick={() => app.backToLibrary()}
+      title="Back to library"
+      aria-label="Back to library"
+      class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+    >
+      <ArrowLeft size={14} /> Library
+    </button>
+
     <UiModeToggle />
 
     <button
@@ -130,6 +141,17 @@
     >
       <FileText size={14} /> Logs
     </button>
+
+    <!-- AI symptom troubleshooter. Opt-in; only shown when the AI coach is on. -->
+    {#if app.store.llm_enabled}
+      <button
+        onclick={() => (app.showTroubleshooter = true)}
+        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+        title="Describe a problem and get AI-suggested fixes"
+      >
+        <Robot size={14} /> Troubleshoot
+      </button>
+    {/if}
     {/if}
 
     <!-- Refresh library (available on both library and builder views) -->

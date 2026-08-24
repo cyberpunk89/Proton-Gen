@@ -13,6 +13,7 @@
     Gauge,
     Sparkle,
     Sun,
+    DiscordLogo,
     GlobeHemisphereWest,
     SlidersHorizontal,
   } from "phosphor-svelte";
@@ -98,6 +99,13 @@
         ["PROTON_ENABLE_WAYLAND", "1"],
         ["DXVK_HDR", "1"],
       ],
+    },
+    {
+      id: "discord",
+      title: "Discord Rich Presence",
+      blurb: "CachyOS rpc-bridge: show the game you're playing in Discord for Proton games.",
+      icon: DiscordLogo,
+      env: [["PROTON_DISCORD_BRIDGE", "1"]],
     },
   ]);
 

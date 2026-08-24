@@ -4,7 +4,14 @@
   import { toast } from "$lib/toast.svelte";
   import Dialog from "./Dialog.svelte";
   import type { ProtonLog } from "$lib/types";
-  import { ArrowsClockwise, WarningCircle, FileText, Sparkle } from "phosphor-svelte";
+  import {
+    ArrowsClockwise,
+    WarningCircle,
+    FileText,
+    Sparkle,
+    Robot,
+    Lightning,
+  } from "phosphor-svelte";
 
   /**
    * The per-game Proton log viewer, mounted once at the app root and opened from
@@ -21,6 +28,8 @@
     if (id == null) return;
     loading = true;
     loadError = null;
+    // A fresh log means the previous analysis no longer applies.
+    app.clearAnalysis();
     try {
       log = await ipc.readProtonLog(id);
     } catch (e) {
@@ -28,6 +37,17 @@
       log = null;
     } finally {
       loading = false;
+    }
+  }
+
+  function analyze() {
+    if (!log?.present) return;
+    void app.analyzeLog({ error_lines: log.error_lines, tail: log.tail });
+  }
+
+  function apply(change: { key: string; value: string }) {
+    if (app.applyLlmChange(change)) {
+      toast.success(`Applied ${change.key}${change.value ? `=${change.value}` : ""}`);
     }
   }
 
@@ -92,6 +112,17 @@
           <Sparkle size={13} /> Enable logging
         </button>
       {/if}
+      {#if app.store.llm_enabled}
+        <button
+          onclick={analyze}
+          disabled={app.aiLoading || !log?.present}
+          class="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 px-2.5 py-1.5 text-xs font-medium text-accent transition hover:bg-accent/10 disabled:opacity-60"
+          title="Send this log to your local AI for tuning suggestions"
+        >
+          <Robot size={13} class={app.aiLoading ? "animate-pulse" : ""} />
+          {app.aiLoading ? "Analyzing…" : "Analyze with AI"}
+        </button>
+      {/if}
     </div>
 
     {#if loadError}
@@ -121,6 +152,61 @@
           </div>
         </div>
       {/if}
+
+      <!-- AI coach: analysis + one-click apply chips for catalog-backed changes -->
+      {#if app.store.llm_enabled && (app.aiLoading || app.aiError || app.aiResult)}
+        <div class="rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <p class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-accent">
+            <Robot size={14} weight="fill" /> AI suggestions
+            <span class="font-normal text-muted">· {app.store.llm_model}</span>
+          </p>
+          {#if app.aiLoading}
+            <p class="text-sm text-muted">Reading the log and thinking… (local model)</p>
+          {:else if app.aiError}
+            <p class="text-sm text-red">
+              Couldn't reach the AI: {app.aiError}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              Check the endpoint in Settings and that your local server has a model loaded.
+            </p>
+            <button
+              onclick={analyze}
+              class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-subtext transition hover:border-accent/50"
+            >
+              <ArrowsClockwise size={12} /> Retry
+            </button>
+          {:else if app.aiResult}
+            <p class="whitespace-pre-wrap text-sm leading-relaxed text-subtext">
+              {app.aiResult.text}
+            </p>
+            {#if app.aiResult.changes.length > 0}
+              <div class="mt-2.5 flex flex-wrap gap-1.5">
+                {#each app.aiResult.changes as c (c.key + c.value)}
+                  {#if app.hasCatalogKey(c.key)}
+                    <button
+                      onclick={() => apply(c)}
+                      title={c.reason}
+                      class="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/20"
+                    >
+                      <Lightning size={12} weight="fill" /> Apply {c.key}{c.value
+                        ? `=${c.value}`
+                        : ""}
+                    </button>
+                  {:else}
+                    <span
+                      title={c.reason}
+                      class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted"
+                    >
+                      {c.key}{c.value ? `=${c.value}` : ""}
+                    </span>
+                  {/if}
+                {/each}
+              </div>
+            {/if}
+          {/if}
+        </div>
+      {/if}
+
       <div>
         <p class="mb-1 text-[11px] uppercase tracking-wider text-muted">
           {log.truncated ? "Tail of log (head trimmed)" : "Log"}
