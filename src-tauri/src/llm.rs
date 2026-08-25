@@ -111,19 +111,40 @@ pub fn suggest_blocking(
     let body = chat_body(&resolve_model(model), &req, hardware, catalog_keys);
     let payload = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
 
-    let mut request = ehttp::Request::post(&url, payload);
-    request.headers.insert("Content-Type", "application/json");
-    let resp = ehttp::fetch_blocking(&request)?;
+    let content = chat_completion(&url, payload)?;
+    let changes = extract_changes(&content, catalog_keys);
+    Ok(LlmSuggestion { text: content, changes })
+}
+
+/// POST a chat-completions body and return the assistant message content.
+///
+/// The header handling matters: `ehttp::Request::post` seeds the header set with
+/// `Content-Type: text/plain; charset=utf-8`, and `Headers::insert` *appends*
+/// rather than replaces. Inserting `application/json` therefore left two
+/// `Content-Type` headers on the wire; LM Studio honored the first (text/plain)
+/// and answered `415 Unsupported Media Type`. Replacing the whole header set
+/// guarantees exactly one `Content-Type`.
+fn chat_completion(url: &str, payload: Vec<u8>) -> Result<String, String> {
+    let resp = ehttp::fetch_blocking(&json_post(url, payload))?;
     if !resp.ok {
         return Err(format!(
             "HTTP {} {} from {url} — is the local server running with a model loaded?",
             resp.status, resp.status_text
         ));
     }
-    let text = resp.text().unwrap_or("");
-    let content = parse_content(text)?;
-    let changes = extract_changes(&content, catalog_keys);
-    Ok(LlmSuggestion { text: content, changes })
+    parse_content(resp.text().unwrap_or(""))
+}
+
+/// Build a JSON POST request with a single, correct `Content-Type`. Assigning
+/// the whole header set (rather than `insert`-ing) is deliberate — see
+/// [`chat_completion`] for the 415 this avoids.
+fn json_post(url: &str, payload: Vec<u8>) -> ehttp::Request {
+    let mut request = ehttp::Request::post(url, payload);
+    request.headers = ehttp::Headers::new(&[
+        ("Content-Type", "application/json"),
+        ("Accept", "application/json"),
+    ]);
+    request
 }
 
 /// A Fix recipe the model may recommend, passed in by the command from the
@@ -174,16 +195,7 @@ pub fn troubleshoot_blocking(
     let body = troubleshoot_body(&resolve_model(model), &req, recipes, hardware, catalog_keys);
     let payload = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
 
-    let mut request = ehttp::Request::post(&url, payload);
-    request.headers.insert("Content-Type", "application/json");
-    let resp = ehttp::fetch_blocking(&request)?;
-    if !resp.ok {
-        return Err(format!(
-            "HTTP {} {} from {url} — is the local server running with a model loaded?",
-            resp.status, resp.status_text
-        ));
-    }
-    let content = parse_content(resp.text().unwrap_or(""))?;
+    let content = chat_completion(&url, payload)?;
     let valid: Vec<u32> = recipes.iter().map(|r| r.index).collect();
     Ok(TroubleshootResult {
         recipes: extract_recipe_indices(&content, &valid),
@@ -469,6 +481,22 @@ mod tests {
         let content = "Analysis.\n\n```json\n{\"recipes\":[2]}\n```";
         assert_eq!(extract_recipe_indices(content, &[2]), vec![2]);
         assert!(extract_changes(content, &keys()).is_empty());
+    }
+
+    #[test]
+    fn json_post_has_exactly_one_json_content_type() {
+        // Regression guard: ehttp's POST seeds Content-Type: text/plain and
+        // header inserts append, which produced a duplicate and a 415 from
+        // LM Studio. There must be exactly one, and it must be application/json.
+        let req = json_post("http://127.0.0.1:1234/v1/chat/completions", b"{}".to_vec());
+        let cts: Vec<&str> = req
+            .headers
+            .headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            .map(|(_, v)| v.as_str())
+            .collect();
+        assert_eq!(cts, vec!["application/json"]);
     }
 
     #[test]
