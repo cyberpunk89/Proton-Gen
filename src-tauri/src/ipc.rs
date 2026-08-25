@@ -342,7 +342,7 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         recipes: state.recipes.recipes.clone(),
         runtimes: state.runtimes.clone(),
         games: state.games.clone(),
-        hardware: state.hardware,
+        hardware: state.hardware.clone(),
         store,
         launch_options: state.launch_options.clone(),
         compat_tools: state.compat_tools.clone(),
@@ -388,7 +388,7 @@ pub fn rescan(state: State<'_, AppState>) -> Bootstrap {
         recipes: state.recipes.recipes.clone(),
         runtimes: d.runtimes,
         games: d.games,
-        hardware: state.hardware,
+        hardware: state.hardware.clone(),
         store,
         launch_options: d.launch_options,
         compat_tools: d.compat_tools,
@@ -718,7 +718,7 @@ pub async fn llm_analyze(
         let s = state.store.lock().unwrap();
         (s.llm_endpoint.clone(), s.llm_model.clone())
     };
-    let hardware = state.hardware.summary();
+    let hardware = state.hardware.llm_context();
     let mut catalog_keys: Vec<String> =
         state.catalog.envs.iter().map(|e| e.key.clone()).collect();
     catalog_keys.extend(state.catalog.wrappers.iter().map(|w| w.key.clone()));
@@ -742,7 +742,7 @@ pub async fn llm_troubleshoot(
         let s = state.store.lock().unwrap();
         (s.llm_endpoint.clone(), s.llm_model.clone())
     };
-    let hardware = state.hardware.summary();
+    let hardware = state.hardware.llm_context();
     // Only Fix recipes are offered, tagged with their stable IPC index (position
     // in the full recipe list, which `apply_recipe` indexes by).
     let recipes: Vec<RecipeRef> = state

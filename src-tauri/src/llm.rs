@@ -62,18 +62,43 @@ pub struct LlmSuggestion {
     pub changes: Vec<LlmChange>,
 }
 
-/// Resolve the endpoint, falling back to the default when the store field is
-/// empty, and trimming a trailing slash so path joins stay clean.
+/// Resolve the endpoint: fall back to the default when empty, trim a trailing
+/// slash, and — when the URL is a bare host with no path — append `/v1`.
+///
+/// The last step is the important one: every common local server (LM Studio,
+/// llama.cpp, Ollama, vLLM) serves its OpenAI-compatible API under `/v1`, and a
+/// bare `http://host:port` otherwise hits the server's catch-all, which answers
+/// `200` with a non-OpenAI body ("no message content"). A URL that already has a
+/// path (`.../v1`, `.../api/v1`, …) is left untouched.
 fn resolve_endpoint(endpoint: &str) -> String {
     let e = endpoint.trim();
     let e = if e.is_empty() { DEFAULT_ENDPOINT } else { e };
-    e.trim_end_matches('/').to_string()
+    let e = e.trim_end_matches('/');
+    let after_scheme = e.split_once("://").map(|(_, rest)| rest).unwrap_or(e);
+    if after_scheme.contains('/') {
+        e.to_string()
+    } else {
+        format!("{e}/v1")
+    }
 }
 
 fn resolve_model(model: &str) -> String {
     let m = model.trim();
     if m.is_empty() { DEFAULT_MODEL.to_string() } else { m.to_string() }
 }
+
+/// True for OpenAI's gpt-oss family (e.g. "gpt-oss-20b", "openai/gpt-oss-20b").
+/// Gates `reasoning_effort` in the request body — that field is a Harmony/
+/// gpt-oss-specific concept, meaningless noise for any other model.
+fn is_gpt_oss(model: &str) -> bool {
+    model.to_lowercase().contains("gpt-oss")
+}
+
+/// Upper bound on generated tokens: a backstop against a runaway response, not
+/// the primary brevity control (the prompt is). Generous enough that it should
+/// never cut off the trailing JSON block; if a request ever comes back as
+/// "server returned no message content", this is the first thing to raise.
+const MAX_RESPONSE_TOKENS: u32 = 700;
 
 /// GET `{endpoint}/models`, returning the served model ids for the Settings
 /// dropdown / connection test. Blocking; the command wraps it.
@@ -241,15 +266,20 @@ fn troubleshoot_body(
         req.symptom, req.command
     );
 
-    serde_json::json!({
+    let mut body = serde_json::json!({
         "model": model,
         "temperature": 0.3,
         "stream": false,
+        "max_tokens": MAX_RESPONSE_TOKENS,
         "messages": [
             { "role": "system", "content": TROUBLESHOOT_PROMPT },
             { "role": "user", "content": user },
         ],
-    })
+    });
+    if is_gpt_oss(model) {
+        body["reasoning_effort"] = serde_json::json!("low");
+    }
+    body
 }
 
 const TROUBLESHOOT_PROMPT: &str = "\
@@ -262,9 +292,12 @@ and a list of individual catalog keys. Prefer recommending a recipe when one \
 clearly matches the symptom; otherwise recommend individual catalog changes.
 
 Respond in two parts:
-1. A concise markdown explanation: the most likely cause and what to try, in \
-plain language. Mention broader setup fixes (drivers, session, runtime) when \
-relevant.
+1. A short, direct explanation in plain prose: no markdown tables, at most one \
+heading (prefer none), and no more than 5 sentences or bullet points total. \
+State the most likely cause and the one thing to try first. Only mention \
+broader setup fixes (drivers, session, runtime) if the symptom or hardware you \
+were given directly implicates them; otherwise omit that topic entirely. When \
+in doubt, leave it out.
 2. THEN a fenced ```json code block with this exact shape:
 {\"recipes\": [<indices from the recipe list>], \"changes\": [{\"key\": \"<catalog key>\", \"value\": \"<value>\", \"kind\": \"env\"|\"wrap\", \"reason\": \"<short why>\"}]}
 Use recipe indices ONLY from the provided list, and catalog keys ONLY from the \
@@ -315,15 +348,20 @@ fn chat_body(
         req.command
     );
 
-    serde_json::json!({
+    let mut body = serde_json::json!({
         "model": model,
         "temperature": 0.3,
         "stream": false,
+        "max_tokens": MAX_RESPONSE_TOKENS,
         "messages": [
             { "role": "system", "content": SYSTEM_PROMPT },
             { "role": "user", "content": user },
         ],
-    })
+    });
+    if is_gpt_oss(model) {
+        body["reasoning_effort"] = serde_json::json!("low");
+    }
+    body
 }
 
 const SYSTEM_PROMPT: &str = "\
@@ -332,11 +370,13 @@ user make a specific game run more smoothly by reading its Proton log, the launc
 command, and their hardware.
 
 Respond in two parts:
-1. A concise markdown analysis: what the log suggests is going wrong (or that it \
-looks healthy), the most likely causes, and clear recommendations. Include broader \
-setup advice too (drivers, Wayland/X11 session, Proton/runtime choice, GPU \
-settings) when the logs or hardware hint at an easy win — but keep it grounded in \
-what you can actually see.
+1. A short, direct technical answer in plain prose: no markdown tables, at most \
+one heading (prefer none), and no more than 5 sentences or bullet points total. \
+Lead with the single most likely cause (or say plainly that the log looks \
+healthy) — do not survey multiple possibilities. Only mention broader setup \
+advice (drivers, Wayland/X11, Proton/runtime choice, GPU settings) if the \
+specific log lines or hardware you were given directly implicate it; otherwise \
+omit that topic entirely. When in doubt, leave it out.
 2. THEN a fenced ```json code block with this exact shape:
 {\"changes\": [{\"key\": \"<catalog key>\", \"value\": \"<value>\", \"kind\": \"env\"|\"wrap\", \"reason\": \"<short why>\"}]}
 Only include a change when you are recommending a concrete catalog key from the \
@@ -357,7 +397,11 @@ fn parse_content(body: &str) -> Result<String, String> {
         .and_then(|m| m.get("content"))
         .and_then(|c| c.as_str())
         .map(str::to_string)
-        .ok_or_else(|| "the server returned no message content".to_string())
+        .ok_or_else(|| {
+            "the server returned no message content — check the endpoint is an \
+             OpenAI-compatible /v1 base and a model is loaded"
+                .to_string()
+        })
 }
 
 /// Best-effort parse of the model's JSON block into catalog-backed changes.
@@ -443,6 +487,32 @@ mod tests {
     }
 
     #[test]
+    fn is_gpt_oss_matches_bare_and_prefixed_names_case_insensitively() {
+        assert!(is_gpt_oss("gpt-oss-20b"));
+        assert!(is_gpt_oss("openai/gpt-oss-20b"));
+        assert!(is_gpt_oss("GPT-OSS-120B"));
+        assert!(!is_gpt_oss("google/gemma-3-12b-qat"));
+        assert!(!is_gpt_oss(""));
+    }
+
+    #[test]
+    fn reasoning_effort_only_set_for_gpt_oss_models() {
+        let req = LlmRequest {
+            command: "%command%".into(),
+            game_name: "Test".into(),
+            error_lines: vec![],
+            log_tail: String::new(),
+        };
+        let oss_body = chat_body("gpt-oss-20b", &req, "AMD, Wayland", &keys());
+        assert_eq!(oss_body["reasoning_effort"], "low");
+        assert_eq!(oss_body["max_tokens"], MAX_RESPONSE_TOKENS);
+
+        let other_body = chat_body("google/gemma-3-12b-qat", &req, "AMD, Wayland", &keys());
+        assert!(other_body.get("reasoning_effort").is_none());
+        assert_eq!(other_body["max_tokens"], MAX_RESPONSE_TOKENS);
+    }
+
+    #[test]
     fn extracts_fenced_changes_and_filters_unknown_keys() {
         let content = "Analysis here.\n\n```json\n{\"changes\":[\
             {\"key\":\"PROTON_FSR4_UPGRADE\",\"value\":\"1\",\"kind\":\"env\",\"reason\":\"sharper\"},\
@@ -515,5 +585,16 @@ mod tests {
     fn endpoint_falls_back_and_trims_slash() {
         assert_eq!(resolve_endpoint(""), DEFAULT_ENDPOINT);
         assert_eq!(resolve_endpoint("http://x/v1/"), "http://x/v1");
+    }
+
+    #[test]
+    fn endpoint_appends_v1_to_a_bare_host() {
+        // The bug users hit: a bare host answers 200 from its catch-all, so a
+        // missing /v1 must be filled in.
+        assert_eq!(resolve_endpoint("http://127.0.0.1:1234"), "http://127.0.0.1:1234/v1");
+        assert_eq!(resolve_endpoint("http://127.0.0.1:1234/"), "http://127.0.0.1:1234/v1");
+        // A URL that already has a path is left alone (no double /v1).
+        assert_eq!(resolve_endpoint("http://127.0.0.1:1234/v1"), "http://127.0.0.1:1234/v1");
+        assert_eq!(resolve_endpoint("http://host/api/v1"), "http://host/api/v1");
     }
 }

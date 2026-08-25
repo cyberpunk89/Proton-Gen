@@ -458,7 +458,7 @@ mod tests {
     fn fsr4_note_only_fires_without_a_declared_generation() {
         let amd = Hardware { amd: true, ..Default::default() };
         let notice = find(
-            &lint_gen(amd, "", &["PROTON_FSR4_UPGRADE"]),
+            &lint_gen(amd.clone(), "", &["PROTON_FSR4_UPGRADE"]),
             "fsr4-hardware-note",
         )
         .expect("rule fires when the generation is unknown")
@@ -471,8 +471,11 @@ mod tests {
         // `gen` is a reserved keyword in edition 2024.
         for generation in ["rdna3", "rdna4"] {
             assert!(
-                find(&lint_gen(amd, generation, &["PROTON_FSR4_UPGRADE"]), "fsr4-hardware-note")
-                    .is_none(),
+                find(
+                    &lint_gen(amd.clone(), generation, &["PROTON_FSR4_UPGRADE"]),
+                    "fsr4-hardware-note"
+                )
+                .is_none(),
                 "generic note should be silent on {generation}"
             );
         }
@@ -482,7 +485,7 @@ mod tests {
     fn offers_the_rdna3_mlfg_workaround() {
         let amd = Hardware { amd: true, ..Default::default() };
         let notice = find(
-            &lint_gen(amd, "rdna3", &["PROTON_FSR4_UPGRADE", "PROTON_MLFG_UPGRADE"]),
+            &lint_gen(amd.clone(), "rdna3", &["PROTON_FSR4_UPGRADE", "PROTON_MLFG_UPGRADE"]),
             "rdna3-mlfg-workaround",
         )
         .expect("rule fires")
@@ -498,14 +501,14 @@ mod tests {
 
         // Applying the fix silences it.
         let fixed = lint_gen(
-            amd,
+            amd.clone(),
             "rdna3",
             &["PROTON_FSR4_UPGRADE", "PROTON_MLFG_UPGRADE", "DXIL_SPIRV_CONFIG"],
         );
         assert!(find(&fixed, "rdna3-mlfg-workaround").is_none());
 
         // MLFG is what needs it — FSR4 alone does not.
-        let upscale_only = lint_gen(amd, "rdna3", &["PROTON_FSR4_UPGRADE"]);
+        let upscale_only = lint_gen(amd.clone(), "rdna3", &["PROTON_FSR4_UPGRADE"]);
         assert!(find(&upscale_only, "rdna3-mlfg-workaround").is_none());
 
         // And it is an RDNA3 remedy only.
@@ -517,7 +520,7 @@ mod tests {
     fn flags_the_rdna3_workaround_as_a_noop_on_rdna4() {
         let amd = Hardware { amd: true, ..Default::default() };
         let notice = find(
-            &lint_gen(amd, "rdna4", &["DXIL_SPIRV_CONFIG"]),
+            &lint_gen(amd.clone(), "rdna4", &["DXIL_SPIRV_CONFIG"]),
             "rdna4-workaround-noop",
         )
         .expect("rule fires")
@@ -531,7 +534,7 @@ mod tests {
         // On RDNA3 it is the correct setting, and with no declared generation we
         // have no grounds to call it useless.
         assert!(
-            find(&lint_gen(amd, "rdna3", &["DXIL_SPIRV_CONFIG"]), "rdna4-workaround-noop")
+            find(&lint_gen(amd.clone(), "rdna3", &["DXIL_SPIRV_CONFIG"]), "rdna4-workaround-noop")
                 .is_none()
         );
         assert!(
@@ -695,6 +698,7 @@ mod tests {
                 wayland: true,
                 kde: true,
                 ntsync: true,
+                ..Default::default()
             },
         ];
         for hw in hws {

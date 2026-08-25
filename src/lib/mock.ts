@@ -392,6 +392,10 @@ export const mockBootstrap: Bootstrap = {
     wayland: true,
     kde: true,
     ntsync: true,
+    distro: "CachyOS Linux",
+    kernel: "6.11.0-2-cachyos",
+    ram_gb: 32,
+    cpu_model: "AMD Ryzen 5 9600X 6-Core Processor",
   },
   store: {
     theme: "mocha",

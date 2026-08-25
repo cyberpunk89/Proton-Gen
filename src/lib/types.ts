@@ -82,6 +82,14 @@ export interface Hardware {
   wayland: boolean;
   kde: boolean;
   ntsync: boolean;
+  /** Distro PRETTY_NAME, "" if unreadable. Context for the LLM prompt only. */
+  distro: string;
+  /** Kernel release string, "" if unreadable. */
+  kernel: string;
+  /** Total RAM in GiB, 0 if unreadable. */
+  ram_gb: number;
+  /** CPU model name, "" if unreadable. */
+  cpu_model: string;
 }
 
 /** The AMD generation the user declared in Settings; "" when unset or not AMD.

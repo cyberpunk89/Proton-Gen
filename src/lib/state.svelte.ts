@@ -94,6 +94,10 @@ class AppStore {
     wayland: false,
     kde: false,
     ntsync: false,
+    distro: "",
+    kernel: "",
+    ram_gb: 0,
+    cpu_model: "",
   });
   requiresStatus = $state<Record<string, boolean>>({});
   launchOptions = $state<Record<string, string>>({});
