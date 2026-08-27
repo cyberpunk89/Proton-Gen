@@ -107,22 +107,46 @@
           </button>
           <div class="my-1 border-t border-border/60"></div>
         {/if}
-        {#each app.store.presets as p (p.name)}
-          <div class="flex items-center gap-1">
-            <button
-              onclick={() => app.loadPreset(p.name)}
-              class="flex-1 truncate rounded-lg px-2 py-1.5 text-left text-sm text-subtext hover:bg-surface-2"
-              >{p.name}</button
-            >
-            <button
-              onclick={() => app.deletePreset(p.name)}
-              class="grid size-7 place-items-center rounded-lg text-muted hover:text-red"
-              aria-label="Delete preset"><Trash size={13} /></button
-            >
-          </div>
-        {:else}
+        {#if app.presetsForCurrentGame.length}
+          <p class="px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">For this game</p>
+          {#each app.presetsForCurrentGame as p (p.name)}
+            <div class="flex items-center gap-1">
+              <button
+                onclick={() => app.loadPreset(p.name)}
+                class="flex-1 truncate rounded-lg px-2 py-1.5 text-left text-sm text-subtext hover:bg-surface-2"
+                >{p.name}</button
+              >
+              <button
+                onclick={() => app.deletePreset(p.name)}
+                class="grid size-7 place-items-center rounded-lg text-muted hover:text-red"
+                aria-label="Delete preset"><Trash size={13} /></button
+              >
+            </div>
+          {/each}
+          <div class="my-1 border-t border-border/60"></div>
+        {/if}
+        {#if app.otherPresets.length}
+          {#if app.presetsForCurrentGame.length}
+            <p class="px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">Other presets</p>
+          {/if}
+          {#each app.otherPresets as p (p.name)}
+            <div class="flex items-center gap-1">
+              <button
+                onclick={() => app.loadPreset(p.name)}
+                class="flex-1 truncate rounded-lg px-2 py-1.5 text-left text-sm text-subtext hover:bg-surface-2"
+                >{p.name}</button
+              >
+              <button
+                onclick={() => app.deletePreset(p.name)}
+                class="grid size-7 place-items-center rounded-lg text-muted hover:text-red"
+                aria-label="Delete preset"><Trash size={13} /></button
+              >
+            </div>
+          {/each}
+        {/if}
+        {#if !app.presetsForCurrentGame.length && !app.otherPresets.length}
           <p class="px-2 py-3 text-center text-xs text-muted">No saved presets.</p>
-        {/each}
+        {/if}
         <button
           onclick={openSave}
           class="mt-1 flex w-full items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs text-subtext hover:bg-surface-2"

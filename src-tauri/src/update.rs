@@ -37,7 +37,7 @@ pub struct UpdateInfo {
 pub fn check_blocking() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let body = fetch_text(&url)?;
+    let body = fetch_text(&url, USER_AGENT)?;
 
     let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let tag = v.get("tag_name").and_then(|x| x.as_str()).unwrap_or_default();
@@ -76,14 +76,14 @@ pub fn download_and_swap(info: &UpdateInfo) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "cannot resolve install directory".to_string())?;
 
-    let bin = fetch_bytes(&info.download_url)?;
+    let bin = fetch_bytes(&info.download_url, USER_AGENT)?;
     if bin.is_empty() {
         return Err("downloaded binary was empty".to_string());
     }
 
     // Verify against the published checksum when present ("<hex>  protongen").
     if !info.sha256_url.is_empty() {
-        let sums = fetch_text(&info.sha256_url)?;
+        let sums = fetch_text(&info.sha256_url, USER_AGENT)?;
         let expected = sums.split_whitespace().next().unwrap_or_default().to_lowercase();
         if !expected.is_empty() {
             let got = sha256_hex(&bin);
@@ -122,10 +122,11 @@ fn asset_url(assets: &[serde_json::Value], name: &str) -> String {
         .unwrap_or_default()
 }
 
-fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
+/// GitHub rejects requests without a `User-Agent`; shared by every module that
+/// hits its API (`update`, `optiscaler_upgrade`).
+pub(crate) fn fetch_bytes(url: &str, user_agent: &str) -> Result<Vec<u8>, String> {
     let mut req = ehttp::Request::get(url);
-    // GitHub's API rejects requests without a User-Agent.
-    req.headers.insert("User-Agent", USER_AGENT);
+    req.headers.insert("User-Agent", user_agent);
     req.headers.insert("Accept", "application/vnd.github+json");
     let resp = ehttp::fetch_blocking(&req)?;
     if !resp.ok {
@@ -134,8 +135,8 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
     Ok(resp.bytes)
 }
 
-fn fetch_text(url: &str) -> Result<String, String> {
-    String::from_utf8(fetch_bytes(url)?).map_err(|e| e.to_string())
+pub(crate) fn fetch_text(url: &str, user_agent: &str) -> Result<String, String> {
+    String::from_utf8(fetch_bytes(url, user_agent)?).map_err(|e| e.to_string())
 }
 
 fn sha256_hex(data: &[u8]) -> String {

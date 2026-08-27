@@ -19,6 +19,7 @@ use crate::hardware::{self, Hardware};
 use crate::heroic;
 use crate::lint;
 use crate::llm::{self, LlmRequest, LlmSuggestion, RecipeRef, TroubleshootRequest, TroubleshootResult};
+use crate::optiscaler_upgrade;
 use crate::params::{Catalog, ConfigWarning};
 use crate::parser;
 use crate::protondb::{self, Tier};
@@ -57,6 +58,9 @@ pub struct GameDto {
     /// Heroic's per-game id — `Some` only for `source == "heroic"`; the key the
     /// `inject_heroic` command needs to locate the game's config file.
     pub heroic_id: Option<String>,
+    /// Absolute install directory, when resolvable — see `games::Game::install_dir`.
+    /// Used by the OptiScaler-upgrade commands to find/write files there.
+    pub install_dir: Option<String>,
 }
 
 /// One game's Proton log, read for the diagnostics viewer.
@@ -141,6 +145,14 @@ impl AppState {
     /// store mid-session, and a cached copy would stay stale until restart.
     fn bins(&self) -> builder::Bins {
         builder::Bins::with_overrides(&self.store.lock().unwrap().paths.bins)
+    }
+
+    /// Find a discovered game by appid — the OptiScaler-upgrade commands look
+    /// up `install_dir` this way rather than trusting a path the frontend
+    /// sends, so the write target always comes from the same discovery pass
+    /// `bootstrap`/`rescan` already validated.
+    fn game(&self, app_id: u32) -> Option<&GameDto> {
+        self.games.iter().find(|g| g.app_id == app_id)
     }
 }
 
@@ -273,6 +285,7 @@ fn game_dto(g: games::Game, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> Ga
         last_played: cfg.and_then(|c| c.last_played),
         playtime_minutes: cfg.and_then(|c| c.playtime_minutes),
         heroic_id: g.heroic_id,
+        install_dir: g.install_dir.map(|p| p.display().to_string()),
     }
 }
 
@@ -784,6 +797,45 @@ pub fn save_store(state: State<'_, AppState>, store: Store) -> Result<(), String
     let mut guard = state.store.lock().unwrap();
     *guard = store;
     guard.save()
+}
+
+/// Whether `app_id` already has an OptiScaler install to refresh — cheap
+/// filesystem check, no network. `install_dir` comes from `AppState`'s own
+/// discovery, never from the caller (see `AppState::game`).
+#[tauri::command]
+pub fn optiscaler_status(state: State<'_, AppState>, app_id: u32) -> optiscaler_upgrade::OptiscalerStatus {
+    let dir = state.game(app_id).and_then(|g| g.install_dir.as_deref()).map(std::path::Path::new);
+    optiscaler_upgrade::detect(dir)
+}
+
+/// Check the latest upstream OptiScaler release (off the UI thread). Global —
+/// not per-game — so the frontend can show "latest: vX.Y.Z" without a game
+/// selected. Errors surface directly to the caller; there's no banner to keep
+/// quiet for, unlike `check_for_update`.
+#[tauri::command]
+pub async fn optiscaler_latest() -> Result<optiscaler_upgrade::OptiscalerRelease, String> {
+    tauri::async_runtime::spawn_blocking(optiscaler_upgrade::check_latest)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Download the latest OptiScaler release and extract it into `app_id`'s
+/// install directory (off the UI thread). The one command in this file that
+/// writes into a game's own folder — see `optiscaler_upgrade`'s doc comment.
+#[tauri::command]
+pub async fn optiscaler_fetch(
+    state: State<'_, AppState>,
+    app_id: u32,
+) -> Result<optiscaler_upgrade::OptiscalerExtractResult, String> {
+    let dir = state
+        .game(app_id)
+        .and_then(|g| g.install_dir.clone())
+        .ok_or_else(|| "no install directory known for this game".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        optiscaler_upgrade::fetch_and_extract(std::path::Path::new(&dir))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Check GitHub Releases for a newer version (off the UI thread). A failed check

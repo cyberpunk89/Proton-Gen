@@ -227,6 +227,19 @@
   /** Wrappers first in a category view, matching the previous ordering. */
   let sectionWraps = $derived(visible.filter((h) => h.kind === "wrap"));
   let sectionEnvs = $derived(visible.filter((h) => h.kind === "env"));
+
+  /** This section's env keys the "Recommended for your GPU" action would
+   *  still change — scoped to the visible category so the button only shows
+   *  where it's actionable (today, only "Upscaling & frame-gen" has any
+   *  `recommended_for` tags). */
+  let sectionRecommended = $derived(
+    searching ? [] : sectionEnvs.filter((h) => app.recommendedEnvKeys.includes(h.key)),
+  );
+
+  function applyRecommended() {
+    app.applyRecommendedForGpu();
+    toast.success("Applied GPU-recommended defaults");
+  }
 </script>
 
 {#if searching}
@@ -254,6 +267,14 @@
       <h2 class="text-sm font-medium tracking-wide text-text">{title}</h2>
       {#if searching}
         <span class="text-xs text-muted">· {resultSummary}</span>
+      {/if}
+      {#if sectionRecommended.length}
+        <button
+          onclick={applyRecommended}
+          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/10"
+        >
+          <Sparkle size={13} weight="fill" /> Recommended for your GPU
+        </button>
       {/if}
     </div>
 

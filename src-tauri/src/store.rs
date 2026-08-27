@@ -161,6 +161,11 @@ pub struct Store {
     /// the frontend, so an older `state.toml` opens in the friendlier view.
     #[serde(default)]
     pub ui_mode: String,
+    /// Whether the Simple-mode first-run tour has been shown (dismissed or
+    /// completed). Absent/`false` on any pre-existing `state.toml`, so upgraders
+    /// see the tour once too — that's intentional, not a bug to fix.
+    #[serde(default)]
+    pub seen_intro_tour: bool,
     /// User-supplied discovery paths. See [`Paths`].
     #[serde(default)]
     pub paths: Paths,
@@ -352,6 +357,7 @@ mod tests {
         s.favorites.insert(275850);
         s.library_sort = "recent".into();
         s.ui_mode = "advanced".into();
+        s.seen_intro_tour = true;
         s.gpu_gen = "rdna4".into();
         s.global_profile = Some(Config {
             umu: false,
@@ -364,6 +370,7 @@ mod tests {
         assert_eq!(back.theme, "Dracula");
         assert_eq!(back.gpu_gen, "rdna4");
         assert_eq!(back.ui_mode, "advanced");
+        assert!(back.seen_intro_tour);
         let gp = back.global_profile.as_ref().expect("global_profile round-trips");
         assert_eq!(gp.env, vec![("PROTON_USE_NTSYNC".to_string(), "1".to_string())]);
         assert_eq!(gp.wrappers, vec![("gamemoderun".to_string(), String::new())]);
@@ -400,6 +407,7 @@ show_irrelevant = true
         assert!(s.show_irrelevant);
         assert!(s.favorites.is_empty());
         assert_eq!(s.library_sort, "");
+        assert!(!s.seen_intro_tour);
         assert!(s.paths.steam_roots.is_empty());
         assert!(s.paths.bins.is_empty());
         assert_eq!(s.gpu_gen, "");

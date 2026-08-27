@@ -36,6 +36,10 @@ export interface EnvDef {
   /** `"advanced"` hides this behind the show-advanced toggle; anything else
    *  (including the `""` an entry without the field produces) is basic. */
   tier: string;
+  /** Capability tags this entry is a good default for — feeds the
+   *  "Recommended for your GPU" one-click action. Unlike `needs`, never
+   *  affects visibility; see `EnvDef.recommended_for` in params.rs. */
+  recommended_for: string[];
 }
 
 /**
@@ -71,6 +75,12 @@ export interface Recipe {
   icon: string | null;
   accent: string | null;
   tags: string[];
+  /** Suggests this recipe when the selected game's fetched ProtonDB tier is
+   *  one of these ("borked" | "bronze" | "silver" | "gold" | "platinum").
+   *  Empty means "not tier-specific" — always eligible. Matched separately
+   *  from `needs`/`irrelevance()` since a tier is async per-game data, not
+   *  static hardware/session state — see `util.ts`'s `matchesTier`. */
+  protondb_tiers: string[];
   env: Pair[];
   wrappers: Pair[];
 }
@@ -130,6 +140,9 @@ export interface GameDto {
   playtime_minutes: number | null;
   /** Heroic's per-game id; non-null only when source === "heroic". */
   heroic_id: string | null;
+  /** Absolute install directory, when resolvable. Feeds the OptiScaler-upgrade
+   *  detect/fetch commands; null when there's nothing to resolve it from. */
+  install_dir: string | null;
 }
 
 /** Result of a successful `inject_heroic` write, for the confirmation toast. */
@@ -215,6 +228,27 @@ export interface UpdateInfo {
   sha256_url: string;
 }
 
+/** Mirrors optiscaler_upgrade::OptiscalerStatus. */
+export interface OptiscalerStatus {
+  install_dir: string | null;
+  found: boolean;
+}
+
+/** Mirrors optiscaler_upgrade::OptiscalerRelease (the private `asset_url` is
+ *  `#[serde(skip)]` on the Rust side, so it never reaches this DTO). */
+export interface OptiscalerRelease {
+  tag: string;
+  html_url: string;
+  asset_name: string;
+}
+
+/** Mirrors optiscaler_upgrade::OptiscalerExtractResult. */
+export interface OptiscalerExtractResult {
+  tag: string;
+  files_written: number;
+  ini_preserved: boolean;
+}
+
 export interface Config {
   umu: boolean;
   runtime: string | null;
@@ -287,6 +321,9 @@ export interface Store {
    *  `String`); read through `app.uiMode`, which normalises the empty/unknown
    *  case to "simple". */
   ui_mode: string;
+  /** Whether the Simple-mode first-run tour has been shown. Absent/false on
+   *  any pre-existing state.toml, so upgraders see it once too. */
+  seen_intro_tour: boolean;
   paths: Paths;
   /** A reusable selection authored in Settings and applied to a game via a
    *  button. Null until the user saves one. Mirrors store::Store.global_profile

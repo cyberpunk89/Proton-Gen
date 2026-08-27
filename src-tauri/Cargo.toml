@@ -1,6 +1,6 @@
 [package]
 name = "protongen"
-version = "0.13.2"
+version = "0.14.0"
 edition = "2024"
 description = "A polished GUI for building Steam / umu-launcher Proton commands on CachyOS"
 license = "GPL-3.0-or-later"
@@ -25,6 +25,7 @@ keyvalues-parser = "0.2.4"
 semver = "1.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+sevenz-rust2 = "0.22"
 sha2 = "0.10"
 steamlocate = "2.1.0"
 toml = "1.1.2"

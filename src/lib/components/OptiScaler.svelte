@@ -14,9 +14,49 @@
     buildOptiScaler,
     type OptiScalerConfig,
   } from "$lib/optiscaler";
+  import Dialog from "./Dialog.svelte";
   import { untrack } from "svelte";
+  import {
+    ArrowSquareOut,
+    ArrowClockwise,
+    CloudArrowDown,
+    CheckCircle,
+  } from "phosphor-svelte";
 
   let { onapply }: { onapply?: () => void } = $props();
+
+  // -------------------------- OptiScaler upgrade --------------------------
+  // Fetch the latest OptiScaler release from GitHub and extract it into the
+  // selected game's folder — the one action here that writes into a game's
+  // own directory rather than just building a command string (see
+  // optiscaler_upgrade.rs's doc comment for the full rationale). Only offered
+  // when the folder already shows signs of an OptiScaler install: this is a
+  // refresh, never an injection into a game that isn't using it.
+  let appId = $derived(app.selectedAppId);
+  $effect(() => {
+    if (appId != null) app.requestOptiscalerStatus(appId);
+  });
+  let status = $derived(appId == null ? undefined : app.optiscalerStatusFor(appId));
+  let statusLoading = $derived(appId != null && app.optiscalerStatusLoading[String(appId)] === true);
+
+  let confirmOpen = $state(false);
+
+  function openConfirm() {
+    app.requestOptiscalerLatest();
+    confirmOpen = true;
+  }
+
+  async function doFetch() {
+    if (appId == null) return;
+    try {
+      const result = await app.fetchOptiscalerUpgrade(appId);
+      confirmOpen = false;
+      const kept = result.ini_preserved ? " — kept your existing OptiScaler.ini" : "";
+      toast.success(`Installed OptiScaler ${result.tag}: ${result.files_written} files written${kept}`);
+    } catch (e) {
+      toast.error(`Couldn't fetch OptiScaler: ${e}`, { ms: 6000 });
+    }
+  }
 
   // Local $state rather than writing straight through to the store: the user
   // must be able to build a config and abandon it (same rationale as MangoHud).
@@ -67,6 +107,38 @@
 </script>
 
 <div class="space-y-3">
+  {#if appId != null}
+    <div class="space-y-2 rounded-lg border border-border/60 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wider text-muted">
+        Upgrade the installed OptiScaler build
+      </p>
+      {#if statusLoading || !status}
+        <p class="flex items-center gap-1.5 text-xs text-muted">
+          <ArrowClockwise size={12} class="animate-spin" /> Checking this game's folder…
+        </p>
+      {:else if !status.install_dir}
+        <p class="text-xs text-muted">
+          This game's install folder couldn't be resolved, so this isn't available here.
+        </p>
+      {:else if !status.found}
+        <p class="text-xs text-muted">
+          No OptiScaler install detected in <span class="font-mono">{status.install_dir}</span> yet —
+          nothing to upgrade. Enable OptiScaler above and launch the game once first.
+        </p>
+      {:else}
+        <p class="text-xs text-subtext">
+          Detected in <span class="font-mono">{status.install_dir}</span>.
+        </p>
+        <button
+          onclick={openConfirm}
+          class="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/10"
+        >
+          <CloudArrowDown size={13} /> Fetch latest OptiScaler build…
+        </button>
+      {/if}
+    </div>
+  {/if}
+
   <p class="text-xs text-muted">
     Compose OptiScaler.ini settings, then apply them to <span class="font-mono"
       >PROTON_OPTISCALER_CONFIG</span
@@ -265,6 +337,69 @@
     >
   </div>
 </div>
+
+<Dialog bind:open={confirmOpen} title="Fetch latest OptiScaler build" width="26rem">
+  <div class="space-y-3 text-sm">
+    {#if app.optiscalerLatestLoading}
+      <p class="flex items-center gap-1.5 text-xs text-muted">
+        <ArrowClockwise size={12} class="animate-spin" /> Checking the latest release…
+      </p>
+    {:else if app.optiscalerLatestError}
+      <p class="text-xs text-red">Couldn't reach GitHub: {app.optiscalerLatestError}</p>
+    {:else if app.optiscalerLatest}
+      <div class="space-y-1.5 rounded-lg border border-border/60 bg-surface-2/60 p-3 text-xs">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-muted">Source</span>
+          <a
+            href={app.optiscalerLatest.html_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+          >
+            optiscaler/OptiScaler {app.optiscalerLatest.tag} <ArrowSquareOut size={11} />
+          </a>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-muted">Asset</span>
+          <span class="truncate font-mono text-subtext">{app.optiscalerLatest.asset_name}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-muted">Destination</span>
+          <span class="truncate font-mono text-subtext">{status?.install_dir}</span>
+        </div>
+      </div>
+      <p class="text-xs leading-snug text-muted">
+        Downloads that archive and extracts every file it contains into the folder above,
+        overwriting anything with the same name — <span class="font-medium text-subtext"
+          >except an existing <span class="font-mono">OptiScaler.ini</span>, which is left
+          untouched.</span
+        > No checksum is published for this release; integrity rests on HTTPS + fetching directly
+        from the project's own GitHub Releases.
+      </p>
+    {/if}
+
+    <div class="flex justify-end gap-2 pt-1">
+      <button
+        onclick={() => (confirmOpen = false)}
+        disabled={app.optiscalerFetchBusy}
+        class="rounded-lg px-3 py-1.5 text-xs text-muted hover:text-text disabled:opacity-40"
+      >
+        Cancel
+      </button>
+      <button
+        onclick={doFetch}
+        disabled={!app.optiscalerLatest || app.optiscalerFetchBusy}
+        class="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition hover:opacity-90 disabled:opacity-40"
+      >
+        {#if app.optiscalerFetchBusy}
+          <ArrowClockwise size={13} class="animate-spin" /> Installing…
+        {:else}
+          <CheckCircle size={13} /> Fetch &amp; install
+        {/if}
+      </button>
+    </div>
+  </div>
+</Dialog>
 
 {#snippet pick(
   label: string,

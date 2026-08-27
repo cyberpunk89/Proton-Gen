@@ -40,6 +40,14 @@ pub struct Recipe {
     /// Optional free-form tags rendered as chips on the card.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Relevance hint against a fetched ProtonDB tier ("borked", "bronze",
+    /// "silver", "gold", "platinum"; unset = matches any tier or no tier at
+    /// all). Distinct from `needs`: a ProtonDB tier is async, per-game, opt-in
+    /// data fetched at runtime, not static hardware/session state, so the
+    /// frontend matches it separately rather than folding it into
+    /// `irrelevance()` — see `util.ts`'s `matchesTier`.
+    #[serde(default)]
+    pub protondb_tiers: Vec<String>,
     #[serde(default)]
     pub env: Vec<(String, String)>,
     #[serde(default)]

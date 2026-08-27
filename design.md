@@ -542,6 +542,10 @@ Discovery against the real filesystem and the WebView UI are validated manually 
   `themes.ts`.
 - **User overrides** of `params.toml` / `recipes.toml` let power users diverge from the
   bundled catalog without rebuilding.
+- **The OptiScaler-upgrade repo** is a hardcoded `REPO` constant in
+  `optiscaler_upgrade.rs` (`optiscaler/OptiScaler`), the same pattern as
+  `update.rs`'s own `REPO` for protongen's self-updater. If the project moves,
+  update that constant; there's no override.
 
 ---
 
@@ -557,6 +561,21 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 | `data:` URL artwork + hand-rolled base64 | No asset-protocol capability; one fewer crate | Larger IPC payloads for images (mitigated by lazy load + cache). |
 | Debounced live recompute | Smooth typing, fewer IPC calls | ~60 ms latency between edit and preview. |
 | Svelte 5 runes single store | Minimal boilerplate, fine-grained reactivity | All state centralized in one class (intentional). |
+| OptiScaler-upgrade fetch writes into a game's folder | The one place read-only/paste-yourself has a named exception — see below | Introduces a network+filesystem write path that has to stay explicit-confirm-only forever, or the invariant is gone. |
+
+**The OptiScaler-upgrade exception.** `optiscaler_upgrade.rs` fetches the
+latest `optiscaler/OptiScaler` GitHub release and extracts it into a *game's*
+install directory — the only write outside `state.toml` besides
+[`heroic::inject`]. Justified: the user explicitly asked for exactly this,
+describing their own manual "grab the newest build, extract into the game
+folder" workflow; `update.rs` already does the identical shape of thing for
+the app's own binary; it only ever places files, never executes anything; and
+every fetch is gated behind an explicit confirm dialog naming the exact
+source, version and destination first. An existing `OptiScaler.ini` is never
+overwritten (it may carry tuning applied through this app's own OptiScaler
+builder). No checksum is published for OptiScaler's releases, unlike
+protongen's own — integrity here rests on HTTPS plus fetching straight from
+the project's own Releases API.
 
 ---
 
@@ -599,6 +618,8 @@ Proton-gui/
         ├── hardware.rs        GPU/session/ntsync detection + relevance
         ├── which.rs           $PATH lookup (installed/missing badges)
         ├── protondb.rs        opt-in tier summary
+        ├── update.rs          self-update against GitHub Releases
+        ├── optiscaler_upgrade.rs  fetch+extract latest OptiScaler into a game's folder
         └── art.rs             local→cache→CDN artwork as data: URLs
 ```
 

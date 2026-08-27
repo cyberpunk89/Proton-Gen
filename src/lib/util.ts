@@ -1,7 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
 import { inTauri } from "./ipc";
-import type { Hardware, HwCaps } from "./types";
+import type { Hardware, HwCaps, Tier } from "./types";
 
 export async function copyText(text: string) {
   try {
@@ -97,6 +97,53 @@ export function irrelevance(
     if (n === "rdna4" && !hw.rdna4) return "RDNA4-only";
   }
   return null;
+}
+
+/**
+ * Whether any of an entry's `recommended_for` capability tags is currently
+ * true, per the same `hw`/`HwCaps` bag `irrelevance()` reads. Empty always
+ * reads as false ("not tagged as recommended for anything") — this is a
+ * positive match, not a fallback-permissive filter like `irrelevance()`.
+ */
+export function isRecommended(hw: Partial<HwCaps> & Hardware, recommendedFor: string[]): boolean {
+  return recommendedFor.some((tag) => {
+    switch (tag) {
+      case "wayland":
+        return hw.wayland;
+      case "kde":
+        return hw.kde;
+      case "ntsync":
+        return hw.ntsync;
+      case "hdr":
+        return !!hw.hdr;
+      case "fsr4":
+        return !!hw.fsr4;
+      case "rdna3":
+        return !!hw.rdna3;
+      case "rdna4":
+        return !!hw.rdna4;
+      default:
+        return false;
+    }
+  });
+}
+
+/**
+ * Whether a recipe's `protondb_tiers` hint matches the selected game's
+ * fetched ProtonDB tier.
+ *
+ * Kept separate from `irrelevance()` on purpose: a tier is async, per-game,
+ * opt-in network data that may not be fetched yet (`undefined`) or may have
+ * failed (`null`), whereas `irrelevance()`'s contract is static hardware/
+ * session state available synchronously for every recipe at once. An empty
+ * `protondb_tiers` means "not tier-specific" — always matches, including when
+ * no tier is available, so recipes with no tier hint are never affected by
+ * this filter.
+ */
+export function matchesTier(tiers: string[], tier: Tier | null | undefined): boolean {
+  if (!tiers.length) return true;
+  if (!tier) return false;
+  return tiers.includes(tier.tier.toLowerCase());
 }
 
 /**

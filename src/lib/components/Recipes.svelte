@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { toast } from "$lib/toast.svelte";
-  import { irrelevance } from "$lib/util";
+  import { irrelevance, matchesTier } from "$lib/util";
   import {
     Sparkle,
     Lightning,
@@ -11,6 +11,7 @@
     Wrench,
     ShieldCheck,
     FilmSlate,
+    Trophy,
   } from "phosphor-svelte";
   import RecipePreview from "./RecipePreview.svelte";
   import type { Recipe } from "$lib/types";
@@ -44,6 +45,18 @@
   }
 
   let showAll = $derived(app.store.show_irrelevant);
+
+  /** The selected game's fetched ProtonDB tier, if any — undefined while
+   *  unfetched, null on a failed fetch, matching `app.tierFor`. */
+  let currentTier = $derived(
+    app.selectedAppId == null ? undefined : app.tierFor(app.selectedAppId),
+  );
+
+  /** Recipes explicitly tagged for the selected game's current tier — a
+   *  nudge, not a filter; every other list below is unaffected. */
+  let suggested = $derived(
+    indexed.filter((x) => x.r.protondb_tiers.length && matchesTier(x.r.protondb_tiers, currentTier)),
+  );
 
   /** Recipes that pass the hardware-relevance gate (or all, when "Show all"). */
   let relevant = $derived(indexed.filter((x) => showAll || !recipeIrrelevant(x.r)));
@@ -106,8 +119,23 @@
     <span class="ml-auto text-xs text-muted">{collapsed ? "Show" : "Hide"}</span>
   </button>
 
+  {#if collapsed && suggested.length}
+    <button
+      onclick={() => (collapsed = false)}
+      class="mt-3 flex w-full items-center gap-2 rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-left text-xs text-accent transition hover:bg-accent/10"
+    >
+      <Trophy size={14} class="shrink-0" />
+      {suggested.length} recipe{suggested.length === 1 ? "" : "s"} suggested for this game's
+      ProtonDB rating ({currentTier?.tier}) — tap to view
+    </button>
+  {/if}
+
   {#if !collapsed}
     <div id="recipes-body" class="mt-4 space-y-4">
+      {#if suggested.length}
+        {@render group(`Suggested for this game (${currentTier?.tier})`, suggested)}
+      {/if}
+
       <!-- Type tabs -->
       <div class="flex gap-1 rounded-lg bg-mantle p-0.5 text-xs">
         {#each TABS as t (t.id)}

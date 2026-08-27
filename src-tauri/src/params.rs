@@ -138,6 +138,15 @@ pub struct EnvDef {
     /// else (including unset) is a basic entry. See [`TIER_ADVANCED`].
     #[serde(default)]
     pub tier: String,
+    /// Capability tags from [`KNOWN_NEEDS`] this entry is a good default for.
+    /// Unlike `needs` (which *hides* an entry the capability rules out), this
+    /// never affects visibility — it only feeds the frontend's "Recommended
+    /// for your GPU" one-click action, which batch-enables everything whose
+    /// `recommended_for` matches the detected/declared capability. Deliberately
+    /// separate from `needs` so an entry can be *visible* under a capability
+    /// without being *pre-selected* for it.
+    #[serde(default)]
+    pub recommended_for: Vec<String>,
 }
 
 impl EnvDef {
@@ -402,6 +411,24 @@ mod tests {
                     "{owner} declares needs = [\"{tag}\"], which no relevance branch \
                      handles — add it to KNOWN_NEEDS and to irrelevance() in util.ts, \
                      or fix the typo",
+                );
+            }
+        }
+    }
+
+    /// Same guard as `bundled_needs_tags_are_known`, for `recommended_for`: a
+    /// typo'd tag here wouldn't hide anything (unlike `needs`), it would just
+    /// silently never get recommended — much quieter to notice by hand.
+    #[test]
+    fn bundled_recommended_for_tags_are_known() {
+        let cat = Catalog::bundled();
+        for e in &cat.envs {
+            for tag in &e.recommended_for {
+                assert!(
+                    KNOWN_NEEDS.contains(&tag.as_str()),
+                    "{} declares recommended_for = [\"{tag}\"], which isn't in \
+                     KNOWN_NEEDS — add it there or fix the typo",
+                    e.key,
                 );
             }
         }

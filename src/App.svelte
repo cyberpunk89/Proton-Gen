@@ -17,6 +17,7 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
   import DefaultProfilePrompt from "$lib/components/DefaultProfilePrompt.svelte";
+  import IntroTour from "$lib/components/IntroTour.svelte";
   import LogViewer from "$lib/components/LogViewer.svelte";
   import Troubleshooter from "$lib/components/Troubleshooter.svelte";
   import ResizeGrips from "$lib/components/ResizeGrips.svelte";
@@ -177,6 +178,7 @@
      section change can't unmount an open bits-ui modal — see HeroicConfirm. -->
 <HeroicConfirm />
 <DefaultProfilePrompt />
+<IntroTour />
 <LogViewer />
 <Troubleshooter />
 <Toast />

@@ -8,6 +8,9 @@ import type {
   LlmRequest,
   LlmSuggestion,
   Notice,
+  OptiscalerExtractResult,
+  OptiscalerRelease,
+  OptiscalerStatus,
   ProtonLog,
   TroubleshootRequest,
   TroubleshootResult,
@@ -206,6 +209,35 @@ export const ipc = {
 
   runUpdate: (info: UpdateInfo) =>
     inTauri ? invoke<void>("run_update", { info }) : Promise.resolve(),
+
+  // Whether `appId` already has an OptiScaler install to refresh. The mock has
+  // no filesystem, so it reports "found" unconditionally — just enough to
+  // exercise the fetch button under `pnpm dev`.
+  optiscalerStatus: (appId: number) =>
+    inTauri
+      ? invoke<OptiscalerStatus>("optiscaler_status", { appId })
+      : Promise.resolve<OptiscalerStatus>({
+          install_dir: "/home/you/.local/share/Steam/steamapps/common/mock-game",
+          found: true,
+        }),
+
+  optiscalerLatest: () =>
+    inTauri
+      ? invoke<OptiscalerRelease>("optiscaler_latest")
+      : Promise.resolve<OptiscalerRelease>({
+          tag: "v0.9.4",
+          html_url: "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.4",
+          asset_name: "Optiscaler_0.9.4-final.mock.7z",
+        }),
+
+  optiscalerFetch: (appId: number) =>
+    inTauri
+      ? invoke<OptiscalerExtractResult>("optiscaler_fetch", { appId })
+      : Promise.resolve<OptiscalerExtractResult>({
+          tag: "v0.9.4",
+          files_written: 12,
+          ini_preserved: true,
+        }),
 };
 
 function emptyParse(): Config {

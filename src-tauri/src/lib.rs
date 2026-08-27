@@ -5,10 +5,14 @@
 //! env-vars / wrappers, and previews + copies the resulting launch command. It
 //! never writes to Steam config files.
 //!
-//! The one sanctioned write outside protongen's own `state.toml` is
-//! [`heroic::inject`]: Heroic reads structured per-game JSON rather than a launch
-//! string, so applying tweaks means writing them into its config (backing up
-//! first, preserving every key it doesn't own).
+//! Two sanctioned writes outside protongen's own `state.toml`:
+//! - [`heroic::inject`]: Heroic reads structured per-game JSON rather than a
+//!   launch string, so applying tweaks means writing them into its config
+//!   (backing up first, preserving every key it doesn't own).
+//! - [`optiscaler_upgrade::fetch_and_extract`]: fetches the latest OptiScaler
+//!   release and extracts it into a *game's* install directory, at the user's
+//!   explicit per-click request. Never automatic, never executes anything —
+//!   see that module's doc comment for the full rationale.
 //!
 //! This crate is a Tauri backend: the pure logic modules below are exposed to
 //! the web frontend through `ipc`.
@@ -24,6 +28,7 @@ mod heroic;
 mod ipc;
 mod lint;
 mod llm;
+mod optiscaler_upgrade;
 mod params;
 mod parser;
 mod protondb;
@@ -66,6 +71,9 @@ pub fn run() {
             ipc::save_store,
             ipc::check_for_update,
             ipc::run_update,
+            ipc::optiscaler_status,
+            ipc::optiscaler_latest,
+            ipc::optiscaler_fetch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

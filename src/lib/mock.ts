@@ -93,6 +93,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: ["ntsync"],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "DXVK_ASYNC",
@@ -107,6 +108,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "DXVK_ENABLE_NVAPI",
@@ -121,6 +123,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: "nvidia",
         needs: [],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "PROTON_LOG",
@@ -135,6 +138,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "PROTON_ENABLE_WAYLAND",
@@ -149,6 +153,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: ["wayland"],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "DXVK_HDR",
@@ -163,6 +168,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: ["hdr"],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "PROTON_DISCORD_BRIDGE",
@@ -177,6 +183,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "MANGOHUD_CONFIG",
@@ -191,6 +198,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "MANGOHUD_CONFIGFILE",
@@ -207,6 +215,7 @@ export const mockBootstrap: Bootstrap = {
         // One advanced entry in the mock so the show/hide affordance has
         // something to count under `pnpm dev`.
         tier: "advanced",
+        recommended_for: [],
       },
       // OptiScaler injection + inline config, so the OptiScaler builder dialog is
       // reachable under `pnpm dev` (the real catalog files these under
@@ -224,6 +233,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
       },
       {
         key: "PROTON_OPTISCALER_CONFIG",
@@ -238,6 +248,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
       },
       // The builder's "Inject as" picker writes this one. Absent from the mock
       // until now, which made that control a no-op under `pnpm dev` — it fell
@@ -255,6 +266,7 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
       },
     ],
   },
@@ -279,6 +291,7 @@ export const mockBootstrap: Bootstrap = {
       icon: "lightning",
       accent: "#76b900",
       tags: ["DLSS", "Reflex"],
+      protondb_tiers: [],
       env: [["DXVK_ENABLE_NVAPI", "1"]],
       wrappers: [],
     },
@@ -292,6 +305,7 @@ export const mockBootstrap: Bootstrap = {
       icon: "gauge",
       accent: "#7aa2f7",
       tags: ["low-latency", "GameMode"],
+      protondb_tiers: [],
       env: [],
       wrappers: [["gamemoderun", ""], ["mangohud", ""]],
     },
@@ -305,6 +319,7 @@ export const mockBootstrap: Bootstrap = {
       icon: "monitor",
       accent: "#f5bde6",
       tags: ["HDR", "Wayland"],
+      protondb_tiers: [],
       env: [["PROTON_ENABLE_WAYLAND", "1"]],
       wrappers: [],
     },
@@ -318,6 +333,10 @@ export const mockBootstrap: Bootstrap = {
       icon: "wrench",
       accent: "#fab387",
       tags: ["logging"],
+      // Tagged so the "suggested for this game's rating" matching logic has a
+      // real example to exercise, even though ipc.ts's mock tier is a fixed
+      // "gold" and so never actually surfaces this suggestion under `pnpm dev`.
+      protondb_tiers: ["borked", "bronze"],
       env: [["DXVK_ASYNC", "1"]],
       wrappers: [],
     },
@@ -349,6 +368,7 @@ export const mockBootstrap: Bootstrap = {
       last_played: 1785024000, // 2026-07-26
       playtime_minutes: 4210,
       heroic_id: null,
+      install_dir: "/home/you/.local/share/Steam/steamapps/common/Helldivers 2",
     },
     {
       app_id: 1245620,
@@ -359,6 +379,7 @@ export const mockBootstrap: Bootstrap = {
       last_played: 1783000000, // 2026-07-02
       playtime_minutes: 8640,
       heroic_id: null,
+      install_dir: "/home/you/.local/share/Steam/steamapps/common/ELDEN RING",
     },
     {
       app_id: 275850,
@@ -369,6 +390,8 @@ export const mockBootstrap: Bootstrap = {
       last_played: 1740000000, // 2025-02-19
       playtime_minutes: 312,
       heroic_id: null,
+      // Not installed — nothing for steamlocate to resolve a folder from.
+      install_dir: null,
     },
     {
       app_id: 0x80000001,
@@ -379,6 +402,7 @@ export const mockBootstrap: Bootstrap = {
       last_played: null,
       playtime_minutes: null,
       heroic_id: "7Hm5qmyaYmaSZ45Mqo3u4s",
+      install_dir: "/home/u/Games/FitGirl/crimson-desert/pfx/drive_c/Crimson Desert/bin64",
     },
   ],
   // Both vendors on, so the dev path exercises the NVAPI/DLSS *and* the AMD
@@ -445,6 +469,8 @@ export const mockBootstrap: Bootstrap = {
     // Open the browser-dev preview on the new Simple view; toggle to Advanced
     // in the header to iterate the full catalog.
     ui_mode: "simple",
+    // False so the first-run tour is visible under `pnpm dev` without extra setup.
+    seen_intro_tour: false,
     // One seeded entry so the Paths section isn't empty under `pnpm dev`.
     paths: {
       steam_roots: [],

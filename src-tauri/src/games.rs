@@ -1,6 +1,7 @@
 //! Enumerate installed Steam games and non-Steam shortcuts (read-only).
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use steamlocate::app::StateFlag;
 use steamlocate::SteamDir;
@@ -38,6 +39,14 @@ pub struct Game {
     /// Heroic's per-game id (base62 `app_name`), the key to its `GamesConfig`
     /// file. `Some` only for [`GameSource::Heroic`]; the inject command needs it.
     pub heroic_id: Option<String>,
+    /// Absolute install directory, when resolvable: `steamapps/common/<dir>`
+    /// for a Steam library game (via `steamlocate`'s `resolve_app_dir`), or the
+    /// parent of `executable` for a non-Steam shortcut / Heroic game. `None`
+    /// when there's nothing to resolve it from (e.g. a shortcut with a blank
+    /// target). Used only by the OptiScaler-upgrade feature to find/write
+    /// files in the game's folder — nothing else in the read-only discovery
+    /// path needs it.
+    pub install_dir: Option<PathBuf>,
 }
 
 /// Well-known non-game app IDs (runtimes / redistributables) to hide.
@@ -105,6 +114,7 @@ pub fn list_heroic_games() -> Vec<Game> {
             app_id: heroic_app_id(&h.app_name),
             name: h.title,
             source: GameSource::Heroic,
+            install_dir: parent_of(&h.executable),
             executable: h.executable,
             installed: h.installed,
             heroic_id: Some(h.app_name),
@@ -135,9 +145,17 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
             executable: None,
             installed,
             heroic_id: None,
+            install_dir: Some(library.resolve_app_dir(&app)),
         });
     }
     out.len() - before
+}
+
+/// The parent directory of an executable path, for sources (non-Steam
+/// shortcuts, Heroic) that only ever hand us a target exe, not a library
+/// folder `steamlocate` can resolve.
+fn parent_of(executable: &Option<String>) -> Option<PathBuf> {
+    executable.as_deref().map(std::path::Path::new).and_then(|p| p.parent()).map(PathBuf::from)
 }
 
 /// List installed Steam games plus non-Steam shortcuts, sorted by name with
@@ -179,11 +197,13 @@ pub fn list_games(
     if let Ok(shortcuts) = dir.shortcuts() {
         for sc in shortcuts.flatten() {
             let exe = sc.executable.trim().trim_matches('"').to_string();
+            let executable = if exe.is_empty() { None } else { Some(exe) };
             games.push(Game {
                 app_id: sc.app_id,
                 name: sc.app_name.clone(),
                 source: GameSource::NonSteam,
-                executable: if exe.is_empty() { None } else { Some(exe) },
+                install_dir: parent_of(&executable),
+                executable,
                 installed: true,
                 heroic_id: None,
             });
@@ -209,6 +229,7 @@ mod tests {
             executable: None,
             installed: true,
             heroic_id: None,
+            install_dir: None,
         }
     }
 
@@ -249,5 +270,17 @@ mod tests {
             games.iter().map(|g| g.name.as_str()).collect::<Vec<_>>(),
             vec!["Alpha", "beta", "zed"]
         );
+    }
+
+    #[test]
+    fn parent_of_resolves_a_shortcut_or_heroic_executable() {
+        assert_eq!(
+            parent_of(&Some("/games/HELLDIVERS 2/bin/game.exe".to_string())),
+            Some(PathBuf::from("/games/HELLDIVERS 2/bin"))
+        );
+        assert_eq!(parent_of(&None), None);
+        // A bare filename with no parent component (e.g. a relative path a
+        // shortcut stored oddly) has no directory to resolve to, not "/".
+        assert_eq!(parent_of(&Some(String::new())), None);
     }
 }

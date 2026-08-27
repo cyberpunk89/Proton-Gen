@@ -3,7 +3,7 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
-import { irrelevance, mergeIntoExtraEnv, splitExtraEnv, tokenizeEnv } from "./util";
+import { irrelevance, isRecommended, mergeIntoExtraEnv, splitExtraEnv, tokenizeEnv } from "./util";
 import { emptyConfig, isAdvanced } from "./types";
 import type {
   Catalog,
@@ -16,6 +16,9 @@ import type {
   Notice,
   LaunchDiff,
   LlmSuggestion,
+  OptiscalerExtractResult,
+  OptiscalerRelease,
+  OptiscalerStatus,
   Recipe,
   RuntimeDto,
   ConfigWarning,
@@ -60,6 +63,7 @@ const EMPTY_STORE: Store = {
   last_session: null,
   last_game_appid: null,
   ui_mode: "simple",
+  seen_intro_tour: false,
   paths: { steam_roots: [], steam_libraries: [], proton_dirs: [], bins: {} },
   global_profile: null,
 };
@@ -921,6 +925,20 @@ class AppStore {
 
   // ------------------------------- presets ----------------------------------
 
+  /** Presets saved against the currently selected game (by app id). Empty when
+   *  no game is selected or none match — callers should fall back to `otherPresets`. */
+  get presetsForCurrentGame() {
+    if (this.selectedAppId == null) return [];
+    return this.store.presets.filter((p) => p.game_appid === this.selectedAppId);
+  }
+
+  /** Every other saved preset: global ones (no game_appid) plus ones saved
+   *  against a different game than the current selection. */
+  get otherPresets() {
+    if (this.selectedAppId == null) return this.store.presets;
+    return this.store.presets.filter((p) => p.game_appid !== this.selectedAppId);
+  }
+
   savePreset(name: string) {
     const preset = {
       name,
@@ -1145,6 +1163,40 @@ class AppStore {
     };
   }
 
+  /** Catalog env keys tagged as a good default for the current GPU
+   *  capabilities that aren't already on at their recommended value — what
+   *  `applyRecommendedForGpu` would still change. Empty means the button has
+   *  nothing to do (either untagged hardware, or already applied). */
+  get recommendedEnvKeys(): string[] {
+    const caps = this.hwCaps;
+    return this.catalog.envs
+      .filter((d) => isRecommended(caps, d.recommended_for))
+      .filter((d) => {
+        const s = this.env[d.key];
+        if (!s) return false;
+        return !s.enabled || (d.default_value !== "" && s.value !== d.default_value);
+      })
+      .map((d) => d.key);
+  }
+
+  /** One-click "Recommended for your GPU": batch-enable every catalog param
+   *  tagged `recommended_for` a currently-true capability, at its documented
+   *  default. Never runs on its own — the frontend never mutates config
+   *  without a click, same as a recipe. */
+  applyRecommendedForGpu() {
+    const keys = new Set(this.recommendedEnvKeys);
+    if (!keys.size) return;
+    for (const d of this.catalog.envs) {
+      if (!keys.has(d.key)) continue;
+      const s = this.env[d.key];
+      if (!s) continue;
+      s.enabled = true;
+      if (d.default_value !== "") s.value = d.default_value;
+      this.disownParam(d.key);
+    }
+    this.mark("apply GPU-recommended defaults");
+  }
+
   /** The UI density mode, normalised: anything other than "advanced" (including
    *  the "" an older state.toml carries) is "simple". */
   get uiMode(): UiMode {
@@ -1152,6 +1204,15 @@ class AppStore {
   }
   setUiMode(m: UiMode) {
     this.store.ui_mode = m;
+    this.persistStore();
+  }
+
+  /** Dismiss the Simple-mode first-run tour, permanently (finished or skipped —
+   *  both count as "seen", there's no "show me again"). IntroTour.svelte owns
+   *  whether the dialog is actually open; this only persists the flag. */
+  markTourSeen() {
+    if (this.store.seen_intro_tour) return;
+    this.store.seen_intro_tour = true;
     this.persistStore();
   }
 
@@ -1353,6 +1414,71 @@ class AppStore {
     this.tierRequested.delete(appId);
     delete this.tierCache[String(appId)];
     this.requestTier(appId);
+  }
+
+  // ------------------------- OptiScaler upgrade -------------------------
+
+  /** Session cache: appid -> whether an existing OptiScaler install was found
+   *  in that game's folder, mirroring the ProtonDB tier cache above so
+   *  switching games doesn't re-stat the filesystem every time. */
+  optiscalerStatusCache = $state<Record<string, OptiscalerStatus>>({});
+  private optiscalerStatusRequested = new Set<number>();
+  optiscalerStatusLoading = $state<Record<string, boolean>>({});
+
+  optiscalerStatusFor(appId: number): OptiscalerStatus | undefined {
+    return this.optiscalerStatusCache[String(appId)];
+  }
+
+  /** Check at most once per session per game. Safe to call repeatedly. */
+  requestOptiscalerStatus(appId: number) {
+    if (this.optiscalerStatusRequested.has(appId)) return;
+    this.optiscalerStatusRequested.add(appId);
+    this.optiscalerStatusLoading[String(appId)] = true;
+    ipc
+      .optiscalerStatus(appId)
+      .then((s) => (this.optiscalerStatusCache[String(appId)] = s))
+      .catch((e) => {
+        console.error("optiscalerStatus failed", appId, e);
+        this.optiscalerStatusCache[String(appId)] = { install_dir: null, found: false };
+      })
+      .finally(() => (this.optiscalerStatusLoading[String(appId)] = false));
+  }
+
+  /** The latest upstream OptiScaler release — global, not per-game, so it's
+   *  fetched at most once per session regardless of which game is open. */
+  optiscalerLatest = $state<OptiscalerRelease | null>(null);
+  optiscalerLatestLoading = $state(false);
+  optiscalerLatestError = $state<string | null>(null);
+  private optiscalerLatestRequested = false;
+
+  requestOptiscalerLatest() {
+    if (this.optiscalerLatestRequested) return;
+    this.optiscalerLatestRequested = true;
+    this.optiscalerLatestLoading = true;
+    this.optiscalerLatestError = null;
+    ipc
+      .optiscalerLatest()
+      .then((r) => (this.optiscalerLatest = r))
+      .catch((e) => (this.optiscalerLatestError = String(e)))
+      .finally(() => (this.optiscalerLatestLoading = false));
+  }
+
+  optiscalerFetchBusy = $state(false);
+
+  /** Download the latest OptiScaler release and extract it into `appId`'s
+   *  install directory. The one action in the app that writes into a game's
+   *  own folder — callers gate this behind an explicit confirm, never call it
+   *  from a $effect or on load. Throws on failure; caller toasts. */
+  async fetchOptiscalerUpgrade(appId: number): Promise<OptiscalerExtractResult> {
+    this.optiscalerFetchBusy = true;
+    try {
+      const result = await ipc.optiscalerFetch(appId);
+      const prev = this.optiscalerStatusCache[String(appId)];
+      this.optiscalerStatusCache[String(appId)] = { install_dir: prev?.install_dir ?? null, found: true };
+      return result;
+    } finally {
+      this.optiscalerFetchBusy = false;
+    }
   }
 
   /**
