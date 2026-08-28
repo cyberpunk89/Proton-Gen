@@ -88,7 +88,12 @@
         {/if}
       {/snippet}
     </DialogPrimitive.Overlay>
-    <DialogPrimitive.Content forceMount>
+    <!-- restoreScrollDelay: see Dialog.svelte — without it, bits-ui restores
+         body pointer-events via a bare rAF that can get stuck indefinitely if
+         the window isn't painting the instant this closes. 250, not 0: must
+         clear the drawer's own 200ms fly transition below, or the scroll/
+         pointer-events lock would lift mid-animation. -->
+    <DialogPrimitive.Content forceMount restoreScrollDelay={250}>
       {#snippet child({ props })}
         {#if open}
           <div class="fixed inset-0 z-[100] flex justify-end" role="presentation">

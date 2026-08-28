@@ -45,7 +45,19 @@
     <DialogPrimitive.Overlay
       class="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
     />
-    <DialogPrimitive.Content>
+    <!--
+      restoreScrollDelay=0, not the library default of null: bits-ui's own
+      body-scroll-lock restores `body { pointer-events: none }` via a bare
+      requestAnimationFrame when this defaults to null, and a rAF never fires
+      while the window isn't actively painting (minimized, occluded,
+      backgrounded) — the lock then never lifts, silently, and the whole app
+      goes click-dead exactly like #63 until reload. Any non-null delay
+      switches bits-ui to a setTimeout instead, which fires regardless. Safe
+      at 0 here since this dialog has no close transition to protect (see the
+      restoreScrollDelay doc comment in bits-ui's ScrollLock) — SettingsDrawer
+      needs a real delay instead, for that reason.
+    -->
+    <DialogPrimitive.Content restoreScrollDelay={0}>
       {#snippet child({ props })}
         <div
           class="fixed inset-0 z-[100] flex items-start justify-center p-6 pt-[12vh]"

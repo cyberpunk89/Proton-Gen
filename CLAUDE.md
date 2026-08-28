@@ -120,6 +120,16 @@ extra `--` into cargo).
   `util.ts`. Enforced by `scripts/check-props-spread.sh`, which `pnpm check` runs.
   `bits-ui` is **pinned exactly** for the same reason: the app depends on internal prop
   shapes that a minor bump has already changed once.
+- **A stuck `body { pointer-events: none }` has a second cause, unrelated to `{...props}`
+  ordering above.** bits-ui restores that lock via a bare `requestAnimationFrame` unless
+  `Dialog.Content`/`AlertDialog.Content` gets an explicit `restoreScrollDelay`, and a rAF
+  never fires while the window isn't actively painting a frame (minimized, occluded,
+  backgrounded) — the lock then never lifts, silently, and the app goes click-dead exactly
+  like #63 but from a different mechanism. `Dialog.svelte`, `CommandPalette.svelte` and
+  `SettingsDrawer.svelte` all pass `restoreScrollDelay` for this reason — `0` where the
+  dialog has no close transition to protect, `250` in `SettingsDrawer` to clear its own
+  200ms `fly` transition first (bits-ui's own doc comment on `restoreScrollDelay`: it must
+  exceed the transition duration). Any new bits-ui `Dialog`/`AlertDialog` needs the same.
 - **Minimal Tauri capabilities** (`capabilities/default.json`): core, opener, clipboard,
   dialog. Adding a plugin = `Cargo.toml` dep + `.plugin(...)` in `lib.rs` + a capability
   permission + the JS `@tauri-apps/plugin-*` package. `opener:default` only scopes

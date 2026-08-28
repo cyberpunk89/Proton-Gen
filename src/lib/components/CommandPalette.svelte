@@ -109,7 +109,10 @@
 <DialogPrimitive.Root bind:open={app.showPalette}>
   <DialogPrimitive.Portal>
     <DialogPrimitive.Overlay class="fixed inset-0 z-[110] bg-black/50 backdrop-blur-sm" />
-    <DialogPrimitive.Content>
+    <!-- restoreScrollDelay: see Dialog.svelte — bare rAF-based restore of
+         body pointer-events can get stuck if the window isn't painting when
+         this closes. No exit transition here, so 0 is safe. -->
+    <DialogPrimitive.Content restoreScrollDelay={0}>
       {#snippet child({ props })}
         <div
           class="fixed inset-0 z-[110] flex items-start justify-center p-6 pt-[12vh]"
