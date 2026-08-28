@@ -8,6 +8,7 @@ import type {
   DiffStatus,
   HeroicInjectResult,
   LaunchDiff,
+  MangohudExportResult,
   Notice,
   RecipeChange,
   Token,
@@ -614,6 +615,23 @@ export function mockBuildCommand(config: Config, protonPath: string | null): str
 export function mockInjectHeroic(appName: string, _config: Config): HeroicInjectResult {
   const dir = `~/.config/heroic/GamesConfig/${appName}`;
   return { config_path: `${dir}.json`, backup_path: `${dir}.json.protongen-1755290000.bak` };
+}
+
+// Reduced stand-in for mangohud_export::merge: no filesystem in the mock, so
+// there's no real "existing file" to diff against — `changed_keys` is derived
+// from the config string itself (good enough to exercise the confirm dialog
+// under `pnpm dev`), and `cleared_keys` is always empty.
+export function mockExportMangohudSystem(config: string): MangohudExportResult {
+  const changed_keys = config
+    .split(",")
+    .map((t) => t.trim().split("=")[0])
+    .filter(Boolean);
+  return {
+    config_path: "~/.config/MangoHud/MangoHud.conf",
+    backup_path: "~/.config/MangoHud/MangoHud.conf.protongen-1755290000.bak",
+    changed_keys,
+    cleared_keys: [],
+  };
 }
 
 // Reduced stand-in for diff.rs::compare. Understands the same normalisations

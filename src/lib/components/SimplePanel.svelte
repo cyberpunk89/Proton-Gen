@@ -16,6 +16,7 @@
     DiscordLogo,
     GlobeHemisphereWest,
     SlidersHorizontal,
+    CubeTransparent,
   } from "phosphor-svelte";
   import type { Component } from "svelte";
 
@@ -43,6 +44,14 @@
     env?: [string, string][];
     /** Catalog wrapper keys this card turns on together. */
     wrap?: [string, string][];
+    /**
+     * A literal token this card keeps present in the free-form game-arguments
+     * field (space-joined), for fixes that only work as a launch argument
+     * rather than an env var or wrapper — e.g. RE Engine's Wine-detection
+     * bypass. Not catalog-backed like `env`/`wrap`; `app.gameArgs` is a plain
+     * free-text field, so this only ever appends/removes an exact substring.
+     */
+    gameArg?: string;
     /** Opens one of the builder dialogs in addition to the toggle. */
     configure?: "mango" | "opti";
   }
@@ -68,10 +77,22 @@
     {
       id: "fsr4",
       title: "FSR 4 upscaling",
-      blurb: "Upgrade the game's FSR to FSR 4 for sharper upscaling on RDNA3/RDNA4.",
+      blurb: "Upgrade the game's FSR to FSR 4 (plus multi-frame generation) for RDNA3/RDNA4.",
       icon: MagicWand,
       needs: ["fsr4"],
-      env: [["PROTON_FSR4_UPGRADE", "1"]],
+      env: [
+        ["PROTON_FSR4_UPGRADE", "1"],
+        ["PROTON_MLFG_UPGRADE", "1"],
+      ],
+    },
+    {
+      id: "raytracing",
+      title: "Ray tracing",
+      blurb:
+        "Force ray tracing on at the vkd3d-proton layer and unblock it on RE Engine games (Resident Evil, Pragmata, Monster Hunter) that hide RT when they detect Wine.",
+      icon: CubeTransparent,
+      env: [["VKD3D_CONFIG", "dxr"]],
+      gameArg: "/WineDetectionEnabled:False",
     },
     {
       id: "overlay",
@@ -114,11 +135,12 @@
   }
   let cards = $derived(CARDS.filter(relevant));
 
-  /** A card is "on" when every key it owns is enabled. */
+  /** A card is "on" when every key (and game-arg token) it owns is present. */
   function isActive(c: Card): boolean {
     const envOn = (c.env ?? []).every(([k]) => app.env[k]?.enabled);
     const wrapOn = (c.wrap ?? []).every(([k]) => app.wrap[k]?.enabled);
-    return envOn && wrapOn;
+    const argOn = !c.gameArg || app.gameArgs.includes(c.gameArg);
+    return envOn && wrapOn && argOn;
   }
 
   function setEnv(key: string, on: boolean, value: string) {
@@ -133,11 +155,24 @@
     if (cur.enabled !== on) app.toggleWrap(key);
     if (on && value) app.setWrapValue(key, value);
   }
+  /** Append/remove an exact token in the free-text game-arguments field. */
+  function setGameArg(token: string, on: boolean) {
+    const has = app.gameArgs.includes(token);
+    if (on && !has) {
+      app.gameArgs = app.gameArgs.trim() ? `${app.gameArgs.trim()} ${token}` : token;
+    } else if (!on && has) {
+      app.gameArgs = app.gameArgs
+        .split(/\s+/)
+        .filter((t) => t && t !== token)
+        .join(" ");
+    }
+  }
 
   function toggle(c: Card) {
     const on = !isActive(c);
     for (const [k, v] of c.env ?? []) setEnv(k, on, v);
     for (const [k, v] of c.wrap ?? []) setWrap(k, on, v);
+    if (c.gameArg) setGameArg(c.gameArg, on);
   }
 
   const gp = $derived(app.store.global_profile);

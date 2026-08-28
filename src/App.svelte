@@ -16,6 +16,7 @@
   import ShortcutsSheet from "$lib/components/ShortcutsSheet.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
+  import MangoHudSystemConfirm from "$lib/components/MangoHudSystemConfirm.svelte";
   import DefaultProfilePrompt from "$lib/components/DefaultProfilePrompt.svelte";
   import IntroTour from "$lib/components/IntroTour.svelte";
   import LogViewer from "$lib/components/LogViewer.svelte";
@@ -177,6 +178,9 @@
 <!-- Mounted here, away from its two triggers in LauncherAction, so a view or
      section change can't unmount an open bits-ui modal — see HeroicConfirm. -->
 <HeroicConfirm />
+<!-- Same rationale, one level up: its trigger lives inside the MangoHud
+     dialog, which the user can close mid-flow. -->
+<MangoHudSystemConfirm />
 <DefaultProfilePrompt />
 <IntroTour />
 <LogViewer />

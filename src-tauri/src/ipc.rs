@@ -19,6 +19,7 @@ use crate::hardware::{self, Hardware};
 use crate::heroic;
 use crate::lint;
 use crate::llm::{self, LlmRequest, LlmSuggestion, RecipeRef, TroubleshootRequest, TroubleshootResult};
+use crate::mangohud_export;
 use crate::optiscaler_upgrade;
 use crate::params::{Catalog, ConfigWarning};
 use crate::parser;
@@ -836,6 +837,16 @@ pub async fn optiscaler_fetch(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Write `config` (a `MANGOHUD_CONFIG`-style string) into the real, system-wide
+/// `~/.config/MangoHud/MangoHud.conf`, merging it with whatever's already there.
+/// The third sanctioned write outside protongen's own state — see
+/// `mangohud_export`'s doc comment. Backs the file up first if it existed;
+/// never gated here, only ever called from the frontend's confirm dialog.
+#[tauri::command]
+pub fn export_mangohud_system(config: String) -> Result<mangohud_export::ExportResult, String> {
+    mangohud_export::write_system_config(&config)
 }
 
 /// Check GitHub Releases for a newer version (off the UI thread). A failed check

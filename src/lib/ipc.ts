@@ -7,6 +7,7 @@ import type {
   LaunchDiff,
   LlmRequest,
   LlmSuggestion,
+  MangohudExportResult,
   Notice,
   OptiscalerExtractResult,
   OptiscalerRelease,
@@ -24,6 +25,7 @@ import {
   mockBootstrap,
   mockBuildCommand,
   mockExplain,
+  mockExportMangohudSystem,
   mockInjectHeroic,
   mockLaunchDiff,
   mockLaunchStatuses,
@@ -238,6 +240,14 @@ export const ipc = {
           files_written: 12,
           ini_preserved: true,
         }),
+
+  // Merge `config` into the real, system-wide ~/.config/MangoHud/MangoHud.conf.
+  // The one command in this file gated to a single confirm-dialog call site
+  // (see mangohud_export's doc comment for the read-only-by-contract exception).
+  exportMangohudSystem: (config: string) =>
+    inTauri
+      ? invoke<MangohudExportResult>("export_mangohud_system", { config })
+      : Promise.resolve(mockExportMangohudSystem(config)),
 };
 
 function emptyParse(): Config {

@@ -167,6 +167,18 @@ details = "CachyOS-specific (added 11.0-20260703): swaps in the vkd3d-low-latenc
 example = "PROTON_VKD3D_LOWLATENCY=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
+[[env]]
+key = "ENABLE_LAYER_MESA_ANTI_LAG"
+tier = "advanced"
+gpu = "amd"
+category = "Performance / Sync"
+default_value = "1"
+values = ["1", "0"]
+help = "Mesa: enable AMD Anti-Lag 2 via RADV's open-source VK_AMD_anti_lag layer (Mesa 25.3+)."
+details = "Turns on VkLayer_MESA_anti_lag, the open-source implicit Vulkan layer implementing VK_AMD_anti_lag that RADV merged in Mesa 25.3. It paces the CPU so it doesn't get too far ahead of the GPU, cutting input latency similarly to AMD's proprietary Radeon Anti-Lag 2 on Windows. Needs Mesa 25.3 or newer; distinct from LOW_LATENCY_LAYER (a separate Reflex-like layer) — the two address the same goal via different mechanisms, so try one at a time rather than stacking them."
+example = "ENABLE_LAYER_MESA_ANTI_LAG=1 %command%"
+url = "https://docs.mesa3d.org/envvars.html"
+
 # ======================== Render backend ========================
 
 [[env]]

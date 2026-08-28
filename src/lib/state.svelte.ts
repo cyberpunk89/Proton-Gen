@@ -923,6 +923,26 @@ class AppStore {
     }
   }
 
+  /**
+   * Merge `pendingMangoSystemConfig` into the real, system-wide MangoHud.conf,
+   * so it becomes the default for every MangoHud-enabled program — not just
+   * this app's own generated command. The backend backs the file up first and
+   * preserves every line it doesn't own (font, keybinds, blacklist, unmodeled
+   * colors, comments); a key the new config drops is cleared to match, same as
+   * `injectHeroic` writing `false` to fully turn off a wrapper it owns.
+   */
+  async exportMangoSystemWide() {
+    try {
+      const res = await ipc.exportMangohudSystem(this.pendingMangoSystemConfig);
+      const cleared = res.cleared_keys.length
+        ? ` (cleared: ${res.cleared_keys.join(", ")})`
+        : "";
+      toast.success(`Set as system MangoHud default — backup saved${cleared}`, { ms: 6000 });
+    } catch (e) {
+      toast.error(`Couldn't write MangoHud.conf: ${e}`, { ms: 6000 });
+    }
+  }
+
   // ------------------------------- presets ----------------------------------
 
   /** Presets saved against the currently selected game (by app id). Empty when
@@ -1095,6 +1115,17 @@ class AppStore {
    * and strand `body { pointer-events: none }`.
    */
   heroicConfirmOpen = $state(false);
+
+  /**
+   * Whether the "Set as system MangoHud default?" confirmation is up, and the
+   * MANGOHUD_CONFIG-style string it would export if confirmed (the MangoHud
+   * dialog's own live builder output, stashed here when its button is
+   * clicked). Same rationale as `heroicConfirmOpen`: the dialog is mounted
+   * once at the app root (`MangoHudSystemConfirm`) rather than beside its
+   * trigger, so it survives the trigger's own dialog closing mid-flow.
+   */
+  mangoSystemConfirmOpen = $state(false);
+  pendingMangoSystemConfig = $state("");
 
   /**
    * The row `revealParam` last asked for. `OptionRow` watches this and scrolls,

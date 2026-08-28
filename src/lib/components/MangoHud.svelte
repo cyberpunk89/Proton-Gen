@@ -184,6 +184,23 @@
     }
     onapply?.();
   }
+
+  // Opens the root-mounted confirm dialog (MangoHudSystemConfirm) rather than
+  // writing directly — merging this into the real, system-wide MangoHud.conf
+  // touches a file outside protongen's own state, so it's confirm-gated like
+  // the Heroic config write.
+  //
+  // Closes this dialog first (via the same `onapply` the regular Apply button
+  // uses) rather than stacking the confirm on top of it: two simultaneously-
+  // open bits-ui dialogs is a combination nothing else in the app exercises,
+  // and it left body's pointer-events stuck (the #63 failure mode) rather than
+  // restoring on the confirm dialog's own close. One dialog open at a time,
+  // same as every other confirm flow, sidesteps it.
+  function requestSystemExport() {
+    app.pendingMangoSystemConfig = config;
+    onapply?.();
+    app.mangoSystemConfirmOpen = true;
+  }
 </script>
 
 <div class="space-y-3">
@@ -420,7 +437,15 @@
   <!-- Sticky: the panel is taller than the dialog's scroll area on a short
        screen, and the primary action should never be the thing you have to go
        looking for. -->
-  <div class="sticky bottom-0 -mx-1 flex justify-end bg-surface-solid px-1 pb-1 pt-2">
+  <div class="sticky bottom-0 -mx-1 flex justify-end gap-2 bg-surface-solid px-1 pb-1 pt-2">
+    {#if mode === "build"}
+      <button
+        onclick={requestSystemExport}
+        class="rounded-lg border border-border bg-surface-2/60 px-3 py-1.5 text-sm text-subtext transition hover:border-accent/50 active:scale-95"
+      >
+        Set as system default…
+      </button>
+    {/if}
     <button
       onclick={apply}
       class="rounded-lg px-3 py-1.5 text-sm font-medium transition active:scale-95"

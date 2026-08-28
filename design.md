@@ -562,6 +562,7 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 | Debounced live recompute | Smooth typing, fewer IPC calls | ~60 ms latency between edit and preview. |
 | Svelte 5 runes single store | Minimal boilerplate, fine-grained reactivity | All state centralized in one class (intentional). |
 | OptiScaler-upgrade fetch writes into a game's folder | The one place read-only/paste-yourself has a named exception — see below | Introduces a network+filesystem write path that has to stay explicit-confirm-only forever, or the invariant is gone. |
+| MangoHud system-wide export merges into a real config file outside `state.toml` | User-requested; follows the same backup-first, preserve-what-we-don't-own shape as the other two exceptions — see below | A third precedent-setting write path; the read-only invariant now rests on all three staying confirm-gated forever. |
 
 **The OptiScaler-upgrade exception.** `optiscaler_upgrade.rs` fetches the
 latest `optiscaler/OptiScaler` GitHub release and extracts it into a *game's*
@@ -576,6 +577,24 @@ overwritten (it may carry tuning applied through this app's own OptiScaler
 builder). No checksum is published for OptiScaler's releases, unlike
 protongen's own — integrity here rests on HTTPS plus fetching straight from
 the project's own Releases API.
+
+**The MangoHud system-wide export exception.** `mangohud_export.rs` merges the
+overlay built in protongen's MangoHud dialog into the real, system-wide
+`~/.config/MangoHud/MangoHud.conf` — the third write outside `state.toml`,
+alongside [`heroic::inject`] and the OptiScaler fetch above. Justified the same
+way: user-requested (so the overlay tuned here becomes the default for every
+MangoHud-enabled program, not just the one launch command copied out of this
+app); follows the Heroic exception's exact shape (back up first, preserve
+every line it doesn't own, atomic write); and is never automatic — the
+frontend only calls it from `MangoHudSystemConfirm`'s Apply handler, which
+names the destination path and what's preserved before writing anything.
+Unlike Heroic's structured JSON, `MangoHud.conf` is flat `key`/`key=value`
+text, so "preserve what we don't own" means preserving every *line* whose key
+isn't one the overlay builder can express — a hand-tuned font, a toggle
+keybind, an app blacklist, unmodeled colors, comments — while the managed
+keys are replaced wholesale to match the current build exactly, including
+dropping a key the user has since unchecked (`ExportResult.cleared_keys`
+reports these, so the confirm dialog and toast can name them).
 
 ---
 

@@ -249,6 +249,15 @@ export interface OptiscalerExtractResult {
   ini_preserved: boolean;
 }
 
+/** Mirrors mangohud_export::ExportResult, for the system-wide export confirm
+ *  dialog / toast. `backup_path` is null when there was no pre-existing file. */
+export interface MangohudExportResult {
+  config_path: string;
+  backup_path: string | null;
+  changed_keys: string[];
+  cleared_keys: string[];
+}
+
 export interface Config {
   umu: boolean;
   runtime: string | null;
