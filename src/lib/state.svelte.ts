@@ -323,12 +323,19 @@ class AppStore {
     ];
   }
 
-  /** Re-scan the library (games, runtimes, shortcuts) without restarting. Only
-   *  the discovery-derived fields are replaced; builder selections, the store and
-   *  the theme are left intact. Current selections are re-validated against the
-   *  fresh lists so a removed game/runtime falls back gracefully. */
-  async refresh() {
-    if (this.refreshing) return;
+  /**
+   * Re-scan the library (games, runtimes, shortcuts) without restarting. Only
+   * the discovery-derived fields are replaced; builder selections, the store and
+   * the theme are left intact. Current selections are re-validated against the
+   * fresh lists so a removed game/runtime falls back gracefully.
+   *
+   * Reports what happened, mirroring `checkForUpdate()`: `rescan` now runs off
+   * the backend's main thread, so it signals failure by *rejecting* rather than
+   * by returning a Bootstrap carrying `load_error`. A caller that announced a
+   * refresh needs to know, or it toasts "Library refreshed" over a failure.
+   */
+  async refresh(): Promise<"ok" | "busy" | "failed"> {
+    if (this.refreshing) return "busy";
     this.refreshing = true;
     try {
       const b = await ipc.rescan();
@@ -359,6 +366,13 @@ class AppStore {
         this.selectedAppId = null;
         this.selectedGameName = null;
       }
+    } catch (e) {
+      // Caught rather than rethrown: `scheduleRescan` fires this on a debounce
+      // with no caller to catch it, and an unhandled rejection there is
+      // invisible. The banner is the durable signal.
+      console.error("rescan failed", e);
+      this.loadError = String(e);
+      return "failed";
     } finally {
       this.refreshing = false;
     }
@@ -367,6 +381,7 @@ class AppStore {
     this.retryFailedArt();
     // launchOptions just changed, so every badge is potentially stale.
     this.refreshLaunchStatuses();
+    return "ok";
   }
 
   /** Recompute the per-game applied/drifted badges for the library grid.

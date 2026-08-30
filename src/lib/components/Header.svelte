@@ -43,8 +43,9 @@
     app.showSave = false;
   }
   async function doRefresh() {
-    await app.refresh();
-    toast.success("Library refreshed");
+    const result = await app.refresh();
+    if (result === "ok") toast.success("Library refreshed");
+    else if (result === "failed") toast.error("Couldn't refresh the library");
   }
   async function doImport() {
     await app.importCommand(importText);

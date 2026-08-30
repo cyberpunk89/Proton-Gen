@@ -99,7 +99,13 @@ export const refreshLibraryAction: AppCommand = {
   icon: ArrowsClockwise,
   keywords: ["rescan", "games"],
   available: () => !app.refreshing,
-  run: () => app.refresh(),
+  // Same feedback as the header's refresh button: the palette closes on run, so
+  // without a toast a failed re-scan looks exactly like a successful one.
+  async run() {
+    const result = await app.refresh();
+    if (result === "ok") toast.success("Library refreshed");
+    else if (result === "failed") toast.error("Couldn't refresh the library");
+  },
 };
 
 export const openSettingsAction: AppCommand = {

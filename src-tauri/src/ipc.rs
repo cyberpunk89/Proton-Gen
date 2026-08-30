@@ -3,7 +3,7 @@
 //! catalog / recipes / runtimes / games / hardware are sent once via `bootstrap`.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use steamlocate::SteamDir;
@@ -122,24 +122,31 @@ pub struct Bootstrap {
     pub config_warnings: Vec<ConfigWarning>,
 }
 
-/// Shared application state: immutable discovery results + a mutable store.
+/// Shared application state: the cheap, always-available bits (catalog,
+/// recipes, hardware, store) plus a lazily-filled filesystem discovery.
+///
+/// The immutable halves are behind `Arc` so an async command can hand a handle
+/// to `spawn_blocking` instead of cloning a 100-entry catalog per call. Every
+/// existing `&self.catalog` call site is unaffected — `Arc<Catalog>` derefs.
 pub struct AppState {
-    catalog: Catalog,
-    recipes: Recipes,
+    catalog: Arc<Catalog>,
+    recipes: Arc<Recipes>,
     hardware: Hardware,
-    steam_root: Option<String>,
-    load_error: Option<String>,
-    runtimes: Vec<RuntimeDto>,
-    games: Vec<GameDto>,
-    launch_options: HashMap<String, String>,
-    compat_tools: HashMap<String, String>,
-    requires_status: HashMap<String, bool>,
-    stale: Option<StaleInfo>,
     /// Static warnings from the TOML overrides. Path warnings live on
-    /// `Discovery` instead, because a rescan can clear them.
+    /// [`Discovery`] instead, because a rescan can clear them.
     config_warnings: Vec<ConfigWarning>,
-    path_warnings: Mutex<Vec<ConfigWarning>>,
-    store: Mutex<Store>,
+    store: Arc<Mutex<Store>>,
+    /// Filesystem discovery: `None` until the first `bootstrap` fills it,
+    /// replaced wholesale by `rescan`.
+    ///
+    /// Deliberately **not** scanned in [`AppState::new`]. That runs inside
+    /// `.manage(...)` *before* `tauri::Builder::run` creates a window, so every
+    /// millisecond it spends enumerating Steam libraries, parsing
+    /// `localconfig.vdf` and walking `$PATH` is a millisecond with nothing on
+    /// screen at all — the app's own loading spinner cannot cover a window that
+    /// does not exist yet. Deferring it to `bootstrap` (which runs off the main
+    /// thread) is what lets that spinner do its job.
+    discovery: Arc<Mutex<Option<Discovery>>>,
 }
 
 impl AppState {
@@ -155,14 +162,56 @@ impl AppState {
     /// up `install_dir` this way rather than trusting a path the frontend
     /// sends, so the write target always comes from the same discovery pass
     /// `bootstrap`/`rescan` already validated.
-    fn game(&self, app_id: u32) -> Option<&GameDto> {
-        self.games.iter().find(|g| g.app_id == app_id)
+    ///
+    /// Returns an owned clone rather than a borrow: the games now live behind a
+    /// `Mutex`, so a reference would hold the guard for the caller's lifetime —
+    /// and these callers `.await` afterwards, which a `MutexGuard` must not
+    /// outlive.
+    fn game(&self, app_id: u32) -> Option<GameDto> {
+        let guard = self.discovery.lock().unwrap();
+        guard.as_ref()?.games.iter().find(|g| g.app_id == app_id).cloned()
+    }
+
+    /// The Steam root from the last discovery pass, if any has run.
+    fn steam_root(&self) -> Option<String> {
+        self.discovery.lock().unwrap().as_ref()?.steam_root.clone()
+    }
+
+    /// Assemble the frontend payload from a discovery snapshot plus the static
+    /// state. Shared by `bootstrap` and `rescan`, which differ only in whether
+    /// they reuse the cached scan.
+    fn bootstrap_from(&self, d: &Discovery, store: Store) -> Bootstrap {
+        Bootstrap {
+            steam_root: d.steam_root.clone(),
+            load_error: d.load_error.clone(),
+            catalog: (*self.catalog).clone(),
+            categories: self.catalog.categories(),
+            recipes: self.recipes.recipes.clone(),
+            runtimes: d.runtimes.clone(),
+            games: d.games.clone(),
+            hardware: self.hardware.clone(),
+            store,
+            launch_options: d.launch_options.clone(),
+            compat_tools: d.compat_tools.clone(),
+            requires_status: d.requires_status.clone(),
+            stale: d.stale.clone(),
+            // Parse warnings plus whatever the scan made of the configured
+            // paths, so a bad path is visible from the first frame.
+            config_warnings: self
+                .config_warnings
+                .iter()
+                .cloned()
+                .chain(d.path_warnings.iter().cloned())
+                .collect(),
+        }
     }
 }
 
 /// Results of a filesystem re-scan: everything that can change while the app is
-/// running (a game installed, a Proton runtime added). Recomputed by both
-/// `AppState::new()` and the `rescan` command.
+/// running (a game installed, a Proton runtime added). Produced by the first
+/// `bootstrap` and replaced by every `rescan` — never by `AppState::new()`,
+/// which must stay cheap (see [`AppState::discovery`]).
+#[derive(Clone)]
 struct Discovery {
     steam_root: Option<String>,
     load_error: Option<String>,
@@ -170,6 +219,10 @@ struct Discovery {
     games: Vec<GameDto>,
     launch_options: HashMap<String, String>,
     compat_tools: HashMap<String, String>,
+    /// required binary name -> whether it's on `$PATH`. Part of the scan rather
+    /// than static state: a rescan is how a corrected binary override turns its
+    /// badge green.
+    requires_status: HashMap<String, bool>,
     stale: Option<StaleInfo>,
     /// Configured paths discovery could not use. Recomputed every scan, so
     /// fixing a path clears its banner.
@@ -213,6 +266,8 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
 
     let stale = compute_stale(catalog, &runtimes_raw);
     let runtimes = runtimes_raw.iter().map(runtime_dto).collect();
+    let requires_status =
+        compute_requires_status(catalog, &builder::Bins::with_overrides(&paths.bins));
 
     Discovery {
         steam_root,
@@ -221,6 +276,7 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
         games,
         launch_options,
         compat_tools,
+        requires_status,
         stale,
         path_warnings,
     }
@@ -234,25 +290,14 @@ impl AppState {
         let hardware = hardware::detect();
         let store = Store::load();
 
-        let d = scan_discovery(&catalog, &store.paths);
-        let requires_status =
-            compute_requires_status(&catalog, &builder::Bins::with_overrides(&store.paths.bins));
-
+        // No filesystem scan here — see `AppState::discovery`.
         Self {
-            catalog,
-            recipes,
+            catalog: Arc::new(catalog),
+            recipes: Arc::new(recipes),
             hardware,
-            steam_root: d.steam_root,
-            load_error: d.load_error,
-            runtimes: d.runtimes,
-            games: d.games,
-            launch_options: d.launch_options,
-            compat_tools: d.compat_tools,
-            requires_status,
-            stale: d.stale,
             config_warnings,
-            path_warnings: Mutex::new(d.path_warnings),
-            store: Mutex::new(store),
+            store: Arc::new(Mutex::new(store)),
+            discovery: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -349,32 +394,30 @@ fn compute_stale(catalog: &Catalog, runtimes: &[runtime::Runtime]) -> Option<Sta
 
 // ----------------------------- commands -----------------------------
 
+/// Everything the frontend needs at startup, in one round-trip.
+///
+/// Runs the filesystem scan the first time it is called (off the UI thread) and
+/// caches it; later calls reuse that snapshot, so a `Retry` after a failed
+/// `init()` is cheap. `rescan` is the way to force a fresh look.
 #[tauri::command]
-pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
-    let store = state.store.lock().unwrap().clone();
-    Bootstrap {
-        steam_root: state.steam_root.clone(),
-        load_error: state.load_error.clone(),
-        catalog: state.catalog.clone(),
-        categories: state.catalog.categories(),
-        recipes: state.recipes.recipes.clone(),
-        runtimes: state.runtimes.clone(),
-        games: state.games.clone(),
-        hardware: state.hardware.clone(),
-        store,
-        launch_options: state.launch_options.clone(),
-        compat_tools: state.compat_tools.clone(),
-        requires_status: state.requires_status.clone(),
-        stale: state.stale.clone(),
-        // Parse warnings plus whatever the startup scan made of the configured
-        // paths, so a bad path is visible from the first frame.
-        config_warnings: state
-            .config_warnings
-            .iter()
-            .cloned()
-            .chain(state.path_warnings.lock().unwrap().iter().cloned())
-            .collect(),
-    }
+pub async fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap, String> {
+    let store = { state.store.lock().unwrap().clone() };
+    let cached = { state.discovery.lock().unwrap().clone() };
+
+    let d = match cached {
+        Some(d) => d,
+        None => {
+            let catalog = Arc::clone(&state.catalog);
+            let paths = store.paths.clone();
+            let d = tauri::async_runtime::spawn_blocking(move || scan_discovery(&catalog, &paths))
+                .await
+                .map_err(|e| e.to_string())?;
+            *state.discovery.lock().unwrap() = Some(d.clone());
+            d
+        }
+    };
+
+    Ok(state.bootstrap_from(&d, store))
 }
 
 /// Re-scan Steam / runtimes / games and return a fresh `Bootstrap` so the UI can
@@ -382,38 +425,24 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
 /// static fields (catalog, recipes, hardware) and the current store are reused
 /// unchanged. `requires_status` and the path warnings are *not* static — a
 /// rescan is how a corrected Settings path clears its banner and turns a binary
-/// override's badge green. `AppState`'s discovery snapshot is intentionally
-/// left untouched — no command reads it after startup, so there's nothing to keep
-/// in sync (build_command/lint work off the passed Config + catalog).
+/// override's badge green. Runs off the UI thread: this is a full filesystem
+/// scan, and it fires on a debounce while the user types a path into Settings.
+///
+/// `AppState::discovery` *is* replaced here, unlike the old flat snapshot —
+/// `game_art` and the OptiScaler commands read it, so leaving it stale would
+/// point them at a library the user just corrected.
 #[tauri::command]
-pub fn rescan(state: State<'_, AppState>) -> Bootstrap {
-    let store = state.store.lock().unwrap().clone();
-    let d = scan_discovery(&state.catalog, &store.paths);
-    let requires_status =
-        compute_requires_status(&state.catalog, &builder::Bins::with_overrides(&store.paths.bins));
-    let warnings = state
-        .config_warnings
-        .iter()
-        .cloned()
-        .chain(d.path_warnings.iter().cloned())
-        .collect();
-    *state.path_warnings.lock().unwrap() = d.path_warnings;
-    Bootstrap {
-        steam_root: d.steam_root,
-        load_error: d.load_error,
-        catalog: state.catalog.clone(),
-        categories: state.catalog.categories(),
-        recipes: state.recipes.recipes.clone(),
-        runtimes: d.runtimes,
-        games: d.games,
-        hardware: state.hardware.clone(),
-        store,
-        launch_options: d.launch_options,
-        compat_tools: d.compat_tools,
-        requires_status,
-        stale: d.stale,
-        config_warnings: warnings,
-    }
+pub async fn rescan(state: State<'_, AppState>) -> Result<Bootstrap, String> {
+    let store = { state.store.lock().unwrap().clone() };
+    let catalog = Arc::clone(&state.catalog);
+    let paths = store.paths.clone();
+
+    let d = tauri::async_runtime::spawn_blocking(move || scan_discovery(&catalog, &paths))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    *state.discovery.lock().unwrap() = Some(d.clone());
+    Ok(state.bootstrap_from(&d, store))
 }
 
 /// Assemble the launch command for the given config. `proton_path` is the
@@ -439,13 +468,16 @@ pub fn build_command(
 /// Reuses the same resolver as the preview, so what lands in Heroic equals what
 /// the command box shows (minus the umu lead vars, which Heroic owns).
 #[tauri::command]
-pub fn inject_heroic(
+pub async fn inject_heroic(
     state: State<'_, AppState>,
     app_name: String,
     config: Config,
 ) -> Result<heroic::InjectResult, String> {
     let (env, wrappers) = compose::resolve_env_wrappers(&state.catalog, &config);
-    heroic::inject(&app_name, &env, &wrappers, &state.bins())
+    let bins = state.bins();
+    tauri::async_runtime::spawn_blocking(move || heroic::inject(&app_name, &env, &wrappers, &bins))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
@@ -514,12 +546,20 @@ pub fn launch_diff(built: String, current: String) -> LaunchDiff {
 /// frontend already holds the fresh copy as `app.launchOptions`, and passing it
 /// in keeps `diff::statuses` a pure function of its arguments.
 #[tauri::command]
-pub fn launch_statuses(
+pub async fn launch_statuses(
     state: State<'_, AppState>,
     memory: BTreeMap<String, Config>,
     launch_options: HashMap<String, String>,
-) -> HashMap<String, diff::DiffStatus> {
-    diff::statuses(&state.catalog, &memory, &launch_options, &state.bins())
+) -> Result<HashMap<String, diff::DiffStatus>, String> {
+    // Off the UI thread: this re-assembles, re-parses and diffs one command per
+    // remembered game, so its cost grows with the user's library.
+    let catalog = Arc::clone(&state.catalog);
+    let bins = state.bins();
+    tauri::async_runtime::spawn_blocking(move || {
+        diff::statuses(&catalog, &memory, &launch_options, &bins)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Merge recipe `index` onto `config`, returning the updated config.
@@ -606,7 +646,7 @@ pub async fn game_art(
     online: bool,
     art_hint: Option<String>,
 ) -> Result<Option<String>, String> {
-    let steam_root = state.steam_root.clone();
+    let steam_root = state.steam_root();
     tauri::async_runtime::spawn_blocking(move || {
         art::fetch(steam_root, app_id, &source, &kind, online, art_hint)
     })
@@ -802,20 +842,38 @@ pub async fn llm_models(state: State<'_, AppState>) -> Result<Vec<String>, Strin
 }
 
 /// Replace and persist the whole store (theme, presets, per-game memory, dismissals).
+///
+/// The in-memory swap happens synchronously — `lint` reads `gpu_gen` straight
+/// off the store, so it must never observe the old value after this returns —
+/// while the TOML serialization and the disk write go to a blocking thread. This
+/// fires on a debounce *while the user types* in the builder, so on the main
+/// thread it was a write of the entire store between keystrokes.
 #[tauri::command]
-pub fn save_store(state: State<'_, AppState>, store: Store) -> Result<(), String> {
-    let mut guard = state.store.lock().unwrap();
-    *guard = store;
-    guard.save()
+pub async fn save_store(state: State<'_, AppState>, store: Store) -> Result<(), String> {
+    let to_save = {
+        let mut guard = state.store.lock().unwrap();
+        *guard = store;
+        guard.clone()
+    };
+    tauri::async_runtime::spawn_blocking(move || to_save.save())
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Whether `app_id` already has an OptiScaler install to refresh — cheap
 /// filesystem check, no network. `install_dir` comes from `AppState`'s own
 /// discovery, never from the caller (see `AppState::game`).
 #[tauri::command]
-pub fn optiscaler_status(state: State<'_, AppState>, app_id: u32) -> optiscaler_upgrade::OptiscalerStatus {
-    let dir = state.game(app_id).and_then(|g| g.install_dir.as_deref()).map(std::path::Path::new);
-    optiscaler_upgrade::detect(dir)
+pub async fn optiscaler_status(
+    state: State<'_, AppState>,
+    app_id: u32,
+) -> Result<optiscaler_upgrade::OptiscalerStatus, String> {
+    let dir = state.game(app_id).and_then(|g| g.install_dir);
+    tauri::async_runtime::spawn_blocking(move || {
+        optiscaler_upgrade::detect(dir.as_deref().map(std::path::Path::new))
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Check the latest upstream OptiScaler release (off the UI thread). Global —
@@ -839,7 +897,7 @@ pub async fn optiscaler_fetch(
 ) -> Result<optiscaler_upgrade::OptiscalerExtractResult, String> {
     let dir = state
         .game(app_id)
-        .and_then(|g| g.install_dir.clone())
+        .and_then(|g| g.install_dir)
         .ok_or_else(|| "no install directory known for this game".to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
         optiscaler_upgrade::fetch_and_extract(std::path::Path::new(&dir))
@@ -854,8 +912,10 @@ pub async fn optiscaler_fetch(
 /// `mangohud_export`'s doc comment. Backs the file up first if it existed;
 /// never gated here, only ever called from the frontend's confirm dialog.
 #[tauri::command]
-pub fn export_mangohud_system(config: String) -> Result<mangohud_export::ExportResult, String> {
-    mangohud_export::write_system_config(&config)
+pub async fn export_mangohud_system(config: String) -> Result<mangohud_export::ExportResult, String> {
+    tauri::async_runtime::spawn_blocking(move || mangohud_export::write_system_config(&config))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Check GitHub Releases for a newer version (off the UI thread). A failed check
