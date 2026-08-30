@@ -311,11 +311,19 @@ Best-effort, never-blocking detection:
   `nvidia-smi` on `$PATH`.
 - **Session/desktop** via `XDG_SESSION_TYPE` / `WAYLAND_DISPLAY` / `XDG_CURRENT_DESKTOP`.
 - **ntsync** via `/dev/ntsync` existence.
+- **AMD RDNA generation** via the PCI id: `/sys/class/drm/card*/device/{vendor,device}`
+  resolved against hwdata's `pci.ids` and bucketed by the `Navi <n>` codename. Every AMD
+  card is tried and the first *recognised* generation wins, so an integrated Radeon
+  (`Granite Ridge`, `Raphael` — no codename) doesn't mask the discrete card behind it.
+  Surfaced as `gpu_gen_detected`, a **suggestion**: `store.gpu_gen` is the user's
+  declaration and always outranks it. The two are reconciled in exactly two places, which
+  must agree — `effectiveGpuGen` (`state.svelte.ts`) for the filter, and `ipc::lint` for
+  the notices.
 
 `hardware.rs` **detects only**. The filter itself — `irrelevance(hw, gpu, needs)` in
 `src/lib/util.ts` — lives in the frontend and has no Rust mirror, because the opt-in
-capabilities (`hdr`, and `fsr4`/`rdna3`/`rdna4` derived from the Settings GPU-generation
-selector) are store fields that never cross the IPC boundary. It returns a short reason
+capabilities (`hdr`, and `fsr4`/`rdna3`/`rdna4` derived from `effectiveGpuGen`) are store
+fields that never cross the IPC boundary. It returns a short reason
 ("needs NVIDIA GPU", "RDNA4-only", …) when an option doesn't apply, or `null`; the UI
 greys out or hides those, controlled by `show_irrelevant`. **Unknown tags are treated as
 relevant** so a user's `$XDG_CONFIG_HOME` override naming a future capability still

@@ -95,7 +95,11 @@ extra `--` into cargo).
   mirror, because the opt-in capabilities live in the store. (A mirror existed, went three
   tags stale, and became dead code.) Capabilities that can't be auto-detected are **opt-in
   store flags** surfaced in Settings: `hdr`, and `fsr4`/`rdna3`/`rdna4` derived from the
-  AMD generation selector. To hide a parameter by default, tag it `needs = ["<cap>"]` and
+  AMD generation selector. That selector is *seeded* by `hardware.rs`'s `gpu_gen_detected`
+  (PCI id → `pci.ids` → `Navi <n>` codename) but never overridden by it: `effectiveGpuGen`
+  falls back to detection only when the user has declared nothing, and **`ipc::lint` must
+  apply the same fallback** or the notices and the visibility filter disagree about which
+  generation is in force. To hide a parameter by default, tag it `needs = ["<cap>"]` and
   thread the cap through `store.rs`, `types.ts`, `state.svelte.ts` (`EMPTY_STORE` +
   `hwCaps` + setter), `util.ts`, `mock.ts`, and a `SettingsDrawer.svelte` toggle. **Also
   add it to `params::KNOWN_NEEDS`** — `irrelevance()` treats an unhandled tag as *relevant*,
