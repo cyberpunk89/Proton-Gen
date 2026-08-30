@@ -440,6 +440,9 @@ export const mockBootstrap: Bootstrap = {
     kernel: "6.11.0-2-cachyos",
     ram_gb: 32,
     cpu_model: "AMD Ryzen 5 9600X 6-Core Processor",
+    // Left undetected on purpose: the mock has no /sys, and this is the path
+    // where the Settings selector is the only source of a generation.
+    gpu_gen_detected: null,
   },
   store: {
     theme: "mocha",

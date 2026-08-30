@@ -102,6 +102,7 @@ class AppStore {
     kernel: "",
     ram_gb: 0,
     cpu_model: "",
+    gpu_gen_detected: null,
   });
   requiresStatus = $state<Record<string, boolean>>({});
   launchOptions = $state<Record<string, string>>({});
@@ -434,12 +435,35 @@ class AppStore {
     this.recipeOrigin = {};
   }
 
+  /**
+   * Set one env row's state without recording history.
+   *
+   * Every public mutator is this plus a `mark()`; `applyBundle` is N of these
+   * plus a single `mark()`. A blank `value` means "leave the value alone", which
+   * is what turning a row off must do — the value is still the user's.
+   */
+  private applyEnv(key: string, enabled: boolean, value = "") {
+    const s = this.env[key];
+    if (!s) return;
+    s.enabled = enabled;
+    if (value) s.value = value;
+    this.disownParam(key);
+  }
+
+  private applyWrap(key: string, enabled: boolean, value = "") {
+    const s = this.wrap[key];
+    if (!s) return;
+    s.enabled = enabled;
+    if (value) s.value = value;
+    this.disownParam(key);
+  }
+
   toggleEnv(key: string) {
     const s = this.env[key];
     if (!s) return;
-    s.enabled = !s.enabled;
-    this.disownParam(key);
-    this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
+    const next = !s.enabled;
+    this.applyEnv(key, next);
+    this.mark(`${next ? "enable" : "disable"} ${key}`);
   }
   setEnvValue(key: string, value: string) {
     const s = this.env[key];
@@ -452,9 +476,9 @@ class AppStore {
   toggleWrap(key: string) {
     const s = this.wrap[key];
     if (!s) return;
-    s.enabled = !s.enabled;
-    this.disownParam(key);
-    this.mark(`${s.enabled ? "enable" : "disable"} ${key}`);
+    const next = !s.enabled;
+    this.applyWrap(key, next);
+    this.mark(`${next ? "enable" : "disable"} ${key}`);
   }
   setWrapValue(key: string, value: string) {
     const s = this.wrap[key];
@@ -462,6 +486,43 @@ class AppStore {
     s.value = value;
     this.disownParam(key);
     history.note(`set ${key}`);
+  }
+
+  /** Whether the free-text game-arguments field carries `token` as a whole
+   *  argument. Token-wise, not a substring test: `--dx11` must not report true
+   *  because `--dx11-only` is present. */
+  hasGameArg(token: string): boolean {
+    return this.gameArgs.split(/\s+/).includes(token);
+  }
+
+  /** Add or remove one exact argument token, preserving everything else. */
+  private applyGameArg(token: string, on: boolean) {
+    const tokens = this.gameArgs.split(/\s+/).filter(Boolean);
+    if (tokens.includes(token) === on) return;
+    this.gameArgs = (on ? [...tokens, token] : tokens.filter((t) => t !== token)).join(" ");
+  }
+
+  /**
+   * Turn a whole curated bundle on or off as **one** undoable action.
+   *
+   * Simple mode's cards each own more than one thing: the FSR 4 card sets two
+   * env vars, the ray-tracing card an env var *and* a game-argument token.
+   * Driving them through the public per-key mutators pushed a separate history
+   * entry per key, so one undo left the card half-applied — and the game-arg
+   * write, being a bare assignment, was never marked at all and got swallowed by
+   * whatever coalescing burst happened to be open, labelled "edit".
+   */
+  applyBundle(
+    label: string,
+    on: boolean,
+    bundle: { env?: [string, string][]; wrappers?: [string, string][]; gameArg?: string },
+  ) {
+    // Values are only written on the way *on*: turning a bundle off must not
+    // rewrite a value the user has since edited.
+    for (const [key, value] of bundle.env ?? []) this.applyEnv(key, on, on ? value : "");
+    for (const [key, value] of bundle.wrappers ?? []) this.applyWrap(key, on, on ? value : "");
+    if (bundle.gameArg) this.applyGameArg(bundle.gameArg, on);
+    this.mark(label);
   }
 
   /**
@@ -907,6 +968,15 @@ class AppStore {
 
     if (game.executable) this.umuExe = game.executable;
 
+    // Honour the "Auto-check ProtonDB" setting, which until now nothing read —
+    // the toggle promised exactly this and did nothing. Steam apps only: a
+    // shortcut's or Heroic game's appid is a synthetic hash protondb.com knows
+    // nothing about. `requestTier` de-dupes per session, so re-opening a game
+    // costs no request.
+    if (this.store.protondb_auto && game.source === "steam") {
+      this.requestTier(game.app_id);
+    }
+
     const remembered = this.store.game_memory[String(game.app_id)];
     if (remembered) {
       this.loadConfig(remembered);
@@ -1198,18 +1268,31 @@ class AppStore {
    * `rdna3` and `rdna4` are exclusive, so each generation's options hide on the
    * other.
    *
-   * Both generation flags are gated on `hardware.amd`. `gpu_gen` is a persisted
-   * free string that nothing re-validates against the detected GPU, so a state
-   * file carried to an NVIDIA machine would otherwise keep unlocking AMD-only
-   * rows — including `PROTON_FSR4_INDICATOR`, which had no `gpu` hint of its own.
+   * Both generation flags are gated on `hardware.amd`. The generation itself is
+   * a persisted free string that nothing re-validates against the detected GPU,
+   * so a state file carried to an NVIDIA machine would otherwise keep unlocking
+   * AMD-only rows — including `PROTON_FSR4_INDICATOR`, which had no `gpu` hint of
+   * its own.
    *
    * `$derived` rather than a getter because it allocates: every consumer calls
    * `irrelevance(app.hwCaps, …)` once *per row*, so as a getter this built a
    * fresh object 100+ times per render of the parameter list and again for every
    * entry in the command palette.
    */
+  /**
+   * The AMD generation in force: the user's Settings declaration if they made
+   * one, else what `hardware.rs` detected from the PCI id.
+   *
+   * The declaration wins outright. Detection is best-effort — it needs hwdata's
+   * `pci.ids` on disk and a `Navi <n>` codename in the entry — so it fills a
+   * gap, it never overrules someone who has said what they have. Mirrored on the
+   * Rust side in `ipc::lint`, or the lint rules and this filter would disagree
+   * about which generation is in force.
+   */
+  effectiveGpuGen = $derived(this.store.gpu_gen || (this.hardware.gpu_gen_detected ?? ""));
+
   hwCaps = $derived.by((): HwCaps => {
-    const gen = this.store.gpu_gen;
+    const gen = this.effectiveGpuGen;
     const amd = this.hardware.amd;
     return {
       ...this.hardware,

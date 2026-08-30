@@ -611,9 +611,20 @@ pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
     // Leftovers are discarded here on purpose: a rule is written against catalog
     // keys, so a key with no catalog entry has no rule that could name it.
     let (options, _) = compose::options_from_config(&state.catalog, &config);
-    // The declared AMD generation is a store field, not a detected one, so it
-    // has to be read here rather than off `state.hardware`.
-    let gpu_gen = state.store.lock().unwrap().gpu_gen.clone();
+    // The declared AMD generation is a store field, so it has to be read off the
+    // store rather than off `state.hardware` — but with the same fallback to
+    // detection the frontend's `effectiveGpuGen` uses. Without it these rules and
+    // the visibility filter would disagree about which generation is in force,
+    // and a user who never touched the Settings selector would see RDNA4 rows
+    // while the RDNA4 lint notices stayed silent.
+    let gpu_gen = {
+        let declared = state.store.lock().unwrap().gpu_gen.clone();
+        if declared.is_empty() {
+            state.hardware.gpu_gen_detected.clone().unwrap_or_default()
+        } else {
+            declared
+        }
+    };
     lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen)
 }
 

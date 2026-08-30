@@ -100,6 +100,12 @@ export interface Hardware {
   ram_gb: number;
   /** CPU model name, "" if unreadable. */
   cpu_model: string;
+  /**
+   * Best-effort RDNA generation of the installed AMD GPU ("rdna3" | "rdna4"),
+   * or null. A suggestion only — `store.gpu_gen` is the user's declaration and
+   * always wins. Reconciled by `app.effectiveGpuGen`.
+   */
+  gpu_gen_detected: string | null;
 }
 
 /** The AMD generation the user declared in Settings; "" when unset or not AMD.

@@ -139,40 +139,23 @@
   function isActive(c: Card): boolean {
     const envOn = (c.env ?? []).every(([k]) => app.env[k]?.enabled);
     const wrapOn = (c.wrap ?? []).every(([k]) => app.wrap[k]?.enabled);
-    const argOn = !c.gameArg || app.gameArgs.includes(c.gameArg);
+    const argOn = !c.gameArg || app.hasGameArg(c.gameArg);
     return envOn && wrapOn && argOn;
   }
 
-  function setEnv(key: string, on: boolean, value: string) {
-    const cur = app.env[key];
-    if (!cur) return;
-    if (cur.enabled !== on) app.toggleEnv(key);
-    if (on && value) app.setEnvValue(key, value);
-  }
-  function setWrap(key: string, on: boolean, value: string) {
-    const cur = app.wrap[key];
-    if (!cur) return;
-    if (cur.enabled !== on) app.toggleWrap(key);
-    if (on && value) app.setWrapValue(key, value);
-  }
-  /** Append/remove an exact token in the free-text game-arguments field. */
-  function setGameArg(token: string, on: boolean) {
-    const has = app.gameArgs.includes(token);
-    if (on && !has) {
-      app.gameArgs = app.gameArgs.trim() ? `${app.gameArgs.trim()} ${token}` : token;
-    } else if (!on && has) {
-      app.gameArgs = app.gameArgs
-        .split(/\s+/)
-        .filter((t) => t && t !== token)
-        .join(" ");
-    }
-  }
-
+  /**
+   * One card, one undo entry. This used to drive `app.toggleEnv`/`toggleWrap`
+   * per key, each of which flushes its own history entry — so undoing the FSR 4
+   * card (two env vars) reverted half of it, and the ray-tracing card's game-arg
+   * token was never recorded as its own action at all.
+   */
   function toggle(c: Card) {
     const on = !isActive(c);
-    for (const [k, v] of c.env ?? []) setEnv(k, on, v);
-    for (const [k, v] of c.wrap ?? []) setWrap(k, on, v);
-    if (c.gameArg) setGameArg(c.gameArg, on);
+    app.applyBundle(`${on ? "enable" : "disable"} ${c.title}`, on, {
+      env: c.env,
+      wrappers: c.wrap,
+      gameArg: c.gameArg,
+    });
   }
 
   const gp = $derived(app.store.global_profile);

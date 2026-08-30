@@ -382,14 +382,26 @@
 <!-- AMD GPU generation selector. Replaces the old "I have an RDNA3/RDNA4 GPU"
      toggle: picking a generation unlocks the FSR 3/4 upgrade options, and then
      filters *both* ways — each generation's exclusive options and recipes hide
-     on the other. Only takes effect on a detected AMD GPU (see `hwCaps`). -->
+     on the other. Only takes effect on a detected AMD GPU (see `hwCaps`).
+
+     The blank option is "Auto" when hardware.rs read a generation off the PCI
+     id, and "Not AMD" when it couldn't — an explicit pick always overrides
+     detection, which is best-effort. -->
 {#snippet gpuGen()}
   {@const gen = app.store.gpu_gen}
+  {@const detected = app.hardware.gpu_gen_detected}
   <div class="rounded-lg px-1 py-1.5">
     <p class="text-sm text-subtext">AMD GPU generation</p>
     <p class="mb-1.5 text-[11px] leading-snug text-muted">
       Unlocks FSR 3/4 upscaler-upgrade options (hidden by default), then shows only the
-      ones for the generation you pick. Not auto-detected.
+      ones for the generation you pick.
+      {#if detected}
+        Your GPU's PCI id says
+        <span class="font-medium text-subtext">{detected.toUpperCase()}</span> — “Auto” uses
+        that; pick a generation to override it.
+      {:else}
+        Couldn't be read from your GPU here, so pick it yourself.
+      {/if}
     </p>
     <div class="flex gap-1 rounded-lg bg-mantle p-0.5 text-xs">
       {#each GPU_GENS as [value, label] (value)}
@@ -398,7 +410,8 @@
           class="flex-1 rounded-md px-2 py-1 font-medium transition"
           class:bg-surface-2={gen === value}
           class:text-text={gen === value}
-          class:text-muted={gen !== value}>{label}</button
+          class:text-muted={gen !== value}
+          >{value === "" && detected ? "Auto" : label}</button
         >
       {/each}
     </div>
