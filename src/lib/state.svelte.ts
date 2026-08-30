@@ -492,12 +492,19 @@ class AppStore {
     this.mark(`select ${r.display_name}`);
   }
 
-  /** Everything the user has turned on, for the nav badge and the Active view. */
-  get activeCount(): number {
+  /**
+   * Everything the user has turned on, for the nav badge and the Active view.
+   *
+   * `$derived`, not a getter: a class getter is re-evaluated on every read, and
+   * `ActiveOptions` reads this three times per render while `NavRail` reads it
+   * once — each time walking the whole catalog twice and re-tokenizing the
+   * custom-env string. Same reasoning for every `$derived` below.
+   */
+  activeCount = $derived.by((): number => {
     const envs = this.catalog.envs.filter((e) => this.env[e.key]?.enabled).length;
     const wraps = this.catalog.wrappers.filter((w) => this.wrap[w.key]?.enabled).length;
     return envs + wraps + splitExtraEnv(this.extraEnv).length;
-  }
+  });
 
   /** Drop one `K=V` token from the custom-env string, keeping the rest verbatim. */
   removeExtraEnv(raw: string) {
@@ -527,14 +534,13 @@ class AppStore {
    * those parameters unreachable by browsing. `show_irrelevant` restores every
    * row, so nothing is permanently out of reach either way.
    */
-  get visibleCategories(): string[] {
+  visibleCategories = $derived.by((): string[] => {
     if (this.store.show_irrelevant) return this.categories;
+    const caps = this.hwCaps;
     return this.categories.filter((c) =>
-      this.catalog.envs.some(
-        (e) => e.category === c && !irrelevance(this.hwCaps, e.gpu, e.needs),
-      ),
+      this.catalog.envs.some((e) => e.category === c && !irrelevance(caps, e.gpu, e.needs)),
     );
-  }
+  });
 
   // ------------------------------- config I/O -------------------------------
 
@@ -786,10 +792,10 @@ class AppStore {
   }
 
   /** The selected game, resolved against the discovery list. */
-  get selectedGame(): GameDto | null {
+  selectedGame = $derived.by((): GameDto | null => {
     if (this.selectedAppId == null) return null;
     return this.games.find((g) => g.app_id === this.selectedAppId) ?? null;
-  }
+  });
 
   /** Heroic's per-game id for the selected game, or null when it isn't a Heroic
    *  game — the gate for the "Apply to Heroic" action. */
@@ -1196,8 +1202,13 @@ class AppStore {
    * free string that nothing re-validates against the detected GPU, so a state
    * file carried to an NVIDIA machine would otherwise keep unlocking AMD-only
    * rows — including `PROTON_FSR4_INDICATOR`, which had no `gpu` hint of its own.
+   *
+   * `$derived` rather than a getter because it allocates: every consumer calls
+   * `irrelevance(app.hwCaps, …)` once *per row*, so as a getter this built a
+   * fresh object 100+ times per render of the parameter list and again for every
+   * entry in the command palette.
    */
-  get hwCaps(): HwCaps {
+  hwCaps = $derived.by((): HwCaps => {
     const gen = this.store.gpu_gen;
     const amd = this.hardware.amd;
     return {
@@ -1207,13 +1218,13 @@ class AppStore {
       rdna3: amd && gen === "rdna3",
       rdna4: amd && gen === "rdna4",
     };
-  }
+  });
 
   /** Catalog env keys tagged as a good default for the current GPU
    *  capabilities that aren't already on at their recommended value — what
    *  `applyRecommendedForGpu` would still change. Empty means the button has
    *  nothing to do (either untagged hardware, or already applied). */
-  get recommendedEnvKeys(): string[] {
+  recommendedEnvKeys = $derived.by((): string[] => {
     const caps = this.hwCaps;
     return this.catalog.envs
       .filter((d) => isRecommended(caps, d.recommended_for))
@@ -1223,7 +1234,7 @@ class AppStore {
         return !s.enabled || (d.default_value !== "" && s.value !== d.default_value);
       })
       .map((d) => d.key);
-  }
+  });
 
   /** One-click "Recommended for your GPU": batch-enable every catalog param
    *  tagged `recommended_for` a currently-true capability, at its documented
@@ -1339,8 +1350,13 @@ class AppStore {
 
   // ------------------------------ library view ------------------------------
 
+  /** `favorites` is a list (mirroring the Rust `BTreeSet`), so membership was an
+   *  O(n) `includes`. The library's sort comparator calls `isFavorite` twice per
+   *  comparison, i.e. O(n log n) times per keystroke. */
+  private favoriteSet = $derived(new Set(this.store.favorites));
+
   isFavorite(appId: number): boolean {
-    return this.store.favorites.includes(appId);
+    return this.favoriteSet.has(appId);
   }
 
   toggleFavorite(appId: number) {
@@ -1709,11 +1725,25 @@ class AppStore {
     }
   }
 
+  /** The payload `save_store` last accepted, so an unchanged store is not
+   *  re-sent, re-serialized to TOML and re-written to disk. */
+  private lastPersisted: string | null = null;
+
   persistStore() {
+    const payload = $state.snapshot(this.store);
+    const serialized = JSON.stringify(payload);
+    // `save_store` replaces the file wholesale (#43), so an identical payload is
+    // a genuine no-op — and this runs on a 500 ms debounce while the user types,
+    // where most ticks change nothing the store holds. Skipped only while writes
+    // are working: a standing failure banner has to be able to clear, and the
+    // retry is this same call.
+    if (serialized === this.lastPersisted && !this.persistError) return;
+
     // Fire and forget; the store is small.
     ipc
-      .saveStore($state.snapshot(this.store))
+      .saveStore(payload)
       .then(() => {
+        this.lastPersisted = serialized;
         // Recovered — drop the banner so it can't linger once writes work.
         this.persistError = null;
       })

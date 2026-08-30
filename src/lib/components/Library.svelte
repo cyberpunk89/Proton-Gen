@@ -38,15 +38,29 @@
     return app.store.game_memory[String(appId)] != null;
   }
 
-  let matching = $derived(
-    app.games.filter((g) => {
-      if (!g.name.toLowerCase().includes(query.trim().toLowerCase())) return false;
+  /**
+   * Lowercased names, keyed by appid — built once per library change rather than
+   * per comparison. The filter below and the comparator underneath it both need
+   * them, and the comparator runs O(n log n) times on every keystroke.
+   */
+  let lowerNames = $derived.by(() => {
+    const m = new Map<number, string>();
+    for (const g of app.games) m.set(g.app_id, g.name.toLowerCase());
+    return m;
+  });
+  const lower = (g: GameDto) => lowerNames.get(g.app_id) ?? g.name.toLowerCase();
+
+  let matching = $derived.by(() => {
+    // Hoisted: this was re-normalized once per game.
+    const needle = query.trim().toLowerCase();
+    return app.games.filter((g) => {
+      if (needle && !lower(g).includes(needle)) return false;
       if (installedOnly && !g.installed) return false;
       if (tunedOnly && !isTuned(g.app_id)) return false;
       if (favoritesOnly && !app.isFavorite(g.app_id)) return false;
       return true;
-    }),
-  );
+    });
+  });
 
   /** True when nothing in the library has a play timestamp — Flatpak Steam is
    *  deliberately excluded from the localconfig.vdf scan, and a fresh install has
@@ -63,8 +77,7 @@
    */
   let games = $derived.by(() => {
     const sort = app.librarySort;
-    const byName = (a: GameDto, b: GameDto) =>
-      a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    const byName = (a: GameDto, b: GameDto) => lower(a).localeCompare(lower(b));
 
     return [...matching].sort((a, b) => {
       const favA = app.isFavorite(a.app_id) ? 0 : 1;

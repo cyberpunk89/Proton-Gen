@@ -317,26 +317,29 @@ export function normalizeGameName(name: string): string {
  * sorted by `SOURCE_PRIORITY`.
  */
 export function groupGames(games: GameDto[]): GameGroup[] {
+  // One pass, recording first-seen order as it buckets. The second pass this
+  // replaces re-derived every key, so `normalizeGameName` — an NFKD normalize
+  // plus two regex replaces — ran twice per game, on every keystroke in the
+  // library filter.
   const bucket = new Map<string, GameDto[]>();
+  const order: string[] = [];
   for (const g of games) {
     const key = normalizeGameName(g.name);
     const arr = bucket.get(key);
-    if (arr) arr.push(g);
-    else bucket.set(key, [g]);
+    if (arr) {
+      arr.push(g);
+    } else {
+      bucket.set(key, [g]);
+      order.push(key);
+    }
   }
 
-  const seen = new Set<string>();
-  const out: GameGroup[] = [];
-  for (const g of games) {
-    const key = normalizeGameName(g.name);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const entries = [...bucket.get(key)!].sort(
+  return order.map((key) => ({
+    key,
+    entries: [...bucket.get(key)!].sort(
       (a, b) => (SOURCE_PRIORITY[a.source] ?? 9) - (SOURCE_PRIORITY[b.source] ?? 9),
-    );
-    out.push({ key, entries });
-  }
-  return out;
+    ),
+  }));
 }
 
 /**
