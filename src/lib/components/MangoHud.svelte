@@ -6,8 +6,10 @@
     POSITIONS,
     COLOR_DEFS,
     DEFAULT_COLORS,
+    GPU_INDICES,
     parseConfig,
     buildConfig,
+    emptyConfig,
     hexToRgba,
     type OverlayConfig,
   } from "$lib/mangohud";
@@ -38,6 +40,7 @@
   let alpha = $state(seed.alpha);
   let colorOn = $state<Record<string, boolean>>(seed.colorOn);
   let colorVal = $state<Record<string, string>>(seed.colorVal);
+  let gpuList = $state<number[]>(seed.gpuList);
 
   function reseed(s: OverlayConfig) {
     checks = s.checks;
@@ -53,6 +56,21 @@
     alpha = s.alpha;
     colorOn = s.colorOn;
     colorVal = s.colorVal;
+    gpuList = s.gpuList;
+  }
+
+  /** Toggle one GPU index in `gpuList` — the "clear" case is simply toggling
+   *  every chip back off, which the empty-list-means-"let MangoHud pick"
+   *  contract already treats as "no gpu_list token". */
+  function toggleGpu(i: number) {
+    gpuList = gpuList.includes(i) ? gpuList.filter((x) => x !== i) : [...gpuList, i];
+  }
+
+  /** Back to a brand-new builder — the one broad "clear everything" action,
+   *  for when hand-toggling every checkbox/colour/slider back off is more
+   *  tedious than starting over. */
+  function resetAll() {
+    reseed(emptyConfig());
   }
 
   // Preset-file mode — seed from an already-applied MANGOHUD_CONFIGFILE.
@@ -75,6 +93,7 @@
       alpha,
       colorOn,
       colorVal,
+      gpuList,
     }),
   );
 
@@ -223,7 +242,17 @@
   </div>
 
   {#if mode === "build"}
-    <p class="text-xs text-muted">Pick what the overlay shows and how it looks, then apply it.</p>
+    <div class="flex items-start justify-between gap-2">
+      <p class="text-xs text-muted">Pick what the overlay shows and how it looks, then apply it.</p>
+      <button
+        type="button"
+        onclick={resetAll}
+        title="Clear every option back to the defaults (FPS + frame timing only)"
+        class="shrink-0 rounded-lg border border-border bg-surface-2/50 px-2 py-1 text-xs text-muted transition hover:border-accent/50 hover:text-subtext active:scale-95"
+      >
+        Reset
+      </button>
+    </div>
 
     <!--
       Two columns at the dialog's width: the controls scroll on the left while
@@ -319,6 +348,32 @@
               <input type="checkbox" bind:checked={compact} class="accent-[var(--accent)]" />
               <span class="text-sm text-subtext">Compact</span>
             </label>
+          </div>
+        </div>
+
+        <!-- GPU selection -->
+        <div class="space-y-2 border-t border-border/60 pt-3">
+          <p class="text-[11px] font-medium uppercase tracking-wider text-muted">GPU selection</p>
+          <p class="text-xs text-muted">
+            On a system with more than one GPU (a hybrid laptop, or multiple discrete cards),
+            pick which one(s) to show stats for. Leave all off to let MangoHud show every GPU it
+            finds — its own default.
+          </p>
+          <div class="flex flex-wrap gap-1.5">
+            {#each GPU_INDICES as i (i)}
+              <button
+                type="button"
+                onclick={() => toggleGpu(i)}
+                aria-pressed={gpuList.includes(i)}
+                class="rounded-full border px-2.5 py-1 text-xs font-medium transition {gpuList.includes(
+                  i,
+                )
+                  ? 'border-accent/60 bg-accent/15 text-text'
+                  : 'border-border bg-surface-2/50 text-muted hover:text-subtext'}"
+              >
+                GPU {i}
+              </button>
+            {/each}
           </div>
         </div>
 

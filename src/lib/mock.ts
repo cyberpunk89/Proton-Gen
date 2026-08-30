@@ -370,6 +370,7 @@ export const mockBootstrap: Bootstrap = {
       playtime_minutes: 4210,
       heroic_id: null,
       install_dir: "/home/you/.local/share/Steam/steamapps/common/Helldivers 2",
+      art_url: null,
     },
     {
       app_id: 1245620,
@@ -381,6 +382,7 @@ export const mockBootstrap: Bootstrap = {
       playtime_minutes: 8640,
       heroic_id: null,
       install_dir: "/home/you/.local/share/Steam/steamapps/common/ELDEN RING",
+      art_url: null,
     },
     {
       app_id: 275850,
@@ -393,10 +395,11 @@ export const mockBootstrap: Bootstrap = {
       heroic_id: null,
       // Not installed — nothing for steamlocate to resolve a folder from.
       install_dir: null,
+      art_url: null,
     },
     {
       app_id: 0x80000001,
-      name: "Crimson Desert (Heroic)",
+      name: "Crimson Desert",
       source: "heroic",
       executable: "/home/u/Games/FitGirl/crimson-desert/pfx/drive_c/Crimson Desert/bin64/CrimsonDesert.exe",
       installed: true,
@@ -404,6 +407,22 @@ export const mockBootstrap: Bootstrap = {
       playtime_minutes: null,
       heroic_id: "7Hm5qmyaYmaSZ45Mqo3u4s",
       install_dir: "/home/u/Games/FitGirl/crimson-desert/pfx/drive_c/Crimson Desert/bin64",
+      art_url: "https://cdn2.steamgriddb.com/grid/mock-crimson-desert.png",
+    },
+    // Same title as the Steam entry above, sideloaded through Heroic too — the
+    // library grid's job is to fold this into ELDEN RING's tile with a source
+    // picker rather than showing the "same" game twice.
+    {
+      app_id: 0x80000002,
+      name: "ELDEN RING",
+      source: "heroic",
+      executable: "/home/u/Games/FitGirl/elden-ring/pfx/drive_c/ELDEN RING/Game/eldenring.exe",
+      installed: true,
+      last_played: null,
+      playtime_minutes: null,
+      heroic_id: "9Zk2qmyaYmaSZ45Mqo9x7c",
+      install_dir: "/home/u/Games/FitGirl/elden-ring/pfx/drive_c/ELDEN RING/Game",
+      art_url: null,
     },
   ],
   // Both vendors on, so the dev path exercises the NVAPI/DLSS *and* the AMD

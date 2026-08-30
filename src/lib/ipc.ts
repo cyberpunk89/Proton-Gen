@@ -120,9 +120,10 @@ export const ipc = {
     source: string,
     kind: "portrait" | "hero" | "header",
     online: boolean,
+    artHint: string | null = null,
   ) =>
     inTauri
-      ? invoke<string | null>("game_art", { appId, source, kind, online })
+      ? invoke<string | null>("game_art", { appId, source, kind, online, artHint })
       : Promise.resolve(null),
 
   // Read a game's Proton log (~/steam-<appid>.log) for the diagnostics viewer.

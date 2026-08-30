@@ -1,6 +1,9 @@
-//! Resolve Steam game artwork (portrait capsule, hero, header) from the local
-//! Steam cache, with an optional CDN fallback. Read-only; downloaded art is
-//! cached under `$XDG_CACHE_HOME/protongen/art` so repeat lookups stay offline.
+//! Resolve game artwork (portrait capsule, hero, header) from the local Steam
+//! cache, with an optional CDN fallback — plus Heroic sideloads, whose art
+//! comes from a `file://`/URL hint the frontend hands back (see `fetch`'s
+//! `hint` parameter) rather than any cache this module can key by app_id.
+//! Read-only; downloaded art is cached under `$XDG_CACHE_HOME/protongen/art`
+//! so repeat lookups stay offline.
 //!
 //! Returns a `data:` URL (base64) so the frontend can drop it straight into an
 //! `<img src>` without any asset-protocol/capability configuration.
@@ -85,17 +88,47 @@ fn to_data_url(bytes: &[u8], mime: &str) -> String {
     format!("data:{mime};base64,{}", base64_encode(bytes))
 }
 
+/// A Heroic `art_cover`/`art_square` hint that is a local file, read straight
+/// off disk. Heroic stores these as `file://` URIs; a bare path is accepted
+/// too since nothing guarantees the scheme survived whatever wrote it.
+fn read_local_hint(hint: &str) -> Option<Vec<u8>> {
+    let path = hint.strip_prefix("file://").unwrap_or(hint);
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.is_empty() {
+        return None;
+    }
+    Some(bytes)
+}
+
 /// Resolve a game's art to a `data:` URL: local Steam cache → previously
-/// downloaded cache → (if `online`) Steam CDN. `None` when nothing is found.
+/// downloaded cache → (if `online`) Steam CDN / Heroic's own art hint. `None`
+/// when nothing is found.
+///
+/// `hint` is a Heroic sideload's `art_cover`/`art_square` (a `file://` path or
+/// a remote URL, e.g. SteamGridDB) — the only lead on its art, since a
+/// sideloaded game has no Steam appid a cache lookup could key off. Ignored
+/// for every other source.
 pub fn fetch(
     steam_root: Option<String>,
     app_id: u32,
     source: &str,
     kind: &str,
     online: bool,
+    hint: Option<String>,
 ) -> Option<String> {
-    // 1) Local Steam cache / custom grid art.
-    if let Some(root) = steam_root.as_deref().map(Path::new) {
+    let hint = hint.as_deref().map(str::trim).filter(|s| !s.is_empty());
+
+    // 1) Local Steam cache / custom grid art, or a Heroic hint that's already
+    // a local file — no need to wait for the online step below.
+    if source == "heroic" {
+        if let Some(h) = hint {
+            if !h.starts_with("http://") && !h.starts_with("https://") {
+                if let Some(bytes) = read_local_hint(h) {
+                    return Some(to_data_url(&bytes, mime_for(Path::new(h))));
+                }
+            }
+        }
+    } else if let Some(root) = steam_root.as_deref().map(Path::new) {
         for cand in local_candidates(root, app_id, source, kind) {
             if let Ok(bytes) = std::fs::read(&cand) {
                 if !bytes.is_empty() {
@@ -115,18 +148,28 @@ pub fn fetch(
         }
     }
 
-    // 3) CDN fallback (Steam apps only).
-    if online && source == "steam" {
-        let req = ehttp::Request::get(cdn_url(app_id, kind));
-        if let Ok(resp) = ehttp::fetch_blocking(&req) {
-            if resp.ok && !resp.bytes.is_empty() {
-                if let Some(cp) = &cached {
-                    if let Some(parent) = cp.parent() {
-                        let _ = std::fs::create_dir_all(parent);
+    // 3) Online fallback: the Steam CDN for Steam apps, or a Heroic hint URL.
+    if online {
+        let remote_url = if source == "steam" {
+            Some(cdn_url(app_id, kind))
+        } else if source == "heroic" {
+            hint.filter(|h| h.starts_with("http://") || h.starts_with("https://"))
+                .map(str::to_string)
+        } else {
+            None
+        };
+        if let Some(url) = remote_url {
+            let req = ehttp::Request::get(url);
+            if let Ok(resp) = ehttp::fetch_blocking(&req) {
+                if resp.ok && !resp.bytes.is_empty() {
+                    if let Some(cp) = &cached {
+                        if let Some(parent) = cp.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::write(cp, &resp.bytes);
                     }
-                    let _ = std::fs::write(cp, &resp.bytes);
+                    return Some(to_data_url(&resp.bytes, "image/jpeg"));
                 }
-                return Some(to_data_url(&resp.bytes, "image/jpeg"));
             }
         }
     }
@@ -187,5 +230,48 @@ mod tests {
         // No userdata dir under a bogus root → no candidates, no panic.
         let c = local_candidates(Path::new("/nope"), 42, "non-steam", "portrait");
         assert!(c.is_empty());
+    }
+
+    /// A process-unique temp file, since this crate takes no dev-dependency on
+    /// a tempfile crate.
+    fn temp_file(name: &str, bytes: &[u8]) -> PathBuf {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!("protongen-art-test-{ts}-{name}"));
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn read_local_hint_accepts_file_scheme_and_bare_path() {
+        let path = temp_file("cover.jpg", b"fake-jpeg-bytes");
+        let uri = format!("file://{}", path.display());
+        assert_eq!(read_local_hint(&uri).as_deref(), Some(&b"fake-jpeg-bytes"[..]));
+        assert_eq!(
+            read_local_hint(&path.display().to_string()).as_deref(),
+            Some(&b"fake-jpeg-bytes"[..])
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn read_local_hint_missing_file_is_none_not_a_panic() {
+        assert_eq!(read_local_hint("file:///no/such/protongen-test-file.jpg"), None);
+    }
+
+    #[test]
+    fn heroic_fetch_reads_a_local_file_hint_with_no_network() {
+        let path = temp_file("hero-cover.png", b"\x89PNG-fake");
+        let uri = format!("file://{}", path.display());
+        let url = fetch(None, 0x8000_0001, "heroic", "portrait", false, Some(uri));
+        assert_eq!(url.as_deref(), Some("data:image/png;base64,iVBORy1mYWtl"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn heroic_fetch_with_no_hint_and_offline_finds_nothing() {
+        assert_eq!(fetch(None, 0x8000_0002, "heroic", "portrait", false, None), None);
     }
 }

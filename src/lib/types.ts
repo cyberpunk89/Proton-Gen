@@ -143,6 +143,9 @@ export interface GameDto {
   /** Absolute install directory, when resolvable. Feeds the OptiScaler-upgrade
    *  detect/fetch commands; null when there's nothing to resolve it from. */
   install_dir: string | null;
+  /** Box art hint (`file://` path or remote URL) for `source === "heroic"`;
+   *  null otherwise. Passed back into `ipc.gameArt` as its art hint. */
+  art_url: string | null;
 }
 
 /** Result of a successful `inject_heroic` write, for the confirmation toast. */

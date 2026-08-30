@@ -1,7 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl as openExternal } from "@tauri-apps/plugin-opener";
 import { inTauri } from "./ipc";
-import type { Hardware, HwCaps, Tier } from "./types";
+import type { GameDto, Hardware, HwCaps, Tier } from "./types";
 
 export async function copyText(text: string) {
   try {
@@ -275,6 +275,68 @@ const TIER_ORDER = ["platinum", "gold", "silver", "bronze", "borked"];
 export function tierRank(tier: string): number | null {
   const i = TIER_ORDER.indexOf(tier);
   return i === -1 ? null : i;
+}
+
+/** One library tile's worth of games: usually one, or several that
+ *  `groupGames` folded together because they're the same title on different
+ *  sources. */
+export interface GameGroup {
+  key: string;
+  entries: GameDto[];
+}
+
+/** steam > non-steam > heroic, so a merged tile's badges/favourite/tuned
+ *  status (keyed off `entries[0]`) prefer the Steam entry when there is one —
+ *  that's the entry with real launch-options sync status to show. */
+const SOURCE_PRIORITY: Record<string, number> = { steam: 0, "non-steam": 1, heroic: 2 };
+
+/**
+ * Normalize a game title for cross-source matching. Lowercased, diacritics
+ * stripped, punctuation/whitespace collapsed to single spaces. Deliberately
+ * loose rather than exact: the same game sideloaded into Heroic often has
+ * different punctuation or casing than its Steam listing (curly vs straight
+ * apostrophe, a trailing edition suffix typed by hand when it was added).
+ */
+export function normalizeGameName(name: string): string {
+  return name
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Group games that share a normalized title across sources — the "installed
+ * both via Steam and sideloaded in Heroic" case the library grid folds into
+ * one tile with a source picker rather than showing twice.
+ *
+ * Order is preserved: each group lands at its first member's position in
+ * `games` (so the caller's sort — favourites, recent-first, alphabetical —
+ * still determines where a merged tile sits), and entries within a group are
+ * sorted by `SOURCE_PRIORITY`.
+ */
+export function groupGames(games: GameDto[]): GameGroup[] {
+  const bucket = new Map<string, GameDto[]>();
+  for (const g of games) {
+    const key = normalizeGameName(g.name);
+    const arr = bucket.get(key);
+    if (arr) arr.push(g);
+    else bucket.set(key, [g]);
+  }
+
+  const seen = new Set<string>();
+  const out: GameGroup[] = [];
+  for (const g of games) {
+    const key = normalizeGameName(g.name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const entries = [...bucket.get(key)!].sort(
+      (a, b) => (SOURCE_PRIORITY[a.source] ?? 9) - (SOURCE_PRIORITY[b.source] ?? 9),
+    );
+    out.push({ key, entries });
+  }
+  return out;
 }
 
 /**

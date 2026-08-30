@@ -1,6 +1,6 @@
 {
   "name": "protongen",
-  "version": "0.15.0",
+  "version": "0.17.0",
   "description": "A polished GUI for building Steam / umu-launcher Proton commands",
   "license": "GPL-3.0-or-later",
   "type": "module",

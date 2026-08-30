@@ -3,6 +3,7 @@
   import { autofocus, focusByName, focusTarget } from "$lib/actions";
   import GameTile from "./GameTile.svelte";
   import type { GameDto } from "$lib/types";
+  import { groupGames } from "$lib/util";
   import {
     GameController,
     MagnifyingGlass,
@@ -84,6 +85,15 @@
     });
   });
 
+  /**
+   * Games folded into one tile per group — the "same title on Steam and
+   * sideloaded in Heroic" case. `games`' sort order is preserved (a group lands
+   * at its first member's position), so favourites/recent/alphabetical still
+   * governs where a merged tile sits; `GameTile` picks which underlying entry
+   * to open, directly if there's only one.
+   */
+  let groups = $derived(groupGames(games));
+
   /** Any status badge on screen at all — no point explaining glyphs the user
    *  cannot see, which is what a fresh install would get. */
   let showLegend = $derived(
@@ -137,15 +147,15 @@
   });
 
   function move(delta: number) {
-    if (!games.length) return;
+    if (!groups.length) return;
     const next = activeIndex + delta;
-    if (next < 0 || next >= games.length) return;
+    if (next < 0 || next >= groups.length) return;
     activeIndex = next;
     keyboardMoved = true;
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (!games.length) return;
+    if (!groups.length) return;
     switch (e.key) {
       case "ArrowRight":
         e.preventDefault();
@@ -173,7 +183,7 @@
         break;
       case "End":
         e.preventDefault();
-        activeIndex = games.length - 1;
+        activeIndex = groups.length - 1;
         keyboardMoved = true;
         break;
     }
@@ -181,7 +191,7 @@
 
   /** Down from the filter box drops into the grid. */
   function onFilterKeydown(e: KeyboardEvent) {
-    if (e.key !== "ArrowDown" || !games.length) return;
+    if (e.key !== "ArrowDown" || !groups.length) return;
     e.preventDefault();
     activeIndex = 0;
     keyboardMoved = true;
@@ -312,9 +322,9 @@
       aria-label="Game library"
       class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
     >
-      {#each games as g, i (g.app_id + g.source)}
+      {#each groups as grp, i (grp.key)}
         <GameTile
-          game={g}
+          entries={grp.entries}
           index={i}
           active={i === activeIndex}
           onactivate={(n) => (activeIndex = n)}

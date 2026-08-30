@@ -62,6 +62,9 @@ pub struct GameDto {
     /// Absolute install directory, when resolvable — see `games::Game::install_dir`.
     /// Used by the OptiScaler-upgrade commands to find/write files there.
     pub install_dir: Option<String>,
+    /// Box art hint for `source == "heroic"` — see `games::Game::art_url`.
+    /// Passed back into the `game_art` command as `art_hint`.
+    pub art_url: Option<String>,
 }
 
 /// One game's Proton log, read for the diagnostics viewer.
@@ -287,6 +290,7 @@ fn game_dto(g: games::Game, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> Ga
         playtime_minutes: cfg.and_then(|c| c.playtime_minutes),
         heroic_id: g.heroic_id,
         install_dir: g.install_dir.map(|p| p.display().to_string()),
+        art_url: g.art_url,
     }
 }
 
@@ -589,6 +593,10 @@ pub async fn protondb_fetch(appid: u32) -> Result<Tier, String> {
 
 /// Resolve a game's artwork to a `data:` URL (local cache → optional CDN), or
 /// `null` if none is available. Runs off the UI thread.
+///
+/// `art_hint` is `GameDto::art_url` round-tripped back in — a Heroic sideload
+/// has no Steam appid a cache lookup could key off, so its own `art_cover` /
+/// `art_square` (a `file://` path or remote URL) is the only way to find it.
 #[tauri::command]
 pub async fn game_art(
     state: State<'_, AppState>,
@@ -596,10 +604,11 @@ pub async fn game_art(
     source: String,
     kind: String,
     online: bool,
+    art_hint: Option<String>,
 ) -> Result<Option<String>, String> {
     let steam_root = state.steam_root.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        art::fetch(steam_root, app_id, &source, &kind, online)
+        art::fetch(steam_root, app_id, &source, &kind, online, art_hint)
     })
     .await
     .map_err(|e| e.to_string())

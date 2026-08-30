@@ -50,6 +50,15 @@ struct SideloadEntry {
     install: SideloadInstall,
     #[serde(default)]
     is_installed: bool,
+    /// Vertical box art Heroic shows in its own library grid — a `file://` path
+    /// (Heroic's bundled placeholder, or an image the user picked when adding
+    /// the sideload) or a remote URL (commonly SteamGridDB, when the user
+    /// searched for cover art in Heroic's UI).
+    #[serde(default)]
+    art_cover: Option<String>,
+    /// Square art, Heroic's fallback when a game has no `art_cover`.
+    #[serde(default)]
+    art_square: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -66,6 +75,12 @@ pub struct HeroicGame {
     /// Target exe, used to prefill umu mode. `None` if Heroic recorded none.
     pub executable: Option<String>,
     pub installed: bool,
+    /// Box art Heroic has for this game (`art_cover`, falling back to
+    /// `art_square`) — a `file://` path or a remote URL. Passed through to
+    /// `art::fetch` as a resolution hint, since a sideloaded game has no Steam
+    /// appid a local/CDN cache lookup could key off. `None` when the user added
+    /// the game without picking cover art.
+    pub art: Option<String>,
 }
 
 /// Sideloaded games from `sideload_apps/library.json`. Any absence — no Heroic
@@ -87,20 +102,19 @@ pub fn list_sideloaded() -> Vec<HeroicGame> {
         // Defensive: sideload_apps should only hold `sideload` runners, but a
         // stray gog/epic entry must never leak into the sideloaded scan.
         .filter(|g| g.runner == "sideload" && !g.app_name.is_empty())
-        .map(|g| {
-            let executable = g
-                .install
-                .executable
-                .map(|e| e.trim().to_string())
-                .filter(|e| !e.is_empty());
-            HeroicGame {
-                app_name: g.app_name,
-                title: g.title,
-                executable,
-                installed: g.is_installed,
-            }
-        })
+        .map(entry_to_game)
         .collect()
+}
+
+/// `SideloadEntry` -> `HeroicGame`. Split out from [`list_sideloaded`] (which
+/// owns the filesystem read) so the field mapping can be unit-tested against a
+/// hand-built entry, with no XDG/filesystem plumbing involved.
+fn entry_to_game(g: SideloadEntry) -> HeroicGame {
+    let executable =
+        g.install.executable.map(|e| e.trim().to_string()).filter(|e| !e.is_empty());
+    let art =
+        g.art_cover.or(g.art_square).map(|a| a.trim().to_string()).filter(|a| !a.is_empty());
+    HeroicGame { app_name: g.app_name, title: g.title, executable, installed: g.is_installed, art }
 }
 
 // ----------------------------- injection -----------------------------
@@ -359,7 +373,9 @@ mod tests {
         let raw = r#"{
             "games": [
                 { "runner": "sideload", "app_name": "abc", "title": "Crimson Desert",
-                  "install": { "executable": "/games/cd/CrimsonDesert.exe" }, "is_installed": true },
+                  "install": { "executable": "/games/cd/CrimsonDesert.exe" }, "is_installed": true,
+                  "art_cover": "https://cdn2.steamgriddb.com/grid/abc.png",
+                  "art_square": "https://cdn2.steamgriddb.com/grid/abc-square.png" },
                 { "runner": "gog", "app_name": "xyz", "title": "Not Sideloaded",
                   "install": { "executable": "/games/x.exe" }, "is_installed": true }
             ]
@@ -377,5 +393,47 @@ mod tests {
             games[0].install.executable.as_deref(),
             Some("/games/cd/CrimsonDesert.exe")
         );
+        // art_cover wins over art_square when both are present.
+        assert_eq!(
+            games[0].art_cover.as_deref(),
+            Some("https://cdn2.steamgriddb.com/grid/abc.png")
+        );
+    }
+
+    #[test]
+    fn entry_to_game_prefers_art_cover_falls_back_to_art_square() {
+        let mut e = SideloadEntry {
+            runner: "sideload".to_string(),
+            app_name: "a".to_string(),
+            title: "Has cover".to_string(),
+            install: SideloadInstall::default(),
+            is_installed: true,
+            art_cover: Some("file:///covers/a.jpg".to_string()),
+            art_square: Some("file:///covers/a-sq.jpg".to_string()),
+        };
+        assert_eq!(entry_to_game(e).art.as_deref(), Some("file:///covers/a.jpg"));
+
+        e = SideloadEntry {
+            app_name: "b".to_string(),
+            art_cover: None,
+            art_square: Some("file:///covers/b-sq.jpg".to_string()),
+            ..blank_entry()
+        };
+        assert_eq!(entry_to_game(e).art.as_deref(), Some("file:///covers/b-sq.jpg"));
+
+        e = SideloadEntry { app_name: "c".to_string(), ..blank_entry() };
+        assert_eq!(entry_to_game(e).art, None);
+    }
+
+    fn blank_entry() -> SideloadEntry {
+        SideloadEntry {
+            runner: "sideload".to_string(),
+            app_name: String::new(),
+            title: String::new(),
+            install: SideloadInstall::default(),
+            is_installed: false,
+            art_cover: None,
+            art_square: None,
+        }
     }
 }

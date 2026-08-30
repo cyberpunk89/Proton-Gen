@@ -47,6 +47,11 @@ pub struct Game {
     /// files in the game's folder — nothing else in the read-only discovery
     /// path needs it.
     pub install_dir: Option<PathBuf>,
+    /// Box art hint (`file://` path or remote URL) for [`GameSource::Heroic`]
+    /// games — see [`crate::heroic::HeroicGame::art`]. `None` for every other
+    /// source: Steam games and non-Steam shortcuts resolve art by `app_id`
+    /// alone (`art::fetch`'s local-cache/CDN lookup), so they need no hint.
+    pub art_url: Option<String>,
 }
 
 /// Well-known non-game app IDs (runtimes / redistributables) to hide.
@@ -118,6 +123,7 @@ pub fn list_heroic_games() -> Vec<Game> {
             executable: h.executable,
             installed: h.installed,
             heroic_id: Some(h.app_name),
+            art_url: h.art,
         })
         .collect()
 }
@@ -146,6 +152,7 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
             installed,
             heroic_id: None,
             install_dir: Some(library.resolve_app_dir(&app)),
+            art_url: None,
         });
     }
     out.len() - before
@@ -206,6 +213,7 @@ pub fn list_games(
                 executable,
                 installed: true,
                 heroic_id: None,
+                art_url: None,
             });
         }
     }
@@ -230,6 +238,7 @@ mod tests {
             installed: true,
             heroic_id: None,
             install_dir: None,
+            art_url: None,
         }
     }
 

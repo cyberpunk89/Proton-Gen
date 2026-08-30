@@ -35,6 +35,15 @@ export const POSITIONS: { value: string; label: string }[] = [
   { value: "bottom-center", label: "Bottom center" },
 ];
 
+/**
+ * MangoHud's own `gpu_list=0,1` indices — how it numbers GPUs on a multi-GPU
+ * system (hybrid laptop, or more than one discrete card) has no relation to
+ * PCI order, so this is a plain 0..3 picker rather than anything detected:
+ * nothing on the Rust side can know which index MangoHud's Vulkan/OpenGL
+ * enumeration will assign to which physical card.
+ */
+export const GPU_INDICES = [0, 1, 2, 3];
+
 export const COLOR_DEFS: { key: string; token: string; label: string; def: string }[] = [
   { key: "text", token: "text_color", label: "Text", def: "#ffffff" },
   { key: "gpu", token: "gpu_color", label: "GPU", def: "#2e9762" },
@@ -62,6 +71,9 @@ export interface OverlayConfig {
   alpha: string;
   colorOn: Record<string, boolean>;
   colorVal: Record<string, string>;
+  /** `gpu_list=<indices>` — which GPU(s) to show stats for. Empty means "let
+   *  MangoHud pick" (no token emitted, its own default). */
+  gpuList: number[];
 }
 
 /**
@@ -87,6 +99,7 @@ export function parseConfig(raw: string): OverlayConfig {
     alpha: "1",
     colorOn: {},
     colorVal: { ...DEFAULT_COLORS },
+    gpuList: [],
   };
   for (const t of raw
     .split(",")
@@ -130,6 +143,12 @@ export function parseConfig(raw: string): OverlayConfig {
         out.alphaOn = true;
         out.alpha = v;
         break;
+      case "gpu_list":
+        out.gpuList = v
+          .split(",")
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => Number.isInteger(n) && n >= 0);
+        break;
       default: {
         const cd = COLOR_DEFS.find((c) => c.token === k);
         if (cd) {
@@ -143,6 +162,11 @@ export function parseConfig(raw: string): OverlayConfig {
   return out;
 }
 
+/** A brand-new builder, no config applied yet — the "Reset" action's target. */
+export function emptyConfig(): OverlayConfig {
+  return parseConfig("");
+}
+
 /** Assemble the `MANGOHUD_CONFIG` string. Inverse of `parseConfig`. */
 export function buildConfig(c: OverlayConfig): string {
   const parts: string[] = [];
@@ -154,6 +178,8 @@ export function buildConfig(c: OverlayConfig): string {
   if (c.compact) parts.push("hud_compact");
   if (c.bgAlphaOn) parts.push(`background_alpha=${c.bgAlpha}`);
   if (c.alphaOn) parts.push(`alpha=${c.alpha}`);
+  if (c.gpuList.length)
+    parts.push(`gpu_list=${[...c.gpuList].sort((a, b) => a - b).join(",")}`);
   for (const cd of COLOR_DEFS)
     if (c.colorOn[cd.key]) parts.push(`${cd.token}=${c.colorVal[cd.key].replace(/^#/, "")}`);
   const n = parseInt(c.fpsLimit.trim(), 10);
