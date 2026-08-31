@@ -4,9 +4,6 @@
   import Switch from "./Switch.svelte";
   import ModeToggle from "./ModeToggle.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
-  import Dialog from "./Dialog.svelte";
-  import MangoHud from "./MangoHud.svelte";
-  import OptiScaler from "./OptiScaler.svelte";
   import {
     Rocket,
     MagicWand,
@@ -26,11 +23,9 @@
    * is a view, not a second source of truth — every card drives `app.toggleEnv`
    * / `app.toggleWrap`, so switching modes never loses or diverges state.
    *
-   * The MangoHud / OptiScaler dialogs are the real builders, mounted here once
-   * (as in MainPanel) so they survive while open.
+   * The MangoHud / OptiScaler dialogs are the real builders. They mount once at
+   * the app root (`OverlayBuilders`), not here — see `app.mangoBuilderOpen`.
    */
-  let mangoOpen = $state(false);
-  let optiOpen = $state(false);
 
   interface Card {
     id: string;
@@ -217,7 +212,10 @@
           <p class="text-xs leading-relaxed text-muted">{c.blurb}</p>
           {#if c.configure}
             <button
-              onclick={() => (c.configure === "mango" ? (mangoOpen = true) : (optiOpen = true))}
+              onclick={() =>
+                c.configure === "mango"
+                  ? (app.mangoBuilderOpen = true)
+                  : (app.optiBuilderOpen = true)}
               class="mt-auto inline-flex w-fit items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
             >
               <SlidersHorizontal size={12} /> Configure…
@@ -233,21 +231,3 @@
     for the full catalog and search.
   </p>
 </div>
-
-<Dialog
-  bind:open={mangoOpen}
-  title="MangoHud overlay"
-  subtitle="Build the overlay, then apply it to the launch command."
-  width="46rem"
->
-  <MangoHud onapply={() => (mangoOpen = false)} />
-</Dialog>
-
-<Dialog
-  bind:open={optiOpen}
-  title="OptiScaler"
-  subtitle="Compose the upscaler config, then apply it to the launch command."
-  width="46rem"
->
-  <OptiScaler onapply={() => (optiOpen = false)} />
-</Dialog>

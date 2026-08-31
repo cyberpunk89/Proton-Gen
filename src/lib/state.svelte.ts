@@ -1219,6 +1219,19 @@ class AppStore {
   pendingMangoSystemConfig = $state("");
 
   /**
+   * Whether the MangoHud / OptiScaler overlay-builder dialogs are up.
+   *
+   * Lives on the store for the same reason as `heroicConfirmOpen`: SimplePanel
+   * and MainPanel each used to own a local `$state` + `<Dialog>` pair for these,
+   * and switching UI mode (the Simple/Advanced toggle) unmounts whichever panel
+   * is showing — the #63 failure mode again, a bits-ui modal torn out while
+   * open, stranding `body { pointer-events: none }` and bricking every click.
+   * The dialogs now mount once, at the app root (`OverlayBuilders`).
+   */
+  mangoBuilderOpen = $state(false);
+  optiBuilderOpen = $state(false);
+
+  /**
    * The row `revealParam` last asked for. `OptionRow` watches this and scrolls,
    * focuses and flashes itself on a match.
    *
