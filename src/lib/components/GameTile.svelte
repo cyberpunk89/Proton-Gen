@@ -1,9 +1,9 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
-  import { inView } from "$lib/actions";
+  import { inView, clickOutside, autofocus } from "$lib/actions";
+  import { keys } from "$lib/keys.svelte";
   import { tierColor } from "$lib/util";
   import type { GameDto } from "$lib/types";
-  import Popover from "./Popover.svelte";
   import {
     GameController,
     CheckCircle,
@@ -53,6 +53,34 @@
 
   let game = $derived(entries[0]);
   let multi = $derived(entries.length > 1);
+
+  /**
+   * The "open via" choice for a multi-source tile, shown as a scrim over the
+   * tile's own bounds rather than a floating popover.
+   *
+   * This used to be a bits-ui Popover anchored to the full-bleed open button.
+   * That worked, but tiles sit shoulder to shoulder in a dense grid *and*
+   * translate up on hover (`hover:-translate-y-1` below), so the floating
+   * popover's position — computed from the trigger's box before that
+   * transform — could land a source button over the neighbouring tile instead
+   * of this one. An overlay pinned to `inset-0` of the tile itself has nothing
+   * to collide with: it can never spill onto another card, so there is no
+   * wrong tile left to misclick.
+   */
+  let pickerOpen = $state(false);
+  let triggerEl = $state<HTMLButtonElement | null>(null);
+  $effect(() => {
+    if (!pickerOpen) return;
+    keys.pushOverlay();
+    return () => keys.popOverlay();
+  });
+  /** Cancelling (Escape, click outside, the Cancel button) restores focus to
+   *  the trigger, same as bits-ui's Popover did — otherwise focus is left on
+   *  a button that just got removed from the DOM. */
+  function closePicker() {
+    pickerOpen = false;
+    triggerEl?.focus();
+  }
 
   /** First entry with art, so a Heroic sideload's cover can stand in for a
    *  Steam listing that has none cached yet (or vice-versa). */
@@ -202,29 +230,46 @@
        pointer-events-none so it can't swallow a click meant to open the game. -->
   {#if multi}
     <!-- More than one way to launch this title (e.g. Steam + a Heroic
-         sideload): the open target becomes a popover trigger instead of
-         navigating straight away, so the user picks which one. -->
-    <Popover align="start" width="14rem">
-      {#snippet trigger({ props })}
-        <button
-          onfocus={() => onactivate(index)}
-          {...props}
-          tabindex={active ? 0 : -1}
-          data-tile={index}
-          title={titleText}
-          class="absolute inset-0 z-20 cursor-pointer text-left focus-visible:outline-none"
-        >
-          <span class="sr-only">{srText}</span>
-        </button>
-      {/snippet}
-      <div class="space-y-0.5">
-        <p class="px-1.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted">
+         sideload): the open target reveals an in-card picker instead of
+         navigating straight away, so the user chooses which one. -->
+    <button
+      bind:this={triggerEl}
+      onclick={() => (pickerOpen = true)}
+      onfocus={() => onactivate(index)}
+      tabindex={active ? 0 : -1}
+      data-tile={index}
+      title={titleText}
+      aria-haspopup="true"
+      aria-expanded={pickerOpen}
+      class="absolute inset-0 z-20 cursor-pointer text-left focus-visible:outline-none"
+    >
+      <span class="sr-only">{srText}</span>
+    </button>
+    {#if pickerOpen}
+      <div
+        use:clickOutside={closePicker}
+        onkeydown={(e) => {
+          if (e.key !== "Escape") return;
+          e.stopPropagation();
+          closePicker();
+        }}
+        role="menu"
+        tabindex="-1"
+        aria-label="Open {game.name} via"
+        class="absolute inset-0 z-40 flex flex-col justify-center gap-1.5 bg-black/80 p-2.5 backdrop-blur-sm"
+      >
+        <p class="px-1 pb-0.5 text-center text-[10px] font-medium uppercase tracking-wider text-white/70">
           Open via
         </p>
-        {#each entries as e (e.source + e.app_id)}
+        {#each entries as e, i (e.source + e.app_id)}
           <button
-            onclick={() => app.openGame(e)}
-            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-text transition hover:bg-surface-2"
+            role="menuitem"
+            use:autofocus={i === 0}
+            onclick={() => {
+              pickerOpen = false;
+              app.openGame(e);
+            }}
+            class="flex items-center gap-2 rounded-lg bg-white/10 px-2.5 py-1.5 text-left text-xs font-medium text-white transition hover:bg-white/20"
           >
             <span
               class="size-2 shrink-0 rounded-full"
@@ -237,8 +282,11 @@
             {sourceLabel(e.source)}
           </button>
         {/each}
+        <button onclick={closePicker} class="mt-1 text-center text-[10px] text-white/60 transition hover:text-white">
+          Cancel
+        </button>
       </div>
-    </Popover>
+    {/if}
   {:else}
     <button
       onclick={() => app.openGame(game)}

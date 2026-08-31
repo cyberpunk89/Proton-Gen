@@ -17,9 +17,10 @@ export const clickOutside: Action<HTMLElement, () => void> = (node, handler) => 
   };
 };
 
-/** Focuses the node on mount. */
-export const autofocus: Action<HTMLElement> = (node) => {
-  queueMicrotask(() => node.focus());
+/** Focuses the node on mount, unless passed `false` — e.g. only the first of
+ *  several rendered from an `{#each}` should actually take focus. */
+export const autofocus: Action<HTMLElement, boolean | undefined> = (node, enabled = true) => {
+  if (enabled) queueMicrotask(() => node.focus());
 };
 
 /**
