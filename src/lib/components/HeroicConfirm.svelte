@@ -1,6 +1,8 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { ipc } from "$lib/ipc";
   import Dialog from "./Dialog.svelte";
+  import { WarningCircle } from "phosphor-svelte";
 
   /**
    * The "Apply to Heroic?" confirmation, mounted once at the app root.
@@ -17,6 +19,21 @@
     app.heroicConfirmOpen = false;
     await app.injectHeroic();
   }
+
+  /**
+   * Heroic loads a game's settings into memory when it starts, and on exit (or
+   * on launching the game) flushes that in-memory copy straight back over
+   * `GamesConfig/<app_name>.json` — including whatever protongen just wrote,
+   * which Heroic never re-read. The subtitle below always warned about this,
+   * but as prose it's easy to skim past; check for real whenever the dialog
+   * opens so the warning only shows — loudly — when it actually applies.
+   */
+  let heroicRunning = $state(false);
+  $effect(() => {
+    if (!app.heroicConfirmOpen) return;
+    heroicRunning = false;
+    ipc.heroicRunning().then((v) => (heroicRunning = v));
+  });
 </script>
 
 <Dialog
@@ -25,6 +42,20 @@
   subtitle="Close Heroic first — it may overwrite these changes when it exits."
 >
   <div class="space-y-4">
+    {#if heroicRunning}
+      <div
+        class="flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs"
+        style="border-color: color-mix(in srgb, var(--red) 35%, transparent); background: color-mix(in srgb, var(--red) 8%, transparent)"
+        role="alert"
+      >
+        <WarningCircle size={16} weight="fill" class="mt-0.5 shrink-0 text-red" />
+        <span class="text-subtext">
+          <span class="font-medium text-red">Heroic is running.</span>
+          Quit it before applying — Heroic caches this game's settings in memory and can
+          overwrite what protongen writes the moment it exits or launches the game.
+        </span>
+      </div>
+    {/if}
     <p class="text-sm text-subtext">
       protongen will write the selected environment variables and wrappers into this
       game's Heroic config, replacing any it wrote before. A timestamped backup is saved

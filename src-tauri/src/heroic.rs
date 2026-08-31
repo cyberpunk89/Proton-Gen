@@ -117,6 +117,49 @@ fn entry_to_game(g: SideloadEntry) -> HeroicGame {
     HeroicGame { app_name: g.app_name, title: g.title, executable, installed: g.is_installed, art }
 }
 
+// ------------------------ running-process detection ------------------------
+
+/// Does `/proc/<pid>/comm`'s content look like Heroic's own process?
+///
+/// `comm` is the kernel's idea of the executable's name (truncated to 15
+/// bytes), trimmed of its trailing newline — for Heroic's `/opt/Heroic/heroic`
+/// binary that's simply `"heroic"`. Matched case-insensitively as a substring
+/// so a wrapped/renamed launch (`heroic-bin`, `Heroic`) still counts. Split out
+/// from [`is_running`] (which owns the `/proc` walk) so the match rule is
+/// unit-testable without a live process tree.
+fn comm_matches(comm: &str) -> bool {
+    comm.trim().to_ascii_lowercase().contains("heroic")
+}
+
+/// Best-effort check for a running Heroic process, so the "Apply to Heroic"
+/// confirmation can warn *before* writing rather than let the user discover
+/// after the fact that Heroic silently overwrote the injection on exit (Heroic
+/// caches a game's settings in memory when it starts, and flushes that stale
+/// copy back to `GamesConfig/<app_name>.json` on its own — with none of what
+/// protongen just wrote). Scans `/proc/<pid>/comm` for every numeric entry
+/// under `/proc`; any unreadable entry (a process that exited mid-scan, a
+/// permission error) is skipped rather than failed, matching the tolerant
+/// style of the rest of this module's discovery. Returns `false` on any
+/// platform without a `/proc` (nothing here is Linux-specific by name, but the
+/// scan itself is).
+pub fn is_running() -> bool {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) else {
+            continue;
+        };
+        if comm_matches(&comm) {
+            return true;
+        }
+    }
+    false
+}
+
 // ----------------------------- injection -----------------------------
 
 /// What a successful [`inject`] wrote, for the UI toast.
@@ -255,6 +298,21 @@ pub fn inject(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn comm_matches_heroics_own_process_name() {
+        assert!(comm_matches("heroic\n"));
+        assert!(comm_matches("Heroic"));
+        // A wrapped/renamed launch still counts.
+        assert!(comm_matches("heroic-bin\n"));
+    }
+
+    #[test]
+    fn comm_matches_rejects_unrelated_processes() {
+        assert!(!comm_matches("steam\n"));
+        assert!(!comm_matches("gamescope"));
+        assert!(!comm_matches(""));
+    }
 
     fn base_config() -> serde_json::Value {
         // A realistic Heroic game config: the keys protongen must not disturb.

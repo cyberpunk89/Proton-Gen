@@ -58,6 +58,13 @@ export const ipc = {
       ? invoke<HeroicInjectResult>("inject_heroic", { appName, config })
       : Promise.resolve(mockInjectHeroic(appName, config)),
 
+  // Best-effort: is Heroic currently running? It caches a game's settings in
+  // memory at launch and can flush that stale copy back over whatever protongen
+  // just wrote when it exits, so the confirm dialog checks this before writing
+  // rather than let the user discover it after the fact. No real process tree
+  // to inspect outside Tauri, so the mock always says "not running".
+  heroicRunning: () => (inTauri ? invoke<boolean>("heroic_running") : Promise.resolve(false)),
+
   parseCommand: (input: string) =>
     inTauri ? invoke<Config>("parse_command", { input }) : Promise.resolve(emptyParse()),
 

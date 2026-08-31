@@ -60,6 +60,7 @@ pub fn run() {
             ipc::rescan,
             ipc::build_command,
             ipc::inject_heroic,
+            ipc::heroic_running,
             ipc::parse_command,
             ipc::explain_command,
             ipc::launch_diff,

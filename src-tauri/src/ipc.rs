@@ -480,6 +480,13 @@ pub async fn inject_heroic(
         .map_err(|e| e.to_string())?
 }
 
+/// Best-effort check for a running Heroic process, so the "Apply to Heroic?"
+/// confirmation can warn before writing — see [`heroic::is_running`].
+#[tauri::command]
+pub async fn heroic_running() -> bool {
+    tauri::async_runtime::spawn_blocking(heroic::is_running).await.unwrap_or(false)
+}
+
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
 #[tauri::command]
 pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
