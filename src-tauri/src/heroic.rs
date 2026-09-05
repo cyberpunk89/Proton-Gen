@@ -9,6 +9,7 @@
 //! outside its own `state.toml`, and it does so conservatively: back up first,
 //! preserve every key it doesn't own, write atomically.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -115,6 +116,111 @@ fn entry_to_game(g: SideloadEntry) -> HeroicGame {
     let art =
         g.art_cover.or(g.art_square).map(|a| a.trim().to_string()).filter(|a| !a.is_empty());
     HeroicGame { app_name: g.app_name, title: g.title, executable, installed: g.is_installed, art }
+}
+
+// ------------------------------ play stats ----------------------------------
+
+/// One game's tracked play activity, from Heroic's own `store/timestamp.json` —
+/// the file Heroic itself uses for last-played/playtime across *every* runner
+/// it manages, sideloaded games included. Mirrors `steamcfg::AppUserCfg`'s
+/// last_played/playtime_minutes pair, minus `launch_options` (no equivalent
+/// here) and minus multi-account merging (this is one flat file, not one per
+/// Steam user).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlayStats {
+    /// Unix seconds, parsed from `lastPlayed`. `None` if absent or unparseable.
+    pub last_played: Option<u64>,
+    /// `totalPlayed` — Heroic accumulates this in minutes, the same unit as
+    /// Steam's `Playtime` (confirmed against Heroic's own `launcher.ts`).
+    pub playtime_minutes: Option<u32>,
+}
+
+/// `store/timestamp.json` under the Heroic config dir.
+fn timestamp_path() -> Option<PathBuf> {
+    Some(config_dir()?.join("store").join("timestamp.json"))
+}
+
+#[derive(Deserialize)]
+struct TimestampEntry {
+    #[serde(rename = "lastPlayed", default)]
+    last_played: Option<String>,
+    #[serde(rename = "totalPlayed", default)]
+    total_played: Option<u32>,
+}
+
+/// Parse a `store/timestamp.json` document. Split from [`load_playtime`]
+/// (which owns the filesystem read) so the field mapping is unit-testable
+/// against a hand-built JSON string, mirroring `entry_to_game`.
+fn parse_timestamp_store(raw: &str) -> HashMap<String, PlayStats> {
+    let Ok(entries) = serde_json::from_str::<HashMap<String, TimestampEntry>>(raw) else {
+        return HashMap::new();
+    };
+    entries
+        .into_iter()
+        .map(|(id, e)| {
+            let stats = PlayStats {
+                last_played: e.last_played.as_deref().and_then(parse_iso8601_utc),
+                playtime_minutes: e.total_played,
+            };
+            (id, stats)
+        })
+        .collect()
+}
+
+/// Every game's play stats Heroic has recorded, keyed by `app_name` (the same
+/// id as [`HeroicGame::app_name`] / `Game::heroic_id`). Any absence — no
+/// Heroic, no store file, malformed JSON — yields an empty map rather than an
+/// error, matching [`list_sideloaded`]'s tolerance.
+pub fn load_playtime() -> HashMap<String, PlayStats> {
+    let Some(path) = timestamp_path() else {
+        return HashMap::new();
+    };
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return HashMap::new();
+    };
+    parse_timestamp_store(&raw)
+}
+
+/// Parse a JS `Date.toISOString()`-shaped UTC timestamp
+/// (`"2026-08-14T10:28:55.092Z"`, always this exact 24-byte shape — Heroic
+/// never writes anything else) into Unix seconds. `None` on any mismatch, so
+/// one bad entry is skipped rather than failing the whole store.
+fn parse_iso8601_utc(s: &str) -> Option<u64> {
+    let b = s.as_bytes();
+    if b.len() != 24
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[19] != b'.'
+        || b[23] != b'Z'
+    {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
+    let (y, mo, d, h, mi, se) = (n(0..4)?, n(5..7)?, n(8..10)?, n(11..13)?, n(14..16)?, n(17..19)?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let days = days_from_civil(y, mo as u32, d as u32);
+    let secs = days.checked_mul(86_400)?.checked_add(h * 3600 + mi * 60 + se)?;
+    u64::try_from(secs).ok()
+}
+
+/// Civil date (year/month/day) -> days since 1970-01-01. Howard Hinnant's
+/// well-known constexpr algorithm — see
+/// <http://howardhinnant.github.io/date_algorithms.html#days_from_civil>.
+/// Hand-rolled rather than pulling in a date crate: this project has none, and
+/// Heroic's timestamp format is fixed enough that this is the whole job.
+fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400; // [0, 399]
+    let mp = (i64::from(m) + 9) % 12; // [0, 11]
+    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    era * 146_097 + doe - 719_468
 }
 
 // ------------------------ running-process detection ------------------------
@@ -493,5 +599,76 @@ mod tests {
             art_cover: None,
             art_square: None,
         }
+    }
+
+    #[test]
+    fn parse_iso8601_utc_epoch_is_zero() {
+        assert_eq!(parse_iso8601_utc("1970-01-01T00:00:00.000Z"), Some(0));
+    }
+
+    #[test]
+    fn parse_iso8601_utc_matches_date_command() {
+        // Cross-checked: `date -u -d '2026-08-15T18:30:49Z' +%s` -> 1786818649
+        assert_eq!(
+            parse_iso8601_utc("2026-08-15T18:30:49.540Z"),
+            Some(1_786_818_649)
+        );
+    }
+
+    #[test]
+    fn parse_iso8601_utc_handles_leap_day() {
+        // `date -u -d '2024-02-29T00:00:00Z' +%s` -> 1709164800
+        assert_eq!(
+            parse_iso8601_utc("2024-02-29T00:00:00.000Z"),
+            Some(1_709_164_800)
+        );
+    }
+
+    #[test]
+    fn parse_iso8601_utc_rejects_malformed_input() {
+        assert_eq!(parse_iso8601_utc(""), None);
+        assert_eq!(parse_iso8601_utc("2026-08-15"), None);
+        assert_eq!(parse_iso8601_utc("2026-13-01T00:00:00.000Z"), None);
+        assert_eq!(parse_iso8601_utc("2026-08-15T18:30:49.540"), None); // no trailing Z
+    }
+
+    #[test]
+    fn parse_timestamp_store_reads_a_realistic_fixture() {
+        let raw = r#"{
+            "4q6N4i6zTdYA6RjzHj7hto": {
+                "firstPlayed": "2026-08-15T18:30:33.445Z",
+                "lastPlayed": "2026-08-15T18:30:49.540Z",
+                "totalPlayed": 0
+            },
+            "f-s6hmOsYkhbS-bOICLR2k": {
+                "firstPlayed": "2026-08-18T21:57:44.422Z",
+                "lastPlayed": "2026-09-04T14:48:01.412Z",
+                "totalPlayed": 514
+            }
+        }"#;
+        let map = parse_timestamp_store(raw);
+        assert_eq!(map.len(), 2);
+        // totalPlayed: 0 is a real value, not "absent" — must survive as Some(0).
+        let a = map.get("4q6N4i6zTdYA6RjzHj7hto").unwrap();
+        assert_eq!(a.playtime_minutes, Some(0));
+        assert_eq!(a.last_played, Some(1_786_818_649));
+        let b = map.get("f-s6hmOsYkhbS-bOICLR2k").unwrap();
+        assert_eq!(b.playtime_minutes, Some(514));
+        assert!(b.last_played.is_some());
+    }
+
+    #[test]
+    fn parse_timestamp_store_keeps_playtime_when_last_played_is_bad() {
+        let raw = r#"{ "abc": { "lastPlayed": "not-a-date", "totalPlayed": 12 } }"#;
+        let map = parse_timestamp_store(raw);
+        let a = map.get("abc").unwrap();
+        assert_eq!(a.last_played, None);
+        assert_eq!(a.playtime_minutes, Some(12));
+    }
+
+    #[test]
+    fn parse_timestamp_store_returns_empty_map_on_garbage() {
+        assert!(parse_timestamp_store("not json").is_empty());
+        assert!(parse_timestamp_store("").is_empty());
     }
 }

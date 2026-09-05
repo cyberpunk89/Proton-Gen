@@ -1,19 +1,30 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
-  import { irrelevance } from "$lib/util";
-  import { CheckCircle, XCircle } from "phosphor-svelte";
+  import { irrelevance, copyText } from "$lib/util";
+  import { toast } from "$lib/toast.svelte";
+  import { CheckCircle, XCircle, Copy } from "phosphor-svelte";
 
   let {
     requires = null,
+    pkg = null,
     gpu = null,
     needs = [],
-  }: { requires?: string | null; gpu?: string | null; needs?: string[] } =
-    $props();
+  }: {
+    requires?: string | null;
+    pkg?: string | null;
+    gpu?: string | null;
+    needs?: string[];
+  } = $props();
 
   let installed = $derived(
     requires ? (app.requiresStatus[requires] ?? false) : null,
   );
   let irrelevant = $derived(irrelevance(app.hwCaps, gpu, needs));
+
+  async function copyInstallCommand() {
+    await copyText(`sudo pacman -S ${pkg}`);
+    toast.success(`Copied: sudo pacman -S ${pkg}`);
+  }
 </script>
 
 {#if irrelevant}
@@ -42,5 +53,15 @@
     >
       <XCircle size={12} weight="fill" />{requires}
     </span>
+    {#if pkg}
+      <button
+        type="button"
+        onclick={copyInstallCommand}
+        class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-subtext transition hover:border-accent/50 hover:text-text"
+        title="Copy: sudo pacman -S {pkg}"
+      >
+        <Copy size={12} />Copy install command
+      </button>
+    {/if}
   {/if}
 {/if}

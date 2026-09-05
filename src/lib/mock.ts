@@ -13,6 +13,7 @@ import type {
   RecipeChange,
   Token,
   TokenKind,
+  VkBasaltExportResult,
 } from "./types";
 
 /** A blank Config, for seeding mock per-game memory. Local rather than
@@ -43,6 +44,7 @@ export const mockBootstrap: Bootstrap = {
         kind: "gamescope",
         default_value: "-W 2560 -H 1440 -f",
         requires: "gamescope",
+        pkg: "gamescope",
         help: "Nested Wayland compositor for scaling, HDR and frame limiting.",
         details: "Runs the game inside a micro-compositor.",
         example: "gamescope -W 2560 -H 1440 -f -- %command%",
@@ -57,6 +59,7 @@ export const mockBootstrap: Bootstrap = {
         kind: "plain",
         default_value: "",
         requires: "gamemoderun",
+        pkg: "gamemode",
         help: "Applies Feral GameMode performance tuning.",
         details: "CPU governor + IO priority tweaks while the game runs.",
         example: "gamemoderun %command%",
@@ -71,6 +74,7 @@ export const mockBootstrap: Bootstrap = {
         kind: "plain",
         default_value: "",
         requires: "mangohud",
+        pkg: "mangohud",
         help: "Performance overlay (FPS, frametimes, temps).",
         details: "Configurable via MANGOHUD_CONFIG.",
         example: "mangohud %command%",
@@ -87,6 +91,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "1",
         values: ["1", "0"],
         requires: null,
+        pkg: null,
         help: "Disable the in-kernel ntsync driver (on by default; falls back to fsync/esync).",
         details: "ntsync is enabled by default in Proton 11; set this to disable it and fall back to fsync/esync.",
         example: "PROTON_NO_NTSYNC=1 %command%",
@@ -102,6 +107,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "1",
         values: ["1"],
         requires: null,
+        pkg: null,
         help: "Compile shaders asynchronously to reduce stutter.",
         details: null,
         example: null,
@@ -117,6 +123,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "1",
         values: ["1"],
         requires: null,
+        pkg: null,
         help: "Expose NVAPI so DLSS / Reflex work.",
         details: null,
         example: null,
@@ -132,6 +139,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "0",
         values: ["0", "1", "+all"],
         requires: null,
+        pkg: null,
         help: "Proton log verbosity (3-option dropdown).",
         details: null,
         example: null,
@@ -147,6 +155,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "1",
         values: ["1", "0"],
         requires: null,
+        pkg: null,
         help: "Use the native Wayland driver.",
         details: null,
         example: null,
@@ -162,6 +171,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "1",
         values: ["1", "0"],
         requires: null,
+        pkg: null,
         help: "Enable HDR output through DXVK.",
         details: null,
         example: null,
@@ -177,6 +187,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "1",
         values: ["1", "0"],
         requires: null,
+        pkg: null,
         help: "CachyOS: enable Discord Rich Presence for Proton games (rpc-bridge).",
         details: null,
         example: "PROTON_DISCORD_BRIDGE=1 %command%",
@@ -192,6 +203,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "fps_limit=0,cpu_temp,gpu_temp,ram,vram",
         values: [],
         requires: null,
+        pkg: null,
         help: "MangoHud overlay config (comma-separated). Pairs with the MangoHud wrapper.",
         details: "Configures the MangoHud overlay display via comma-separated options.",
         example: "MANGOHUD_CONFIG=fps,cpu_temp mangohud %command%",
@@ -207,6 +219,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "",
         values: [],
         requires: null,
+        pkg: null,
         help: "Path to a MangoHud .conf file (used when MANGOHUD_CONFIG is unset).",
         details: "Points MangoHud at an on-disk config file instead of the inline string.",
         example: "MANGOHUD_CONFIGFILE=/home/user/.config/MangoHud/MangoHud.conf mangohud %command%",
@@ -227,6 +240,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "1",
         values: ["1", "0"],
         requires: null,
+        pkg: null,
         help: "CachyOS: auto-inject OptiScaler to swap/force upscalers (DLSS/FSR/XeSS).",
         details: "Injects OptiScaler so a game's upscaler can be replaced or forced.",
         example: "PROTON_USE_OPTISCALER=1 %command%",
@@ -242,6 +256,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "",
         values: [],
         requires: null,
+        pkg: null,
         help: "CachyOS: write OptiScaler.ini settings inline, e.g. 'Upscalers.Dx12Upscaler=fsr31'.",
         details: "Semicolon-separated '{section}.{option}={value}' OptiScaler.ini entries.",
         example: "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG='Upscalers.Dx12Upscaler=fsr31' %command%",
@@ -260,6 +275,7 @@ export const mockBootstrap: Bootstrap = {
         default_value: "dxgi.dll",
         values: ["dxgi.dll", "d3d12.dll", "dbghelp.dll"],
         requires: null,
+        pkg: null,
         help: "CachyOS: which DLL OptiScaler injects as (default dxgi.dll).",
         details: "Change this when a game already ships its own dxgi.dll and OptiScaler never loads.",
         example: "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_NAME=d3d12.dll %command%",
@@ -267,6 +283,41 @@ export const mockBootstrap: Bootstrap = {
         gpu: null,
         needs: [],
         tier: "",
+        recommended_for: [],
+      },
+      // vkBasalt toggle + config-file path, so the vkBasalt builder dialog is
+      // reachable under `pnpm dev` (the real catalog files these under
+      // "Overlay / Post-processing").
+      {
+        key: "ENABLE_VKBASALT",
+        category: "Overlay / Post-processing",
+        default_value: "1",
+        values: ["1", "0"],
+        requires: null,
+        pkg: null,
+        help: "Turn on vkBasalt post-processing (CAS sharpening, FXAA, SMAA, ReShade FX).",
+        details: "Activates the vkBasalt Vulkan layer for post-processing effects.",
+        example: "ENABLE_VKBASALT=1 %command%",
+        url: "https://github.com/DadSchoorse/vkBasalt",
+        gpu: null,
+        needs: [],
+        tier: "",
+        recommended_for: [],
+      },
+      {
+        key: "VKBASALT_CONFIG_FILE",
+        category: "Overlay / Post-processing",
+        default_value: "",
+        values: [],
+        requires: null,
+        pkg: null,
+        help: "Path to a specific vkBasalt.conf (otherwise the standard search path is used).",
+        details: "Points vkBasalt at one config file instead of letting it search.",
+        example: "ENABLE_VKBASALT=1 VKBASALT_CONFIG_FILE=/home/user/.config/vkBasalt/sharpen.conf %command%",
+        url: "https://github.com/DadSchoorse/vkBasalt#configuration",
+        gpu: null,
+        needs: [],
+        tier: "advanced",
         recommended_for: [],
       },
     ],
@@ -280,6 +331,7 @@ export const mockBootstrap: Bootstrap = {
     "Upscaling & frame-gen",
     "Display / HDR",
     "Logging / Debug",
+    "Overlay / Post-processing",
   ],
   recipes: [
     {
@@ -651,6 +703,22 @@ export function mockExportMangohudSystem(config: string): MangohudExportResult {
   return {
     config_path: "~/.config/MangoHud/MangoHud.conf",
     backup_path: "~/.config/MangoHud/MangoHud.conf.protongen-1755290000.bak",
+    changed_keys,
+    cleared_keys: [],
+  };
+}
+
+// Reduced stand-in for vkbasalt_export::merge — same rationale as
+// mockExportMangohudSystem above, adapted for vkBasalt.conf's newline-
+// delimited `key = value` lines instead of comma-separated tokens.
+export function mockExportVkbasaltSystem(config: string): VkBasaltExportResult {
+  const changed_keys = config
+    .split("\n")
+    .map((l) => l.trim().split("=")[0]?.trim())
+    .filter(Boolean);
+  return {
+    config_path: "~/.config/vkBasalt/vkBasalt.conf",
+    backup_path: "~/.config/vkBasalt/vkBasalt.conf.protongen-1755290000.bak",
     changed_keys,
     cleared_keys: [],
   };

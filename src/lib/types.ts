@@ -10,6 +10,9 @@ export interface WrapperDef {
   kind: WrapperKind;
   default_value: string;
   requires: string | null;
+  /** pacman package providing `requires` — powers the missing badge's "copy
+   *  install command" action. `null` when `requires` is unset. */
+  pkg: string | null;
   help: string;
   details: string | null;
   example: string | null;
@@ -27,6 +30,8 @@ export interface EnvDef {
   default_value: string;
   values: string[];
   requires: string | null;
+  /** pacman package providing `requires`. See `WrapperDef.pkg`. */
+  pkg: string | null;
   help: string;
   details: string | null;
   example: string | null;
@@ -261,6 +266,15 @@ export interface OptiscalerExtractResult {
 /** Mirrors mangohud_export::ExportResult, for the system-wide export confirm
  *  dialog / toast. `backup_path` is null when there was no pre-existing file. */
 export interface MangohudExportResult {
+  config_path: string;
+  backup_path: string | null;
+  changed_keys: string[];
+  cleared_keys: string[];
+}
+
+/** Mirrors vkbasalt_export::ExportResult. Same shape as
+ *  `MangohudExportResult` — see that comment. */
+export interface VkBasaltExportResult {
   config_path: string;
   backup_path: string | null;
   changed_keys: string[];

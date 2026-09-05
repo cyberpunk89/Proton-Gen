@@ -148,6 +148,28 @@ export const PROXY_DLLS: Choice[] = [
   { value: "dbghelp.dll", label: "dbghelp.dll" },
 ];
 
+/**
+ * [Menu] ShortcutKey — the hotkey that opens OptiScaler's in-game overlay.
+ *
+ * OptiScaler reads this as a raw Windows virtual-key code (hex or decimal),
+ * never a symbolic name — `Menu.ShortcutKey=0xBF`, not `=VK_OEM_2`. The
+ * choices below are just the common ones pre-translated from Microsoft's
+ * virtual-key table; anything else still reaches this field via the
+ * `passthrough` bucket if a user's config already sets it to something odd.
+ */
+export const MENU_SHORTCUT_KEYS: Choice[] = [
+  { value: "", label: "Default (Insert)" },
+  { value: "0xBF", label: "/ (Forward Slash)" },
+  { value: "0x6F", label: "/ (Numpad Divide)" },
+  { value: "0x2D", label: "Insert" },
+  { value: "0x24", label: "Home" },
+  { value: "0x23", label: "End" },
+  { value: "0x21", label: "Page Up" },
+  { value: "0x22", label: "Page Down" },
+  { value: "0x08", label: "Backspace" },
+  { value: "-1", label: "Disabled" },
+];
+
 /** Everything the OptiScaler builder can express, as plain data. */
 export interface OptiScalerConfig {
   dx12Upscaler: string;
@@ -171,6 +193,9 @@ export interface OptiScalerConfig {
    * configs that disabled it) need to expose those options.
    */
   spoofUnlock: boolean;
+  /** `Menu.ShortcutKey` — raw VK hex/decimal code, e.g. "0xBF" for "/". Empty
+   *  string leaves OptiScaler's own default (Insert) in place. */
+  menuShortcutKey: string;
   /** Which entries of `OPTI_FIXES` are on, keyed by `Fix.id`. */
   fixes: Record<string, boolean>;
   /**
@@ -201,6 +226,7 @@ export function emptyOptiScaler(): OptiScalerConfig {
     dlssPresetOn: false,
     dlssPreset: "0",
     spoofUnlock: false,
+    menuShortcutKey: "",
     fixes: {},
     passthrough: [],
   };
@@ -224,6 +250,7 @@ const KNOWN_KEYS = new Set(
     "dlss.renderpresetoverride",
     "dlss.renderpresetforall",
     "spoofing.streamlinespoofing",
+    "menu.shortcutkey",
     ...OPTI_FIXES.flatMap((f) => f.pairs.map(([k]) => k)),
   ].map((k) => k.toLowerCase()),
 );
@@ -281,6 +308,8 @@ export function parseOptiScaler(str: string): OptiScalerConfig {
 
   if (map.has("spoofing.streamlinespoofing")) c.spoofUnlock = bool(get("spoofing.streamlinespoofing"));
 
+  if (get("menu.shortcutkey")) c.menuShortcutKey = get("menu.shortcutkey")!;
+
   // A fix is on when its first pair is present with the expected value. Only the
   // first is checked: the pairs are applied together, so a partial match means
   // someone edited it by hand and the checkbox should reflect their intent to
@@ -332,6 +361,8 @@ export function buildOptiScaler(c: OptiScalerConfig): string {
   }
 
   if (c.spoofUnlock) parts.push("Spoofing.StreamlineSpoofing=true");
+
+  if (c.menuShortcutKey) parts.push(`Menu.ShortcutKey=${c.menuShortcutKey}`);
 
   for (const f of OPTI_FIXES) {
     if (!c.fixes[f.id]) continue;

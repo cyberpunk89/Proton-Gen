@@ -571,6 +571,7 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 | Svelte 5 runes single store | Minimal boilerplate, fine-grained reactivity | All state centralized in one class (intentional). |
 | OptiScaler-upgrade fetch writes into a game's folder | The one place read-only/paste-yourself has a named exception — see below | Introduces a network+filesystem write path that has to stay explicit-confirm-only forever, or the invariant is gone. |
 | MangoHud system-wide export merges into a real config file outside `state.toml` | User-requested; follows the same backup-first, preserve-what-we-don't-own shape as the other two exceptions — see below | A third precedent-setting write path; the read-only invariant now rests on all three staying confirm-gated forever. |
+| vkBasalt system-wide export merges into a real config file outside `state.toml` | Same shape again — vkBasalt has no inline env-var carrier at all, so this is its *only* apply path, not a second one alongside a command-apply button | A fourth precedent-setting write path; the read-only invariant now rests on all four staying confirm-gated forever. |
 
 **The OptiScaler-upgrade exception.** `optiscaler_upgrade.rs` fetches the
 latest `optiscaler/OptiScaler` GitHub release and extracts it into a *game's*
@@ -603,6 +604,20 @@ keybind, an app blacklist, unmodeled colors, comments — while the managed
 keys are replaced wholesale to match the current build exactly, including
 dropping a key the user has since unchecked (`ExportResult.cleared_keys`
 reports these, so the confirm dialog and toast can name them).
+
+**The vkBasalt system-wide export exception.** `vkbasalt_export.rs` merges the
+effect chain built in protongen's vkBasalt dialog into the real, system-wide
+`~/.config/vkBasalt/vkBasalt.conf` — the fourth write outside `state.toml`,
+alongside [`heroic::inject`], the OptiScaler fetch and the MangoHud export
+above. Same shape and same justification as the MangoHud exception: back up
+first, preserve every line it doesn't own (a custom ReShade shader's own
+config, `lutFile`, `deband*` tuning, comments), atomic write, never automatic
+(only `VkBasaltSystemConfirm`'s Apply handler calls it). One difference from
+MangoHud/OptiScaler: vkBasalt has no inline env-var carrier at all — its only
+config surface is the real file — so this is the builder's *sole* apply
+action rather than a system-wide option alongside a command-apply one. The
+seed the dialog opens with is read straight from the live file (`vkbasalt_read_config`)
+rather than derived from an env value, for the same reason.
 
 ---
 

@@ -30,6 +30,7 @@ use crate::steam;
 use crate::steamcfg;
 use crate::store::{self, Config, Store};
 use crate::update::{self, UpdateInfo};
+use crate::vkbasalt_export;
 
 /// A runtime, flattened for the frontend (path + kind as strings).
 #[derive(Clone, Serialize)]
@@ -42,10 +43,11 @@ pub struct RuntimeDto {
 
 /// A game/shortcut, flattened for the frontend.
 ///
-/// `last_played` / `playtime_minutes` come from `localconfig.vdf`, not from the
-/// app manifest — `steamlocate::App` has no such fields. Both are `None` for a
-/// game Steam has never recorded, and always `None` for non-Steam shortcuts
-/// (Steam keeps no per-app user record for them).
+/// `last_played` / `playtime_minutes` come from `localconfig.vdf` for Steam
+/// games (`steamlocate::App` has no such fields of its own) and from Heroic's
+/// own `store/timestamp.json` for Heroic games — see [`game_dto`]. Both are
+/// `None` for a game neither source has recorded yet, and always `None` for
+/// non-Steam shortcuts (neither Steam nor Heroic tracks those).
 #[derive(Clone, Serialize)]
 pub struct GameDto {
     pub app_id: u32,
@@ -242,6 +244,10 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
     let mut compat_tools = HashMap::new();
     let mut path_warnings = Vec::new();
 
+    // Heroic's own last-played/playtime, keyed by its `app_name` — read
+    // unconditionally since sideloaded games don't need Steam to be installed.
+    let heroic_playtime = heroic::load_playtime();
+
     match steam::locate_native(&paths.steam_roots, &mut path_warnings) {
         Ok(dir) => {
             steam_root = Some(steam::root_display(&dir));
@@ -249,7 +255,13 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
             // localconfig first: `list_games_dto` reads last-played/playtime out
             // of it, so the parsed map has to exist before the games are built.
             let app_cfgs = steamcfg::current_app_cfgs(&dir);
-            games = list_games_dto(&dir, &app_cfgs, &paths.steam_libraries, &mut path_warnings);
+            games = list_games_dto(
+                &dir,
+                &app_cfgs,
+                &heroic_playtime,
+                &paths.steam_libraries,
+                &mut path_warnings,
+            );
             launch_options = stringify_keys(steamcfg::launch_options(&app_cfgs));
             compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
         }
@@ -259,7 +271,7 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
             // never runs, so surface sideloaded Heroic games on their own here.
             games = games::dedup_and_sort(games::list_heroic_games())
                 .into_iter()
-                .map(|g| game_dto(g, &HashMap::new()))
+                .map(|g| game_dto(g, &HashMap::new(), &heroic_playtime))
                 .collect();
         }
     }
@@ -318,12 +330,26 @@ fn runtime_dto(r: &runtime::Runtime) -> RuntimeDto {
 }
 
 /// Map one discovery [`games::Game`] to its serialized DTO. `app_cfgs` supplies
-/// last-played/playtime, which only Steam apps have — a shortcut's or Heroic
-/// game's synthetic appid is a hash that indexes nothing in `localconfig.vdf`.
-fn game_dto(g: games::Game, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> GameDto {
-    let cfg = match g.source {
-        GameSource::Steam => app_cfgs.get(&g.app_id),
-        GameSource::NonSteam | GameSource::Heroic => None,
+/// Steam apps' last-played/playtime from `localconfig.vdf`; `heroic_playtime`
+/// supplies the same pair for Heroic games from `store/timestamp.json`, keyed
+/// by `heroic_id` rather than `app_id` (a Heroic game's `app_id` is a synthetic
+/// hash for protongen's own bookkeeping, not an id Heroic itself knows about).
+/// Non-Steam shortcuts have neither source and always get `None`.
+fn game_dto(
+    g: games::Game,
+    app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>,
+    heroic_playtime: &HashMap<String, heroic::PlayStats>,
+) -> GameDto {
+    let (last_played, playtime_minutes) = match g.source {
+        GameSource::Steam => {
+            let cfg = app_cfgs.get(&g.app_id);
+            (cfg.and_then(|c| c.last_played), cfg.and_then(|c| c.playtime_minutes))
+        }
+        GameSource::Heroic => {
+            let stats = g.heroic_id.as_deref().and_then(|id| heroic_playtime.get(id));
+            (stats.and_then(|s| s.last_played), stats.and_then(|s| s.playtime_minutes))
+        }
+        GameSource::NonSteam => (None, None),
     };
     GameDto {
         app_id: g.app_id,
@@ -331,8 +357,8 @@ fn game_dto(g: games::Game, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> Ga
         source: g.source.label().to_string(),
         executable: g.executable,
         installed: g.installed,
-        last_played: cfg.and_then(|c| c.last_played),
-        playtime_minutes: cfg.and_then(|c| c.playtime_minutes),
+        last_played,
+        playtime_minutes,
         heroic_id: g.heroic_id,
         install_dir: g.install_dir.map(|p| p.display().to_string()),
         art_url: g.art_url,
@@ -342,12 +368,13 @@ fn game_dto(g: games::Game, app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>) -> Ga
 fn list_games_dto(
     dir: &SteamDir,
     app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>,
+    heroic_playtime: &HashMap<String, heroic::PlayStats>,
     extra_libraries: &[String],
     warn: &mut Vec<ConfigWarning>,
 ) -> Vec<GameDto> {
     games::list_games(dir, extra_libraries, warn)
         .into_iter()
-        .map(|g| game_dto(g, app_cfgs))
+        .map(|g| game_dto(g, app_cfgs, heroic_playtime))
         .collect()
 }
 
@@ -932,6 +959,30 @@ pub async fn optiscaler_fetch(
 #[tauri::command]
 pub async fn export_mangohud_system(config: String) -> Result<mangohud_export::ExportResult, String> {
     tauri::async_runtime::spawn_blocking(move || mangohud_export::write_system_config(&config))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Read the real, system-wide `~/.config/vkBasalt/vkBasalt.conf`'s current
+/// text, so the vkBasalt builder dialog can seed itself from it rather than
+/// risk clobbering a hand-tuned file. Empty string if the file doesn't exist
+/// yet — read-only, no write involved.
+#[tauri::command]
+pub async fn vkbasalt_read_config() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(vkbasalt_export::read_current_config)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write `config` (a newline-delimited `key = value` block) into the real,
+/// system-wide `~/.config/vkBasalt/vkBasalt.conf`, merging it with whatever's
+/// already there. The fourth sanctioned write outside protongen's own state —
+/// see `vkbasalt_export`'s doc comment. Backs the file up first if it
+/// existed; never gated here, only ever called from the frontend's confirm
+/// dialog.
+#[tauri::command]
+pub async fn export_vkbasalt_system(config: String) -> Result<vkbasalt_export::ExportResult, String> {
+    tauri::async_runtime::spawn_blocking(move || vkbasalt_export::write_system_config(&config))
         .await
         .map_err(|e| e.to_string())?
 }

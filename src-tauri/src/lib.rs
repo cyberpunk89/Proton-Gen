@@ -5,7 +5,7 @@
 //! env-vars / wrappers, and previews + copies the resulting launch command. It
 //! never writes to Steam config files.
 //!
-//! Three sanctioned writes outside protongen's own `state.toml`:
+//! Four sanctioned writes outside protongen's own `state.toml`:
 //! - [`heroic::inject`]: Heroic reads structured per-game JSON rather than a
 //!   launch string, so applying tweaks means writing them into its config
 //!   (backing up first, preserving every key it doesn't own).
@@ -18,6 +18,9 @@
 //!   (backing up first, preserving every line it doesn't own), so it becomes
 //!   the default for every MangoHud-enabled program, not just this app's own
 //!   generated command.
+//! - [`vkbasalt_export::write_system_config`]: the same shape again, for the
+//!   effect chain built in protongen's vkBasalt builder, written into the
+//!   real, system-wide `vkBasalt.conf`.
 //!
 //! This crate is a Tauri backend: the pure logic modules below are exposed to
 //! the web frontend through `ipc`.
@@ -44,6 +47,7 @@ mod steam;
 mod steamcfg;
 mod store;
 mod update;
+mod vkbasalt_export;
 mod which;
 
 use anyhow::Result;
@@ -82,6 +86,8 @@ pub fn run() {
             ipc::optiscaler_latest,
             ipc::optiscaler_fetch,
             ipc::export_mangohud_system,
+            ipc::vkbasalt_read_config,
+            ipc::export_vkbasalt_system,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

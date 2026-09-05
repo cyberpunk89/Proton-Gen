@@ -400,6 +400,18 @@
   </button>
 {/snippet}
 
+<!-- Wired to both the ENABLE_VKBASALT toggle and the VKBASALT_CONFIG_FILE
+     row: either is where someone looks for it. -->
+{#snippet configureVkBasalt()}
+  <button
+    type="button"
+    onclick={() => (app.vkBuilderOpen = true)}
+    class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+  >
+    <Sparkle size={13} /> Configure vkBasalt…
+  </button>
+{/snippet}
+
 {#snippet recipeRow(index: number, r: Recipe)}
   <div class="flex items-center gap-3 rounded-lg px-3 py-2 transition hover:bg-surface-2/50">
     <span class="min-w-0 flex-1">
@@ -439,6 +451,7 @@
       value={app.wrap[w.key]?.value ?? ""}
       placeholder="-W 2560 -H 1440 -f"
       requires={w.requires}
+      pkg={w.pkg}
       gpu={w.gpu}
       needs={w.needs}
       dim={h.hidden}
@@ -466,6 +479,7 @@
       value={app.env[e.key]?.value ?? ""}
       placeholder={e.default_value || "value"}
       requires={e.requires}
+      pkg={e.pkg}
       gpu={e.gpu}
       needs={e.needs}
       dim={h.hidden}
@@ -476,7 +490,9 @@
         ? configureOverlay
         : e.key === "PROTON_OPTISCALER_CONFIG" || e.key === "PROTON_USE_OPTISCALER"
           ? configureOptiScaler
-          : null}
+          : e.key === "ENABLE_VKBASALT" || e.key === "VKBASALT_CONFIG_FILE"
+            ? configureVkBasalt
+            : null}
       onToggle={() => app.toggleEnv(e.key)}
       onValue={(v) => app.setEnvValue(e.key, v)}
     />

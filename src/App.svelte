@@ -17,6 +17,7 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
   import MangoHudSystemConfirm from "$lib/components/MangoHudSystemConfirm.svelte";
+  import VkBasaltSystemConfirm from "$lib/components/VkBasaltSystemConfirm.svelte";
   import OverlayBuilders from "$lib/components/OverlayBuilders.svelte";
   import DefaultProfilePrompt from "$lib/components/DefaultProfilePrompt.svelte";
   import IntroTour from "$lib/components/IntroTour.svelte";
@@ -182,6 +183,8 @@
 <!-- Same rationale, one level up: its trigger lives inside the MangoHud
      dialog, which the user can close mid-flow. -->
 <MangoHudSystemConfirm />
+<!-- Same rationale again, for vkBasalt's own system-wide export confirm. -->
+<VkBasaltSystemConfirm />
 <!-- Same rationale again: SimplePanel and MainPanel are mutually exclusive
      under the Simple/Advanced toggle, so a dialog living inside either one
      would unmount, open, the moment that toggle flips. -->

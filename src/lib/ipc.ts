@@ -20,12 +20,14 @@ import type {
   Tier,
   Token,
   UpdateInfo,
+  VkBasaltExportResult,
 } from "./types";
 import {
   mockBootstrap,
   mockBuildCommand,
   mockExplain,
   mockExportMangohudSystem,
+  mockExportVkbasaltSystem,
   mockInjectHeroic,
   mockLaunchDiff,
   mockLaunchStatuses,
@@ -256,6 +258,19 @@ export const ipc = {
     inTauri
       ? invoke<MangohudExportResult>("export_mangohud_system", { config })
       : Promise.resolve(mockExportMangohudSystem(config)),
+
+  // Read-only seed for the vkBasalt builder dialog — the real, current text
+  // of ~/.config/vkBasalt/vkBasalt.conf, or "" if it doesn't exist yet.
+  vkbasaltReadConfig: () =>
+    inTauri ? invoke<string>("vkbasalt_read_config") : Promise.resolve(""),
+
+  // Merge `config` into the real, system-wide ~/.config/vkBasalt/vkBasalt.conf.
+  // Same read-only-by-contract exception as exportMangohudSystem above (see
+  // vkbasalt_export's doc comment) — only ever called from its confirm dialog.
+  exportVkbasaltSystem: (config: string) =>
+    inTauri
+      ? invoke<VkBasaltExportResult>("export_vkbasalt_system", { config })
+      : Promise.resolve(mockExportVkbasaltSystem(config)),
 };
 
 function emptyParse(): Config {

@@ -64,12 +64,13 @@ extra `--` into cargo).
 ## Conventions & invariants
 
 - **Read-only by contract.** Never write Steam config files. The only output is a string
-  the user copies. App state lives only under `$XDG_CONFIG_HOME/protongen/state.toml`. Three
+  the user copies. App state lives only under `$XDG_CONFIG_HOME/protongen/state.toml`. Four
   named exceptions, all explicit-confirm-only and documented in `design.md` §11:
   `heroic::inject` (writes Heroic's per-game config), `optiscaler_upgrade.rs` (fetches
-  the latest OptiScaler release and extracts it into a game's own folder), and
+  the latest OptiScaler release and extracts it into a game's own folder),
   `mangohud_export.rs` (merges the MangoHud builder's overlay into the real, system-wide
-  `MangoHud.conf`).
+  `MangoHud.conf`), and `vkbasalt_export.rs` (same shape, for the vkBasalt builder's
+  effect chain into the real, system-wide `vkBasalt.conf`).
 - **Pure Rust core, thin IPC.** Command assembly is a pure, deterministic, unit-tested
   function (`builder.rs`); Tauri commands are a serialization bridge. App, tests, and the
   `--list` CLI all consume the same logic.

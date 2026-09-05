@@ -23,6 +23,7 @@
     value = "",
     placeholder = "",
     requires = null,
+    pkg = null,
     gpu = null,
     needs = [],
     dim = false,
@@ -47,6 +48,7 @@
     value?: string;
     placeholder?: string;
     requires?: string | null;
+    pkg?: string | null;
     gpu?: string | null;
     needs?: string[];
     dim?: boolean;
@@ -204,7 +206,7 @@
         </span>
       {/if}
       {#if action}{@render action()}{/if}
-      <Badges {requires} {gpu} {needs} />
+      <Badges {requires} {pkg} {gpu} {needs} />
       <InfoPopover {details} {example} {url} {defaultValue} {values} />
     </div>
   </div>

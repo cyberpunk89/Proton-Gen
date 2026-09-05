@@ -3,9 +3,11 @@
   import Dialog from "./Dialog.svelte";
   import MangoHud from "./MangoHud.svelte";
   import OptiScaler from "./OptiScaler.svelte";
+  import VkBasalt from "./VkBasalt.svelte";
 
   /**
-   * The MangoHud and OptiScaler overlay builders, mounted once at the app root.
+   * The MangoHud, OptiScaler and vkBasalt overlay builders, mounted once at
+   * the app root.
    *
    * Both used to be defined twice — once inside SimplePanel, once inside
    * MainPanel, each with its own local `$state` + `<Dialog>` — because each
@@ -35,4 +37,13 @@
   width="46rem"
 >
   <OptiScaler onapply={() => (app.optiBuilderOpen = false)} />
+</Dialog>
+
+<Dialog
+  bind:open={app.vkBuilderOpen}
+  title="vkBasalt effect chain"
+  subtitle="Compose the effect chain, then set it as the system-wide vkBasalt.conf."
+  width="46rem"
+>
+  <VkBasalt onapply={() => (app.vkBuilderOpen = false)} />
 </Dialog>

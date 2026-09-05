@@ -171,7 +171,12 @@
   label: string,
   value: string,
   warning: string | null,
-  def: { requires: string | null; gpu: string | null; needs: string[] } | null,
+  def: {
+    requires: string | null;
+    pkg: string | null;
+    gpu: string | null;
+    needs: string[];
+  } | null,
   remove: () => void,
   mono: boolean,
 )}
@@ -187,7 +192,7 @@
     {/if}
 
     {#if def}
-      <Badges requires={def.requires} gpu={def.gpu} needs={def.needs} />
+      <Badges requires={def.requires} pkg={def.pkg} gpu={def.gpu} needs={def.needs} />
     {/if}
 
     <button

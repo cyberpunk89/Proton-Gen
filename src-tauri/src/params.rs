@@ -79,6 +79,12 @@ pub struct WrapperDef {
     pub default_value: String,
     #[serde(default)]
     pub requires: Option<String>,
+    /// pacman package that provides `requires`, e.g. "gamemode" for
+    /// `gamemoderun`. Powers the missing-badge's "copy install command"
+    /// action; `None` when `requires` is unset or the binary/package happen
+    /// to share a name isn't assumed (always spelled out explicitly).
+    #[serde(default)]
+    pub pkg: Option<String>,
     #[serde(default)]
     pub help: String,
     #[serde(default)]
@@ -120,6 +126,9 @@ pub struct EnvDef {
     pub values: Vec<String>,
     #[serde(default)]
     pub requires: Option<String>,
+    /// pacman package that provides `requires`. See [`WrapperDef::pkg`].
+    #[serde(default)]
+    pub pkg: Option<String>,
     #[serde(default)]
     pub help: String,
     #[serde(default)]

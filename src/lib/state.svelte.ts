@@ -1034,6 +1034,24 @@ class AppStore {
     }
   }
 
+  /**
+   * Merge `pendingVkBasaltSystemConfig` into the real, system-wide
+   * `vkBasalt.conf`. Same shape as `exportMangoSystemWide` — backs the file up
+   * first, preserves every line it doesn't own (deband/LUT tuning, ReShade
+   * paths, comments), and clears a managed key the new config no longer sets.
+   */
+  async exportVkBasaltSystemWide() {
+    try {
+      const res = await ipc.exportVkbasaltSystem(this.pendingVkBasaltSystemConfig);
+      const cleared = res.cleared_keys.length
+        ? ` (cleared: ${res.cleared_keys.join(", ")})`
+        : "";
+      toast.success(`Set as vkBasalt config — backup saved${cleared}`, { ms: 6000 });
+    } catch (e) {
+      toast.error(`Couldn't write vkBasalt.conf: ${e}`, { ms: 6000 });
+    }
+  }
+
   // ------------------------------- presets ----------------------------------
 
   /** Presets saved against the currently selected game (by app id). Empty when
@@ -1218,8 +1236,15 @@ class AppStore {
   mangoSystemConfirmOpen = $state(false);
   pendingMangoSystemConfig = $state("");
 
+  /** Same shape again, for the vkBasalt builder's "Set as vkBasalt config?"
+   *  confirmation — vkBasalt has no inline env-var carrier, so this is the
+   *  builder's *only* apply action, not a second one alongside a command-apply
+   *  path like MangoHud/OptiScaler have. */
+  vkSystemConfirmOpen = $state(false);
+  pendingVkBasaltSystemConfig = $state("");
+
   /**
-   * Whether the MangoHud / OptiScaler overlay-builder dialogs are up.
+   * Whether the MangoHud / OptiScaler / vkBasalt overlay-builder dialogs are up.
    *
    * Lives on the store for the same reason as `heroicConfirmOpen`: SimplePanel
    * and MainPanel each used to own a local `$state` + `<Dialog>` pair for these,
@@ -1230,6 +1255,7 @@ class AppStore {
    */
   mangoBuilderOpen = $state(false);
   optiBuilderOpen = $state(false);
+  vkBuilderOpen = $state(false);
 
   /**
    * The row `revealParam` last asked for. `OptionRow` watches this and scrolls,

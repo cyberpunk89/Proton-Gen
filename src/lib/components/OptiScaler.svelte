@@ -10,6 +10,7 @@
     SHARPEN_SHADERS,
     OPTI_FIXES,
     PROXY_DLLS,
+    MENU_SHORTCUT_KEYS,
     parseOptiScaler,
     buildOptiScaler,
     type OptiScalerConfig,
@@ -158,6 +159,12 @@
           Change “Inject as” if OptiScaler never loads at all — some games already own
           <span class="font-mono">dxgi.dll</span>.
         </p>
+        {@render pick(
+          "In-game menu hotkey",
+          MENU_SHORTCUT_KEYS,
+          () => c.menuShortcutKey,
+          (v) => (c.menuShortcutKey = v),
+        )}
       </div>
 
       <!-- Output scaling -->
