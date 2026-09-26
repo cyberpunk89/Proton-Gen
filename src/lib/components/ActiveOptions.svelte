@@ -1,7 +1,8 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { toast } from "$lib/toast.svelte";
-  import { copyText, irrelevance, splitExtraEnv } from "$lib/util";
+  import { splitExtraEnv } from "$lib/shell";
+  import { copyText, irrelevance } from "$lib/util";
   import Badges from "./Badges.svelte";
   import { ListChecks, X, Copy, Sparkle, Warning, ArrowRight } from "phosphor-svelte";
 

@@ -8,6 +8,11 @@
 //!
 //! Produced shape:
 //! `ENV1=v ENV2=v  gamescope <args> --  gamemoderun mangohud  %command%  <game args>`
+//!
+//! Steam runs launch options through a shell, so every *value* we emit — env
+//! values, program paths, the umu exe — goes through [`sh_quote`]. Gamescope
+//! args and game args are emitted verbatim: the user types those as shell
+//! syntax, quotes and all.
 
 /// A wrapper program placed before `%command%`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,7 +120,7 @@ fn env_and_wrappers(env: &[(String, String)], wrappers: &[Wrapper], bins: &Bins)
 
     // Environment variables, in the order given.
     for (k, v) in env {
-        parts.push(format!("{k}={v}"));
+        parts.push(assignment(k, v));
     }
 
     // Wrappers, sorted outer -> inner so output is deterministic regardless of
@@ -126,28 +131,67 @@ fn env_and_wrappers(env: &[(String, String)], wrappers: &[Wrapper], bins: &Bins)
         match w {
             Wrapper::Gamescope(args) => {
                 let args = args.trim();
+                let prog = sh_quote(&bins.gamescope);
                 if args.is_empty() {
-                    parts.push(format!("{} --", bins.gamescope));
+                    parts.push(format!("{prog} --"));
                 } else {
-                    parts.push(format!("{} {args} --", bins.gamescope));
+                    parts.push(format!("{prog} {args} --"));
                 }
             }
             // A fixed CachyOS system binary in /usr/bin, so — unlike the others —
             // it has no Settings override slot; emit the bare name.
             Wrapper::GamePerformance => parts.push("game-performance".to_string()),
-            Wrapper::Gamemoderun => parts.push(bins.gamemoderun.clone()),
-            Wrapper::Mangohud => parts.push(bins.mangohud.clone()),
+            Wrapper::Gamemoderun => parts.push(sh_quote(&bins.gamemoderun)),
+            Wrapper::Mangohud => parts.push(sh_quote(&bins.mangohud)),
         }
     }
     parts
 }
 
-/// Quote a path for a shell command only if it contains whitespace.
-fn shell_quote(s: &str) -> String {
-    if s.contains(char::is_whitespace) {
-        format!("\"{s}\"")
+/// Characters a shell leaves alone in an unquoted word. `$` is deliberately
+/// plain so `$HOME/…` keeps expanding, as it did before values were quoted.
+fn is_plain(c: char) -> bool {
+    c.is_ascii_alphanumeric() || "_@%+=:,./~$-".contains(c)
+}
+
+/// Quote one shell word only when it needs it.
+///
+/// Double quotes, not single: `$VAR` still expands inside them (so quoting
+/// never changes the meaning of a value that worked unquoted), and only `"`,
+/// `\` and `` ` `` need escaping. A leading `~/` stays outside the quotes so
+/// the tilde still expands. Needed because Steam hands the whole line to a
+/// shell: an unquoted `DXVK_CONFIG=a;b` ends the command at the `;`.
+pub(crate) fn sh_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "\"\"".to_string();
+    }
+    if s.chars().all(is_plain) {
+        return s.to_string();
+    }
+    let (tilde, rest) = match s.strip_prefix("~/") {
+        Some(rest) => ("~/", rest),
+        None => ("", s),
+    };
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push_str(tilde);
+    out.push('"');
+    for c in rest.chars() {
+        if matches!(c, '"' | '\\' | '`') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
+}
+
+/// `KEY=value` with the value quoted as needed. An empty value stays `KEY=`,
+/// which a shell already reads as "set to empty".
+pub(crate) fn assignment(key: &str, value: &str) -> String {
+    if value.is_empty() {
+        format!("{key}=")
     } else {
-        s.to_string()
+        format!("{key}={}", sh_quote(value))
     }
 }
 
@@ -203,9 +247,9 @@ pub fn build_umu_command(
 
     let mut parts = env_and_wrappers(&lead, wrappers, bins);
 
-    parts.push(bins.umu_run.clone());
+    parts.push(sh_quote(&bins.umu_run));
     let exe = exe.trim();
-    parts.push(shell_quote(if exe.is_empty() { "<game.exe>" } else { exe }));
+    parts.push(sh_quote(if exe.is_empty() { "<game.exe>" } else { exe }));
 
     let game_args = game_args.trim();
     if !game_args.is_empty() {
@@ -390,6 +434,62 @@ mod tests {
         assert_eq!(
             out,
             "GAMEID=umu-0 PROTONPATH=/opt/proton /home/u/.local/bin/umu-run g.exe"
+        );
+    }
+
+    #[test]
+    fn sh_quote_leaves_plain_words_bare_and_quotes_the_rest() {
+        for (input, want) in [
+            ("1", "1"),
+            ("dxgi=n,b", "dxgi=n,b"),
+            ("/opt/proton-cachyos", "/opt/proton-cachyos"),
+            ("$HOME/.cache/dxvk", "$HOME/.cache/dxvk"),
+            ("a;b", "\"a;b\""),
+            ("a b", "\"a b\""),
+            ("$HOME/my games", "\"$HOME/my games\""),
+            ("~/my games", "~/\"my games\""),
+            ("say \"hi\"", "\"say \\\"hi\\\"\""),
+            ("a`b", "\"a\\`b\""),
+            ("back\\slash", "\"back\\\\slash\""),
+            ("it's", "\"it's\""),
+            ("", "\"\""),
+        ] {
+            assert_eq!(sh_quote(input), want, "sh_quote({input:?})");
+        }
+    }
+
+    #[test]
+    fn a_semicolon_value_is_quoted_so_the_shell_cannot_split_it() {
+        // Steam runs launch options through a shell: unquoted, everything after
+        // the `;` became a second command and the variable never reached the game.
+        let e = env(&[("DXVK_CONFIG", "dxgi.maxFrameLatency=1;dxvk.hud=fps")]);
+        assert_eq!(
+            build_command(&e, &[], "", &bins()),
+            "DXVK_CONFIG=\"dxgi.maxFrameLatency=1;dxvk.hud=fps\" %command%"
+        );
+    }
+
+    #[test]
+    fn an_empty_env_value_stays_a_bare_assignment() {
+        assert_eq!(build_command(&env(&[("LD_PRELOAD", "")]), &[], "", &bins()), "LD_PRELOAD= %command%");
+    }
+
+    #[test]
+    fn umu_quotes_a_proton_path_and_prefix_with_spaces() {
+        let out = build_umu_command(
+            &[],
+            &[],
+            "/home/u/.steam/steam/steamapps/common/Proton 9.0 (Beta)",
+            "",
+            Some("/home/u/my prefix"),
+            "/games/g.exe",
+            "",
+            &bins(),
+        );
+        assert_eq!(
+            out,
+            "WINEPREFIX=\"/home/u/my prefix\" GAMEID=umu-0 \
+             PROTONPATH=\"/home/u/.steam/steam/steamapps/common/Proton 9.0 (Beta)\" umu-run /games/g.exe"
         );
     }
 

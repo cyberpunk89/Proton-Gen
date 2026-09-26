@@ -8,8 +8,9 @@
 //! `builder.rs` (which it must agree with) and is covered by a round-trip test
 //! over every builder fixture.
 //!
-//! It cannot reuse `parser::tokenize`: that one strips quotes and throws
-//! whitespace away.
+//! Word boundaries come from `parser::words`, so the preview and the parser
+//! can never disagree about quoting or escapes; the whitespace between words
+//! is re-inserted from the source spans.
 
 use serde::Serialize;
 
@@ -49,62 +50,28 @@ pub struct Token {
     pub key: Option<String>,
 }
 
-/// A word (verbatim, quotes included) or a run of whitespace.
+/// A run of whitespace, or a word: its verbatim source (quotes included) and
+/// its unquoted value (for matching only).
 enum Piece {
     Space(String),
-    Word(String),
+    Word { raw: String, bare: String },
 }
 
-/// Split on whitespace outside quotes, **keeping** both the whitespace and the
-/// quote characters. Same quoting rules as `parser::tokenize`, opposite policy
-/// on what to discard: nothing.
+/// `parser::words`, plus the whitespace between them, so nothing is discarded.
 fn split_preserving(input: &str) -> Vec<Piece> {
     let mut pieces = Vec::new();
-    let mut cur = String::new();
-    let mut in_space = true;
-    let mut quote: Option<char> = None;
-
-    for ch in input.chars() {
-        let is_break = quote.is_none() && ch.is_whitespace();
-        if is_break != in_space {
-            if !cur.is_empty() {
-                pieces.push(if in_space {
-                    Piece::Space(std::mem::take(&mut cur))
-                } else {
-                    Piece::Word(std::mem::take(&mut cur))
-                });
-            }
-            in_space = is_break;
+    let mut pos = 0;
+    for w in parser::words(input) {
+        if w.start > pos {
+            pieces.push(Piece::Space(input[pos..w.start].to_string()));
         }
-        if !is_break {
-            match quote {
-                Some(q) if ch == q => quote = None,
-                Some(_) => {}
-                None if ch == '"' || ch == '\'' => quote = Some(ch),
-                None => {}
-            }
-        }
-        cur.push(ch);
+        pieces.push(Piece::Word { raw: input[w.start..w.end].to_string(), bare: w.text });
+        pos = w.end;
     }
-    if !cur.is_empty() {
-        pieces.push(if in_space { Piece::Space(cur) } else { Piece::Word(cur) });
+    if pos < input.len() {
+        pieces.push(Piece::Space(input[pos..].to_string()));
     }
     pieces
-}
-
-/// The word with its quote characters removed, for matching only.
-fn unquote(word: &str) -> String {
-    let mut out = String::with_capacity(word.len());
-    let mut quote: Option<char> = None;
-    for ch in word.chars() {
-        match quote {
-            Some(q) if ch == q => quote = None,
-            Some(_) => out.push(ch),
-            None if ch == '"' || ch == '\'' => quote = Some(ch),
-            None => out.push(ch),
-        }
-    }
-    out
 }
 
 /// `KEY=value` where KEY looks like an environment variable name.
@@ -132,7 +99,7 @@ pub fn explain(command: &str) -> Vec<Token> {
     // by basename — the program can be named by path.
     let is_umu = pieces
         .iter()
-        .any(|p| matches!(p, Piece::Word(w) if parser::basename(&unquote(w)) == "umu-run"));
+        .any(|p| matches!(p, Piece::Word { bare, .. } if parser::basename(bare) == "umu-run"));
 
     let mut out = Vec::with_capacity(pieces.len());
     let mut past_target = false;
@@ -140,18 +107,17 @@ pub fn explain(command: &str) -> Vec<Token> {
     let mut post_count = 0usize;
 
     for piece in &pieces {
-        let word = match piece {
+        let (word, bare) = match piece {
             Piece::Space(s) => {
                 out.push(Token { text: s.clone(), kind: TokenKind::Space, key: None });
                 continue;
             }
-            Piece::Word(w) => w,
+            Piece::Word { raw, bare } => (raw, bare.as_str()),
         };
-        let bare = unquote(word);
         // Program tokens are matched by basename; `key` stays the *catalog* key
         // so the frontend can still resolve it, even when the command names the
         // binary by path.
-        let prog = parser::basename(&bare).to_string();
+        let prog = parser::basename(bare).to_string();
 
         let (kind, key) = if past_target {
             post_count += 1;
@@ -175,7 +141,7 @@ pub fn explain(command: &str) -> Vec<Token> {
             (TokenKind::Wrapper, Some(prog.clone()))
         } else if prog == "game-performance" || prog == "gamemoderun" || prog == "mangohud" {
             (TokenKind::Wrapper, Some(prog.clone()))
-        } else if let Some(k) = env_key(&bare) {
+        } else if let Some(k) = env_key(bare) {
             (TokenKind::Env, Some(k.to_string()))
         } else {
             (TokenKind::Unknown, None)
@@ -291,7 +257,34 @@ mod tests {
         }
         let (e, w) = params::to_spec(&cat, &opts);
         v.push(builder::build_command(&e, &w, "", &builder::Bins::default()));
+
+        // Values that need quoting, so the corpus covers what `sh_quote` emits.
+        let tricky = env(&[
+            ("DXVK_CONFIG", "dxgi.maxFrameLatency=1;dxvk.hud=fps"),
+            ("QUOTED", "say \"hi\" `now`"),
+            ("TILDE", "~/my games"),
+        ]);
+        v.push(builder::build_command(&tricky, &[], "-x \"a b\"", &builder::Bins::default()));
+        v.push(builder::build_umu_command(
+            &tricky,
+            &[],
+            "/home/u/Proton 9.0 (Beta)",
+            "",
+            Some("/home/u/my prefix"),
+            "",
+            "",
+            &builder::Bins::default(),
+        ));
         v
+    }
+
+    #[test]
+    fn a_quoted_value_with_spaces_is_one_env_token() {
+        let cmd = "DXVK_CONFIG=\"a b;c\" %command%";
+        use TokenKind::*;
+        assert_eq!(kinds(cmd), vec![Env, Target]);
+        assert_eq!(texts(cmd)[0], "DXVK_CONFIG=\"a b;c\"");
+        assert_eq!(explain(cmd)[0].key.as_deref(), Some("DXVK_CONFIG"));
     }
 
     /// The load-bearing guarantee: tokens reassemble into the exact input.
@@ -312,6 +305,9 @@ mod tests {
             "\tA=1\n%command%",
             "WINEPREFIX='/home/u/my prefix' umu-run \"/games/My Game/g.exe\" --a  --b",
             "%command%",
+            "A=\"x \\\"y\\\" z\"  B=a\\ b %command% -x \"a b\"",
+            "DXVK_CONFIG=\"a;b\" C=\"back\\\\slash\" %command%",
+            "A=\"unclosed %command%",
         ] {
             let joined: String = explain(cmd).iter().map(|t| t.text.as_str()).collect();
             assert_eq!(joined, cmd, "round-trip lost bytes for: {cmd:?}");

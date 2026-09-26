@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::compose;
 use crate::params::{self, Catalog, Options};
 
 const BUNDLED: &str = include_str!("../recipes.toml");
@@ -121,12 +122,12 @@ pub fn apply(recipe: &Recipe, catalog: &Catalog, options: &mut Options, extra_en
             options.envs[i].value = v.clone();
         } else {
             // Unknown key (catalog drift) → append to custom env.
-            let pair = format!("{k}={v}");
-            if !extra_env.split_whitespace().any(|t| t == pair) {
+            let pair = (k.clone(), v.clone());
+            if !compose::parse_extra_env(extra_env).contains(&pair) {
                 if !extra_env.is_empty() {
                     extra_env.push(' ');
                 }
-                extra_env.push_str(&pair);
+                extra_env.push_str(&compose::format_extra_env(&[pair]));
             }
         }
     }
@@ -216,8 +217,7 @@ pub fn diff(
             }
             None => {
                 // Already present in extra_env means apply() would skip it.
-                let pair = format!("{k}={v}");
-                let already = extra_env.split_whitespace().any(|t| t == pair);
+                let already = compose::parse_extra_env(extra_env).contains(&(k.clone(), v.clone()));
                 out.push(RecipeChange {
                     key: k.clone(),
                     kind: if already { ChangeKind::NoOp } else { ChangeKind::ExtraEnv },

@@ -2,10 +2,10 @@
 //! has set, and say whether they agree.
 //!
 //! **Why not a string compare.** Env ordering differs, gamescope arg whitespace
-//! differs, and the two sides disagree about quoting: `parser::tokenize` strips
-//! quotes while `builder::shell_quote` only *adds* them around whitespace. A raw
-//! `==` would report "drifted" almost constantly. So both sides are run through
-//! `parser::parse` and compared as normal forms.
+//! differs, and the two sides may quote the same value differently (`'a;b'` in
+//! Steam, `"a;b"` from `builder::sh_quote`). A raw `==` would report "drifted"
+//! almost constantly. So both sides are run through `parser::parse` — which
+//! removes quoting — and compared as normal forms.
 //!
 //! Normalisation, deliberately:
 //!
@@ -14,8 +14,9 @@
 //!   that set the same variables in a different order are the same command.
 //! - **wrapper ordering is ignored** too — `builder::env_and_wrappers` already
 //!   emits them in a canonical order, so position carries no information.
-//! - **gamescope args and game args are whitespace-normalised**, since the
-//!   builder's spacing is not something the user should have to reproduce.
+//! - **gamescope args are whitespace-normalised** and **game args are compared
+//!   word by word** (quoting removed), since the builder's spacing and quote
+//!   style are not something the user should have to reproduce.
 //!
 //! What is *not* normalised away: anything protongen cannot model. Those tokens
 //! land in `unmodeled` (via `Parsed::unknown`) and force a `Drifted` verdict —
@@ -139,11 +140,15 @@ pub fn compare(built: &str, current: &str) -> LaunchDiff {
         .into_iter()
         .collect();
 
-    let (bargs, cargs) = (squash(&b.game_args), squash(&c.game_args));
-    let game_args = (bargs != cargs).then(|| Change {
-        key: "game_args".to_string(),
-        current: cargs,
-        built: bargs,
+    // Game args are kept verbatim by the parser, so compare them as the words
+    // the game will actually receive: `-x 'a b'` and `-x "a b"` agree, while
+    // `-x a b` (two args) does not.
+    let game_args = (parser::tokenize(&b.game_args) != parser::tokenize(&c.game_args)).then(|| {
+        Change {
+            key: "game_args".to_string(),
+            current: squash(&c.game_args),
+            built: squash(&b.game_args),
+        }
     });
 
     let identical = added.is_empty()
@@ -277,6 +282,25 @@ mod tests {
         );
         // Whitespace alone is not a difference.
         assert!(compare("%command% -a  -b", "%command%   -a -b").game_args.is_none());
+        // Nor is quote style — but splitting one argument into two is.
+        assert!(compare("%command% -x \"a b\"", "%command% -x 'a b'").game_args.is_none());
+        assert!(compare("%command% -x \"a b\"", "%command% -x a b").game_args.is_some());
+    }
+
+    #[test]
+    fn a_differently_quoted_value_is_in_sync() {
+        let d = compare("DXVK_CONFIG=\"a;b\" %command%", "DXVK_CONFIG='a;b' %command%");
+        assert_eq!(d.status, DiffStatus::InSync, "{d:?}");
+    }
+
+    #[test]
+    fn an_old_unquoted_semicolon_value_reads_as_drifted() {
+        // Older builds emitted this; the shell ran `DXVK_CONFIG=a` as its own
+        // statement, so the game never got the variable. Re-pasting fixes it.
+        let d = compare("DXVK_CONFIG=\"a;b\" %command%", "DXVK_CONFIG=a;b %command%");
+        assert_eq!(d.status, DiffStatus::Drifted);
+        assert_eq!(d.unmodeled, vec!["DXVK_CONFIG=a;b"]);
+        assert!(d.changed.is_empty(), "the value itself parses the same: {d:?}");
     }
 
     #[test]

@@ -55,44 +55,92 @@ impl Parsed {
     }
 }
 
-/// Split a command line into tokens, honoring single/double quotes (quotes are
-/// stripped from the resulting tokens).
-pub fn tokenize(input: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
+/// One shell word: its value with quoting removed, the byte range of its
+/// source text, and whether it holds an *unquoted* shell operator character.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Word {
+    pub text: String,
+    pub start: usize,
+    pub end: usize,
+    /// An unquoted `; & | < > ( )` or backtick. Before the target that means
+    /// the shell does not see what it looks like — `A=x;y %command%` runs `A=x`
+    /// as its own statement and never exports it to the game.
+    pub operator: bool,
+}
+
+/// Split a command line into words the way a POSIX shell does: whitespace
+/// separates words outside quotes; `'…'` is literal; inside `"…"` a backslash
+/// escapes only `$`, `` ` ``, `"`, `\` and newline; outside quotes a backslash
+/// makes the next character literal. An unclosed quote runs to the end.
+pub fn words(input: &str) -> Vec<Word> {
+    let mut out = Vec::new();
     let mut cur = String::new();
+    let mut start: Option<usize> = None;
+    let mut operator = false;
     let mut quote: Option<char> = None;
-    let mut has = false;
-    for ch in input.chars() {
+    let mut chars = input.char_indices().peekable();
+
+    while let Some((i, ch)) = chars.next() {
         match quote {
-            Some(q) => {
-                if ch == q {
+            Some('\'') => {
+                if ch == '\'' {
                     quote = None;
                 } else {
                     cur.push(ch);
                 }
             }
-            None => match ch {
-                '"' | '\'' => {
-                    quote = Some(ch);
-                    has = true;
+            Some(_) => match ch {
+                '"' => quote = None,
+                '\\' => match chars.peek() {
+                    Some(&(_, n)) if matches!(n, '$' | '`' | '"' | '\\' | '\n') => {
+                        chars.next();
+                        if n != '\n' {
+                            cur.push(n);
+                        }
+                    }
+                    _ => cur.push('\\'),
+                },
+                c => cur.push(c),
+            },
+            None if ch.is_whitespace() => {
+                if let Some(s) = start.take() {
+                    out.push(Word { text: std::mem::take(&mut cur), start: s, end: i, operator });
+                    operator = false;
                 }
-                c if c.is_whitespace() => {
-                    if has {
-                        tokens.push(std::mem::take(&mut cur));
-                        has = false;
+            }
+            None => {
+                start.get_or_insert(i);
+                match ch {
+                    '"' | '\'' => quote = Some(ch),
+                    '\\' => {
+                        if let Some((_, n)) = chars.next() {
+                            if n != '\n' {
+                                cur.push(n);
+                            }
+                        }
+                    }
+                    c => {
+                        operator |= matches!(c, ';' | '&' | '|' | '<' | '>' | '(' | ')' | '`');
+                        cur.push(c);
                     }
                 }
-                c => {
-                    cur.push(c);
-                    has = true;
-                }
-            },
+            }
         }
     }
-    if has {
-        tokens.push(cur);
+    if let Some(s) = start {
+        out.push(Word { text: cur, start: s, end: input.len(), operator });
     }
-    tokens
+    out
+}
+
+/// The words' values alone, quoting removed.
+pub fn tokenize(input: &str) -> Vec<String> {
+    words(input).into_iter().map(|w| w.text).collect()
+}
+
+/// The verbatim source from the start of `first` to the end of `last`.
+fn raw_span<'a>(input: &'a str, first: &Word, last: &Word) -> &'a str {
+    &input[first.start..last.end]
 }
 
 /// The last path component of a token, or the token itself if it has no `/`.
@@ -107,9 +155,15 @@ pub(crate) fn basename(tok: &str) -> &str {
 }
 
 /// Consume a wrapper token; returns true if it matched a known wrapper. For
-/// `gamescope`, collects args from `iter` up to the `--` separator.
-fn take_wrapper(tok: &str, iter: &mut std::iter::Peekable<std::slice::Iter<String>>, p: &mut Parsed) -> bool {
-    match basename(tok) {
+/// `gamescope`, collects args from `iter` up to the `--` separator, kept as
+/// verbatim source so their quoting survives a round trip.
+fn take_wrapper(
+    input: &str,
+    tok: &Word,
+    iter: &mut std::iter::Peekable<std::slice::Iter<Word>>,
+    p: &mut Parsed,
+) -> bool {
+    match basename(&tok.text) {
         "game-performance" => {
             p.game_performance = true;
             true
@@ -123,15 +177,18 @@ fn take_wrapper(tok: &str, iter: &mut std::iter::Peekable<std::slice::Iter<Strin
             true
         }
         "gamescope" => {
-            let mut args = Vec::new();
+            let mut args: Vec<&Word> = Vec::new();
             while let Some(next) = iter.peek() {
-                if next.as_str() == "--" {
+                if next.text == "--" {
                     iter.next();
                     break;
                 }
-                args.push(iter.next().unwrap().clone());
+                args.push(iter.next().unwrap());
             }
-            p.gamescope = Some(args.join(" "));
+            p.gamescope = Some(match (args.first(), args.last()) {
+                (Some(first), Some(last)) => raw_span(input, first, last).to_string(),
+                _ => String::new(),
+            });
             true
         }
         _ => false,
@@ -140,29 +197,37 @@ fn take_wrapper(tok: &str, iter: &mut std::iter::Peekable<std::slice::Iter<Strin
 
 /// Parse a Steam launch-options string or a standalone `umu-run` command.
 pub fn parse(input: &str) -> Parsed {
-    let tokens = tokenize(input);
+    let tokens = words(input);
     let mut p = Parsed::default();
 
     // `umu-run` can be an absolute path; `%command%` is Steam's literal
     // placeholder and never is. Deriving the split index from the same lookup
     // that decides the mode keeps the two from disagreeing.
-    let umu_at = tokens.iter().position(|t| basename(t) == "umu-run");
+    let umu_at = tokens.iter().position(|t| basename(&t.text) == "umu-run");
     let is_umu = umu_at.is_some();
     p.umu = is_umu;
 
     let split = match umu_at {
         Some(i) => Some(i),
-        None => tokens.iter().position(|t| t == "%command%"),
+        None => tokens.iter().position(|t| t.text == "%command%"),
     };
-    let (pre, post): (&[String], &[String]) = match split {
+    let (pre, post): (&[Word], &[Word]) = match split {
         Some(i) => (&tokens[..i], &tokens[i + 1..]),
         None => (&tokens[..], &[]),
     };
 
     let mut it = pre.iter().peekable();
-    while let Some(tok) = it.next() {
-        if take_wrapper(tok, &mut it, &mut p) {
+    while let Some(word) = it.next() {
+        if take_wrapper(input, word, &mut it, &mut p) {
             continue;
+        }
+        let tok = &word.text;
+        // Recorded as unmodeled *as well as* parsed below: the pair keeps an
+        // import lossless, while the flag stops an old unquoted `A=x;y` from
+        // comparing equal to the quoted `A="x;y"` we emit — the shell never
+        // exported that value, so the user has to re-paste.
+        if word.operator {
+            p.unknown.push(raw_span(input, word, word).to_string());
         }
         if let Some((k, v)) = tok.split_once('=') {
             match k {
@@ -179,16 +244,25 @@ pub fn parse(input: &str) -> Parsed {
         }
         // A bare token that isn't a wrapper we model: a foreign wrapper
         // (`prime-run`, `strangle`, …) or a stray flag. Never drop it.
-        p.unknown.push(tok.clone());
+        if !word.operator {
+            p.unknown.push(tok.clone());
+        }
     }
 
+    // Game args are the user's own shell syntax, so they are taken verbatim
+    // from the source — re-joining unquoted tokens turned `-x "a b"` into
+    // `-x a b` on import.
+    let rest = |args: &[Word]| match (args.first(), args.last()) {
+        (Some(first), Some(last)) => raw_span(input, first, last).to_string(),
+        _ => String::new(),
+    };
     if is_umu {
-        if let Some((first, rest)) = post.split_first() {
-            p.umu_exe = first.clone();
-            p.game_args = rest.join(" ");
+        if let Some((first, args)) = post.split_first() {
+            p.umu_exe = first.text.clone();
+            p.game_args = rest(args);
         }
     } else {
-        p.game_args = post.join(" ");
+        p.game_args = rest(post);
     }
 
     p
@@ -312,6 +386,88 @@ mod tests {
         // Unrecognised, so its args are not consumed as wrapper args either —
         // they stay visible in `unknown` rather than being swallowed.
         assert_eq!(p.unknown, vec!["gamescope-git", "-f", "--"]);
+    }
+
+    #[test]
+    fn tokenizer_follows_posix_quoting() {
+        assert_eq!(tokenize(r#"A="x\"y" B='it\s' C=a\ b D="\q""#), vec![
+            "A=x\"y", "B=it\\s", "C=a b", "D=\\q"
+        ]);
+        assert_eq!(tokenize(r#"E="\$HOME" F="a\\b""#), vec!["E=$HOME", "F=a\\b"]);
+        // An unclosed quote swallows the rest rather than inventing a split.
+        assert_eq!(tokenize("A=\"x y"), vec!["A=x y"]);
+    }
+
+    #[test]
+    fn built_values_round_trip_through_the_parser() {
+        let tricky = [
+            ("DXVK_CONFIG", "dxgi.maxFrameLatency=1;dxvk.hud=fps"),
+            ("WINEDLLOVERRIDES", "mscoree=d;mshtml=d"),
+            ("SPACED", "a b"),
+            ("QUOTED", "say \"hi\""),
+            ("BACKTICK", "a`b"),
+            ("BACKSLASH", "C:\\games"),
+            ("CACHE", "$HOME/.cache"),
+            ("TILDE", "~/my games"),
+            ("EMPTY", ""),
+        ];
+        let env: Vec<(String, String)> =
+            tricky.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+
+        let steam = builder::build_command(&env, &[], "", &builder::Bins::default());
+        let p = parse(&steam);
+        assert!(p.unknown.is_empty(), "nothing unmodeled in {steam}: {:?}", p.unknown);
+        // `$HOME` and `~` are left for the shell to expand, so compare the rest.
+        for ((k, v), (pk, pv)) in env.iter().zip(&p.env) {
+            assert_eq!(k, pk);
+            if !v.starts_with('$') && !v.starts_with('~') {
+                assert_eq!(v, pv, "{k} in {steam}");
+            }
+        }
+
+        let umu = builder::build_umu_command(
+            &env,
+            &[],
+            "/home/u/Proton 9.0 (Beta)",
+            "",
+            Some("/home/u/my prefix"),
+            "/games/My Game/g.exe",
+            "",
+            &builder::Bins::default(),
+        );
+        let p = parse(&umu);
+        assert_eq!(p.umu_wineprefix.as_deref(), Some("/home/u/my prefix"));
+        assert_eq!(p.umu_exe, "/games/My Game/g.exe");
+        assert_eq!(p.env.len(), env.len());
+    }
+
+    #[test]
+    fn game_args_and_gamescope_args_are_kept_verbatim() {
+        let s = r#"gamescope -W 2560 --prefer-output "DP-1" -- %command% -x "a b" --path='C:\x'"#;
+        let p = parse(s);
+        assert_eq!(p.gamescope.as_deref(), Some(r#"-W 2560 --prefer-output "DP-1""#));
+        assert_eq!(p.game_args, r#"-x "a b" --path='C:\x'"#);
+        let rebuilt =
+            builder::build_command(&p.env, &p.wrappers(), &p.game_args, &builder::Bins::default());
+        assert_eq!(rebuilt, s);
+
+        let u = parse(r#"umu-run "/g/My Game.exe" -x "a b""#);
+        assert_eq!(u.umu_exe, "/g/My Game.exe");
+        assert_eq!(u.game_args, r#"-x "a b""#);
+    }
+
+    #[test]
+    fn an_unquoted_shell_operator_before_the_target_is_unmodeled() {
+        // What older builds emitted. The shell ended the statement at `;`, so the
+        // variable never reached the game — this must not read as in sync.
+        let p = parse("DXVK_CONFIG=a;b %command%");
+        assert_eq!(p.env, vec![("DXVK_CONFIG".to_string(), "a;b".to_string())]);
+        assert_eq!(p.unknown, vec!["DXVK_CONFIG=a;b".to_string()]);
+
+        // Quoted, it's just a value.
+        assert!(parse("DXVK_CONFIG=\"a;b\" %command%").unknown.is_empty());
+        // After the target it's the game's business.
+        assert!(parse("%command% ; echo done").unknown.is_empty());
     }
 
     #[test]

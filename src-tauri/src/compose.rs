@@ -21,20 +21,10 @@ pub fn parse_extra_env(s: &str) -> Vec<(String, String)> {
 }
 
 /// The exact inverse of [`parse_extra_env`]: render pairs back into the "custom
-/// env" field's `K=V K=V …` form, re-quoting any value containing whitespace so
+/// env" field's `K=V K=V …` form, quoted exactly as the builder quotes them, so
 /// `("FOO", "a b")` round-trips instead of shearing into two tokens next time.
 pub fn format_extra_env(pairs: &[(String, String)]) -> String {
-    pairs
-        .iter()
-        .map(|(k, v)| {
-            if v.contains(char::is_whitespace) {
-                format!("{k}=\"{v}\"")
-            } else {
-                format!("{k}={v}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    pairs.iter().map(|(k, v)| builder::assignment(k, v)).collect::<Vec<_>>().join(" ")
 }
 
 /// Append `pairs` to an `extra_env` string, skipping any key it already assigns.
@@ -239,6 +229,28 @@ mod tests {
         let s = format_extra_env(&pairs);
         assert_eq!(s, "FOO=\"a b\" BAR=1");
         assert_eq!(parse_extra_env(&s), pairs);
+    }
+
+    #[test]
+    fn a_quoted_custom_env_value_reaches_the_command_quoted() {
+        // The field is parsed into raw pairs and re-quoted by the builder; it
+        // used to come out as `FOO=a b`, which the shell splits.
+        let cat = Catalog::bundled();
+        let config = Config { extra_env: "FOO=\"a b\" BAR=x;y".to_string(), ..Config::default() };
+        assert_eq!(
+            assemble(&cat, &config, None, &builder::Bins::default()),
+            "FOO=\"a b\" BAR=\"x;y\" %command%"
+        );
+    }
+
+    #[test]
+    fn heroic_gets_raw_values_not_shell_quoting() {
+        // Heroic stores env as JSON key/value pairs — no shell in between — so
+        // quotes here would end up inside the variable.
+        let cat = Catalog::bundled();
+        let config = Config { extra_env: "FOO=\"a b\"".to_string(), ..Config::default() };
+        let (env, _) = resolve_env_wrappers(&cat, &config);
+        assert_eq!(env, vec![("FOO".to_string(), "a b".to_string())]);
     }
 
     #[test]

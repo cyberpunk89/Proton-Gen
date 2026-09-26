@@ -1055,7 +1055,7 @@ category = "Wine / Overrides"
 default_value = ""
 help = "Override DLL load mode, e.g. 'winmm=n,b' (native then builtin)."
 details = "Controls how Wine loads DLLs (Dynamic Link Libraries), specifying whether to use native Windows DLLs or Wine's built-in replacements. Syntax is DllName=mode, comma-separated, where modes are: n (native only), b (builtin only), n,b (try native first, fall back to builtin), b,n (try builtin first). Commonly used to disable problematic DLLs (e.g., mscoree=d to disable Mono/.NET) or force specific implementations for compatibility."
-example = "WINEDLLOVERRIDES=mscoree=d;mshtml=d %command%"
+example = "WINEDLLOVERRIDES='mscoree=d;mshtml=d' %command%"
 url = "https://wiki.archlinux.org/title/Wine"
 
 [[env]]

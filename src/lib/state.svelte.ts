@@ -3,7 +3,8 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
-import { irrelevance, isRecommended, mergeIntoExtraEnv, splitExtraEnv, tokenizeEnv } from "./util";
+import { formatExtraEnv, mergeIntoExtraEnv, splitExtraEnv } from "./shell";
+import { irrelevance, isRecommended } from "./util";
 import { emptyConfig, isAdvanced } from "./types";
 import type {
   Catalog,
@@ -571,10 +572,12 @@ class AppStore {
     return envs + wraps + splitExtraEnv(this.extraEnv).length;
   });
 
-  /** Drop one `K=V` token from the custom-env string, keeping the rest verbatim. */
+  /** Drop one `K=V` token from the custom-env string. The rest is re-rendered
+   *  with its quoting — joining the unquoted tokens turned `FOO="a b"` into
+   *  `FOO=a b`, which the shell splits in two. */
   removeExtraEnv(raw: string) {
-    const kept = tokenizeEnv(this.extraEnv).filter((t) => t !== raw);
-    this.extraEnv = kept.join(" ");
+    const kept = splitExtraEnv(this.extraEnv).filter((p) => p.raw !== raw);
+    this.extraEnv = formatExtraEnv(kept.map((p) => [p.key, p.value]));
     this.mark(`remove ${raw.split("=")[0]}`);
   }
 

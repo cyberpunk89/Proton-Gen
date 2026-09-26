@@ -15,6 +15,7 @@ import type {
   TokenKind,
   VkBasaltExportResult,
 } from "./types";
+import { formatExtraEnv, shQuote, splitExtraEnv } from "./shell";
 
 /** A blank Config, for seeding mock per-game memory. Local rather than
  *  `types.emptyConfig()` to keep mock.ts free of runtime imports. */
@@ -672,15 +673,20 @@ export function mockPreviewRecipe(index: number, config: Config): RecipeChange[]
 }
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {
-  const env = config.env.map(([k, v]) => `${k}=${v}`);
-  const extra = config.extra_env.trim();
+  // Values are shell-quoted like `builder::sh_quote`, so `pnpm dev` shows the
+  // same `DXVK_CONFIG="a;b"` the real backend emits.
+  const env = config.env.map(([k, v]) => formatExtraEnv([[k, v]]));
+  const extra = formatExtraEnv(splitExtraEnv(config.extra_env).map((p) => [p.key, p.value]));
   if (extra) env.push(extra);
   const wraps = config.wrappers.map(([k, v]) =>
     k === "gamescope" ? `gamescope ${v} --`.trim() : k,
   );
   if (config.umu) {
-    const lead = [`GAMEID=${config.umu_gameid || "umu-0"}`, `PROTONPATH=${protonPath ?? ""}`];
-    return [...lead, ...env, ...wraps, "umu-run", config.umu_exe || "<game.exe>", config.game_args]
+    const lead = [
+      `GAMEID=${shQuote(config.umu_gameid || "umu-0")}`,
+      `PROTONPATH=${shQuote(protonPath ?? "")}`,
+    ];
+    return [...lead, ...env, ...wraps, "umu-run", shQuote(config.umu_exe || "<game.exe>"), config.game_args]
       .filter(Boolean)
       .join(" ");
   }
