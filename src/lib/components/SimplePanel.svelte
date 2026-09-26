@@ -1,9 +1,14 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { app } from "$lib/state.svelte";
   import { irrelevance } from "$lib/util";
+  import { prefersReducedMotion } from "$lib/motion.svelte";
   import Switch from "./Switch.svelte";
   import ModeToggle from "./ModeToggle.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
+  import CurrentGameCard from "./CurrentGameCard.svelte";
+  import Recipes from "./Recipes.svelte";
+  import ActiveOptions from "./ActiveOptions.svelte";
   import {
     Rocket,
     MagicWand,
@@ -14,6 +19,7 @@
     GlobeHemisphereWest,
     SlidersHorizontal,
     CubeTransparent,
+    Drop,
   } from "phosphor-svelte";
   import type { Component } from "svelte";
 
@@ -48,8 +54,15 @@
      */
     gameArg?: string;
     /** Opens one of the builder dialogs in addition to the toggle. */
-    configure?: "mango" | "opti";
+    configure?: "mango" | "opti" | "vk";
   }
+
+  /** Each builder dialog's open flag. They mount once at the app root. */
+  const OPEN_BUILDER = {
+    mango: () => (app.mangoBuilderOpen = true),
+    opti: () => (app.optiBuilderOpen = true),
+    vk: () => (app.vkBuilderOpen = true),
+  } as const;
 
   // Prefer CachyOS's game-performance when it's installed, else Feral GameMode.
   const perfWrap = $derived(
@@ -106,6 +119,14 @@
       configure: "opti",
     },
     {
+      id: "vkbasalt",
+      title: "Sharpening & post-processing",
+      blurb: "vkBasalt: CAS sharpening, SMAA/FXAA or ReShade shaders on top of the game — handy with an upscaler.",
+      icon: Drop,
+      env: [["ENABLE_VKBASALT", "1"]],
+      configure: "vk",
+    },
+    {
       id: "hdr",
       title: "HDR output",
       blurb: "Native Wayland driver + DXVK HDR. Needs an HDR display on a Wayland session.",
@@ -154,15 +175,32 @@
   }
 
   const gp = $derived(app.store.global_profile);
+
+  // A jump to Recipes / Active options / the game panel (palette, notice links,
+  // ActiveOptions' own links) lands here in Simple mode: open it and scroll to it.
+  $effect(() => {
+    const target = app.simpleAnchor;
+    if (!target) return;
+    void target.nonce;
+    void tick().then(() =>
+      document.getElementById(target.id)?.scrollIntoView({
+        block: "start",
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      }),
+    );
+  });
 </script>
 
 <div class="space-y-4">
+  <!-- Which game this is — Advanced shows it in the NavRail, which Simple lacks. -->
+  <CurrentGameCard details />
+
   <!-- Steam vs umu, then the game & runtime block (shared with Advanced). -->
   <div class="flex items-center justify-between">
     <h2 class="text-sm font-medium tracking-wide text-text">Launch mode</h2>
     <ModeToggle />
   </div>
-  <GameRuntimePanel />
+  <div id="simple-game" class="scroll-mt-4"><GameRuntimePanel /></div>
 
   <!-- Default profile -->
   <section class="card flex items-center gap-3 p-4">
@@ -211,11 +249,9 @@
           </div>
           <p class="text-xs leading-relaxed text-muted">{c.blurb}</p>
           {#if c.configure}
+            {@const configure = c.configure}
             <button
-              onclick={() =>
-                c.configure === "mango"
-                  ? (app.mangoBuilderOpen = true)
-                  : (app.optiBuilderOpen = true)}
+              onclick={() => OPEN_BUILDER[configure]()}
               class="mt-auto inline-flex w-fit items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
             >
               <SlidersHorizontal size={12} /> Configure…
@@ -225,6 +261,13 @@
       {/each}
     </div>
   </div>
+
+  <!-- Recipes: the same one-click profiles and troubleshooter fixes Advanced has. -->
+  <div id="simple-recipes" class="scroll-mt-4"><Recipes /></div>
+
+  <!-- Everything turned on, including options set in Advanced, a recipe or an
+       import that no card above shows. -->
+  <div id="simple-active" class="scroll-mt-4"><ActiveOptions /></div>
 
   <p class="px-1 text-xs text-muted">
     Looking for more? Switch to <span class="font-medium text-subtext">Advanced</span> in the header

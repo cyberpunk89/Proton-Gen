@@ -146,6 +146,33 @@ export function matchesTier(tiers: string[], tier: Tier | null | undefined): boo
   return tiers.includes(tier.tier.toLowerCase());
 }
 
+/** "42 min" / "3.5 h" / "120 h" of playtime, or null when there is none. */
+export function formatPlaytime(minutes: number | null | undefined): string | null {
+  if (!minutes || minutes <= 0) return null;
+  if (minutes < 60) return `${minutes} min`;
+  const h = minutes / 60;
+  return `${h < 10 ? h.toFixed(1).replace(/\.0$/, "") : Math.round(h)} h`;
+}
+
+/** "yesterday" / "3 weeks ago" for a Unix-seconds timestamp, or null. */
+export function formatLastPlayed(unixSeconds: number | null | undefined, now = Date.now()): string | null {
+  if (!unixSeconds) return null;
+  const diff = unixSeconds * 1000 - now;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["year", 365 * 864e5],
+    ["month", 30 * 864e5],
+    ["week", 7 * 864e5],
+    ["day", 864e5],
+    ["hour", 36e5],
+    ["minute", 6e4],
+  ];
+  for (const [unit, ms] of units) {
+    if (Math.abs(diff) >= ms) return rtf.format(Math.round(diff / ms), unit);
+  }
+  return "just now";
+}
+
 /**
  * ProtonDB tier colours. Deliberately *not* theme tokens — these are the
  * medal colours the tiers are named after, and they have to mean the same

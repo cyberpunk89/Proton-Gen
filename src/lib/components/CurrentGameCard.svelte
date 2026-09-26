@@ -1,6 +1,10 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { formatLastPlayed, formatPlaytime } from "$lib/util";
   import { GameController, Terminal, ArrowLeft } from "phosphor-svelte";
+
+  /** Also show playtime / last played under the name (Simple mode's header). */
+  let { details = false }: { details?: boolean } = $props();
 
   let game = $derived(
     app.selectedAppId == null
@@ -15,6 +19,13 @@
   let art = $derived(
     game ? app.artFor(game.app_id, game.source, "portrait") : undefined,
   );
+
+  let stats = $derived.by(() => {
+    if (!details || !game) return "";
+    const played = formatPlaytime(game.playtime_minutes);
+    const last = formatLastPlayed(game.last_played);
+    return [played && `${played} played`, last && `last played ${last}`].filter(Boolean).join(" · ");
+  });
 </script>
 
 <button
@@ -43,6 +54,9 @@
     <span class="block truncate text-[14px] font-medium text-text">
       {app.selectedGameName ?? "Generic command"}
     </span>
+    {#if stats}
+      <span class="block truncate text-[11px] text-muted">{stats}</span>
+    {/if}
   </span>
 
   <span

@@ -122,6 +122,9 @@
     flash = true;
     if (flashTimer) clearTimeout(flashTimer);
     flashTimer = setTimeout(() => (flash = false), 1200);
+    // Handled: without this the row re-flashes and steals focus every time it
+    // remounts (switching sections and back).
+    app.focusParam = null;
   });
 </script>
 

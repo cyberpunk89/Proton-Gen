@@ -1419,10 +1419,40 @@ class AppStore {
     this.persistStore();
   }
 
-  /** Navigate the Console main panel; clears any active parameter search. */
+  /** Where a Simple-mode jump should scroll to (see `setSection`). */
+  simpleAnchor = $state<{ id: string; nonce: number } | null>(null);
+  /** Whether the Recipes card is collapsed. On the store rather than in the
+   *  component so it survives Recipes unmounting (switching sections) and so a
+   *  jump to it can open it. Per session, like the Settings sections. */
+  recipesCollapsed = $state(true);
+
+  /**
+   * Navigate to a section, from anywhere: the library, Simple or Advanced mode.
+   * Palette actions, notice chips and ActiveOptions links all route through
+   * here, and used to do nothing outside the Advanced builder — the section
+   * they set only exists in Advanced's MainPanel.
+   *
+   * In Simple mode, the three sections Simple also shows scroll into view there;
+   * anything else switches to Advanced (with a way back).
+   */
   setSection(section: string) {
-    this.activeSection = section;
+    this.view = "builder";
     this.paramQuery = "";
+    this.activeSection = section;
+    if (section === "recipes") this.recipesCollapsed = false;
+    if (this.uiMode !== "simple") return;
+    const anchor = SIMPLE_ANCHORS[section];
+    if (anchor) this.simpleAnchor = { id: anchor, nonce: ++this.focusNonce };
+    else this.leaveSimpleFor(section);
+  }
+
+  /** Switch to Advanced to show something Simple mode has no room for, with a
+   *  one-click way back — the user didn't ask to change modes, only to go there. */
+  private leaveSimpleFor(what: string) {
+    this.setUiMode("advanced");
+    toast.info(`Switched to Advanced to show ${what}`, {
+      action: { label: "Back to Simple", onClick: () => this.setUiMode("simple") },
+    });
   }
 
   /**
@@ -1506,6 +1536,8 @@ class AppStore {
       this.setShowAdvanced(true);
     }
 
+    // Named after the key rather than its category — that's what was asked for.
+    if (this.uiMode === "simple") this.leaveSimpleFor(key);
     this.setSection(env ? env.category : "Wrappers");
     this.focusParam = { key, nonce: ++this.focusNonce };
     return true;
@@ -2088,6 +2120,13 @@ class AppStore {
       });
   }
 }
+
+/** Sections Simple mode also shows, and the element id each scrolls to. */
+const SIMPLE_ANCHORS: Record<string, string> = {
+  recipes: "simple-recipes",
+  "@active": "simple-active",
+  game: "simple-game",
+};
 
 /** Same keys, same values — so an unchanged re-read doesn't churn reactivity. */
 function sameEntries(a: Record<string, string>, b: Record<string, string>): boolean {

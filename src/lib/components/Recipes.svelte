@@ -32,7 +32,7 @@
   let indexed = $derived(app.recipes.map((r, i) => ({ r, i })));
 
   // Collapsed by default so the recipe wall doesn't dominate the main view.
-  let collapsed = $state(true);
+  // Lives on the store so a jump to Recipes can open it (see app.setSection).
 
   // Browse controls.
   type Tab = "all" | "profile" | "fix";
@@ -107,19 +107,19 @@
 <section class="card p-4">
   <button
     class="flex w-full items-center gap-2"
-    onclick={() => (collapsed = !collapsed)}
-    aria-expanded={!collapsed}
+    onclick={() => (app.recipesCollapsed = !app.recipesCollapsed)}
+    aria-expanded={!app.recipesCollapsed}
     aria-controls="recipes-body"
   >
     <Sparkle size={18} weight="fill" class="text-accent" />
     <h2 class="text-sm font-medium tracking-wide text-text">Recipes</h2>
     <span class="text-xs text-muted">one-click tuning, merges onto your selection</span>
-    <span class="ml-auto text-xs text-muted">{collapsed ? "Show" : "Hide"}</span>
+    <span class="ml-auto text-xs text-muted">{app.recipesCollapsed ? "Show" : "Hide"}</span>
   </button>
 
-  {#if collapsed && suggested.length}
+  {#if app.recipesCollapsed && suggested.length}
     <button
-      onclick={() => (collapsed = false)}
+      onclick={() => (app.recipesCollapsed = false)}
       class="mt-3 flex w-full items-center gap-2 rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-left text-xs text-accent transition hover:bg-accent/10"
     >
       <Trophy size={14} class="shrink-0" />
@@ -128,7 +128,7 @@
     </button>
   {/if}
 
-  {#if !collapsed}
+  {#if !app.recipesCollapsed}
     <div id="recipes-body" class="mt-4 space-y-4">
       {#if suggested.length}
         {@render group(`Suggested for this game (${currentTier?.tier})`, suggested)}
