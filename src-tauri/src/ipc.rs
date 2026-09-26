@@ -143,6 +143,10 @@ pub struct AppState {
     /// [`Discovery`] instead, because a rescan can clear them.
     config_warnings: Vec<ConfigWarning>,
     store: Arc<Mutex<Store>>,
+    /// Serializes `save_store`'s disk writes. Each save runs on its own
+    /// blocking thread, so without this two debounced saves could land out of
+    /// order and leave the older store on disk.
+    save_lock: Arc<Mutex<()>>,
     /// Filesystem discovery: `None` until the first `bootstrap` fills it,
     /// replaced wholesale by `rescan`.
     ///
@@ -313,9 +317,10 @@ impl AppState {
     pub fn new() -> Self {
         let (catalog, catalog_warning) = Catalog::load();
         let (recipes, recipes_warning) = Recipes::load();
-        let config_warnings = catalog_warning.into_iter().chain(recipes_warning).collect();
+        let (store, store_warning) = Store::load_or_recover();
+        let config_warnings =
+            catalog_warning.into_iter().chain(recipes_warning).chain(store_warning).collect();
         let hardware = hardware::detect();
-        let store = Store::load();
 
         // No filesystem scan here — see `AppState::discovery`.
         Self {
@@ -324,6 +329,7 @@ impl AppState {
             hardware,
             config_warnings,
             store: Arc::new(Mutex::new(store)),
+            save_lock: Arc::new(Mutex::new(())),
             discovery: Arc::new(Mutex::new(None)),
         }
     }
@@ -910,14 +916,18 @@ pub async fn llm_models(state: State<'_, AppState>) -> Result<Vec<String>, Strin
 /// thread it was a write of the entire store between keystrokes.
 #[tauri::command]
 pub async fn save_store(state: State<'_, AppState>, store: Store) -> Result<(), String> {
-    let to_save = {
-        let mut guard = state.store.lock().unwrap();
-        *guard = store;
-        guard.clone()
-    };
-    tauri::async_runtime::spawn_blocking(move || to_save.save())
-        .await
-        .map_err(|e| e.to_string())?
+    *state.store.lock().unwrap() = store;
+    let current = Arc::clone(&state.store);
+    let save_lock = Arc::clone(&state.save_lock);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _serial = save_lock.lock().unwrap();
+        // Snapshot under the lock, not before it: a save that lost the race
+        // then writes the newest store instead of rolling the file back.
+        let snapshot = current.lock().unwrap().clone();
+        snapshot.save()
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Whether `app_id` already has an OptiScaler install to refresh — cheap

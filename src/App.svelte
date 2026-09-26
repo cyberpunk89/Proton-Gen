@@ -83,6 +83,11 @@
             class="ml-1 underline underline-offset-2 hover:text-text"
             onclick={() => (app.showSettings = true)}>Open Settings</button
           >
+        {:else if w.kind === "store"}
+          Your settings file couldn't be read
+          (<span class="font-mono">{w.error}</span>), so protongen started fresh.
+          Your presets and per-game tuning weren't deleted — the old file was
+          moved to <code class="font-mono text-text">{w.path}</code>.
         {:else}
           Your custom <code class="font-mono text-text">{w.file}</code> at
           <code class="font-mono text-text">{w.path}</code> couldn't be parsed

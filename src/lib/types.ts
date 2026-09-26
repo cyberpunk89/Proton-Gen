@@ -464,12 +464,13 @@ export interface Tier {
 
 /** A user config override that couldn't be parsed and was therefore ignored. */
 /// Mirrors params::WarningKind (serde rename_all = "kebab-case").
-export type WarningKind = "parse" | "path";
+export type WarningKind = "parse" | "path" | "store";
 
 export interface ConfigWarning {
   kind: WarningKind;
   /** For "parse", the override file (`params.toml`). For "path", the Settings
-   *  field label the path came from (`Steam root`, `Proton directory`, …). */
+   *  field label the path came from (`Steam root`, `Proton directory`, …).
+   *  For "store", `state.toml` — and `path` is the backup it was moved to. */
   file: string;
   path: string;
   error: string;

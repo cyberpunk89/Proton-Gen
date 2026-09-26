@@ -30,6 +30,7 @@ mod builder;
 mod compose;
 mod diff;
 mod explain;
+mod fsutil;
 mod games;
 mod hardware;
 mod heroic;

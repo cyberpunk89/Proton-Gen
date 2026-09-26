@@ -193,14 +193,51 @@ impl Store {
         toml::from_str("").unwrap_or_default()
     }
 
+    /// Read-only load for the `--list` CLI: never moves or rewrites the file.
     pub fn load() -> Self {
         let Some(path) = params::config_file("state.toml") else {
             return Self::fresh();
         };
         match std::fs::read_to_string(&path) {
-            Ok(text) => toml::from_str(&text).unwrap_or_else(|_| Self::fresh()),
+            Ok(text) => toml::from_str(&text).unwrap_or_else(|e| {
+                eprintln!("warning: {} couldn't be parsed ({e}); using defaults", path.display());
+                Self::fresh()
+            }),
             Err(_) => Self::fresh(),
         }
+    }
+
+    /// The app's startup load. A state file that exists but can't be read or
+    /// parsed is moved aside to `state.toml.corrupt-<ts>` and reported, rather
+    /// than silently replaced by defaults — the first save would otherwise
+    /// overwrite every preset and per-game tuning with nothing.
+    pub fn load_or_recover() -> (Self, Option<params::ConfigWarning>) {
+        match params::config_file("state.toml") {
+            Some(path) => Self::load_from(&path),
+            None => (Self::fresh(), None),
+        }
+    }
+
+    fn load_from(path: &std::path::Path) -> (Self, Option<params::ConfigWarning>) {
+        let error = match std::fs::read_to_string(path) {
+            Ok(text) => match toml::from_str(&text) {
+                Ok(store) => return (store, None),
+                Err(e) => e.to_string(),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Self::fresh(), None),
+            Err(e) => e.to_string(),
+        };
+        let backup = path.with_file_name(format!("state.toml.corrupt-{}", crate::fsutil::unix_ts()));
+        let kept = std::fs::rename(path, &backup)
+            .or_else(|_| std::fs::copy(path, &backup).map(|_| ()))
+            .is_ok();
+        let warning = params::ConfigWarning {
+            kind: params::WarningKind::Store,
+            file: "state.toml".to_string(),
+            path: if kept { backup } else { path.to_path_buf() }.display().to_string(),
+            error: if kept { error } else { format!("{error} (and it couldn't be backed up)") },
+        };
+        (Self::fresh(), Some(warning))
     }
 
     /// Resolve the XDG path and write. The thin shell over [`Self::save_to`].
@@ -211,18 +248,16 @@ impl Store {
         self.save_to(&path)
     }
 
-    /// Write the store to `path`, creating parent directories as needed.
+    /// Atomically write the store to `path`, creating parent directories as
+    /// needed — a crash mid-save leaves the previous file, never a truncated
+    /// one that the next launch would have to quarantine.
     ///
     /// Pure enough to test: every error names the path, because the path is
     /// what makes a write failure actionable ("which directory is read-only?").
     pub fn save_to(&self, path: &std::path::Path) -> Result<(), String> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("couldn't create {}: {e}", parent.display()))?;
-        }
         let text = toml::to_string_pretty(self)
             .map_err(|e| format!("couldn't serialize settings: {e}"))?;
-        std::fs::write(path, text).map_err(|e| format!("couldn't write {}: {e}", path.display()))
+        crate::fsutil::write_atomic(path, text.as_bytes())
     }
 
     pub fn remember(&mut self, appid: u32, config: Config) {
@@ -498,6 +533,41 @@ steam_roots = ["/mnt/games/Steam"]
         s.save_to(&path).expect("save should succeed");
         let back: Store = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(back.theme, "Dracula");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_unparseable_state_file_is_quarantined_not_discarded() {
+        let dir = std::env::temp_dir().join(format!("protongen-corrupt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.toml");
+        std::fs::write(&path, "theme = \"x\"\n[[presets]\nbroken").unwrap();
+
+        let (store, warning) = Store::load_from(&path);
+        let w = warning.expect("a corrupt file must be reported");
+        assert_eq!(w.kind, params::WarningKind::Store);
+        assert_eq!(store.theme, Store::fresh().theme);
+        assert!(!path.exists(), "the bad file is moved out of the way of the next save");
+        let backup = std::path::Path::new(&w.path);
+        assert!(w.path.contains("state.toml.corrupt-"), "{}", w.path);
+        assert!(std::fs::read_to_string(backup).unwrap().contains("broken"), "contents preserved");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_valid_or_missing_state_file_loads_without_a_warning() {
+        let dir = std::env::temp_dir().join(format!("protongen-okstate-{}", std::process::id()));
+        let path = dir.join("state.toml");
+        let (_, warning) = Store::load_from(&path);
+        assert!(warning.is_none(), "first run has no file and nothing to report");
+
+        Store { theme: "Dracula".into(), ..Default::default() }.save_to(&path).unwrap();
+        let (store, warning) = Store::load_from(&path);
+        assert!(warning.is_none());
+        assert_eq!(store.theme, "Dracula");
+        assert!(path.exists(), "a good file is left in place");
 
         std::fs::remove_dir_all(&dir).ok();
     }

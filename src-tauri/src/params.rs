@@ -265,6 +265,9 @@ pub enum WarningKind {
     Parse,
     /// A path configured in Settings that discovery could not use.
     Path,
+    /// `state.toml` couldn't be read or parsed; it was moved aside (the
+    /// warning's `path` is the backup) and the app started with defaults.
+    Store,
 }
 
 /// Something the user configured that protongen could not use, surfaced rather

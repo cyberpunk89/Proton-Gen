@@ -172,10 +172,7 @@ pub fn write_system_config(config: &str) -> Result<ExportResult, String> {
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
 
     let backup_path = if path.exists() {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let ts = crate::fsutil::unix_ts();
         let backup = path.with_file_name(format!("vkBasalt.conf.protongen-{ts}.bak"));
         std::fs::write(&backup, &existing)
             .map_err(|e| format!("Could not write backup {}: {e}", backup.display()))?;
@@ -185,12 +182,7 @@ pub fn write_system_config(config: &str) -> Result<ExportResult, String> {
     };
 
     let merged = merge(&existing, config);
-
-    // Atomic replace: temp in the same dir, then rename over the original.
-    let tmp = path.with_file_name("vkBasalt.conf.protongen-tmp");
-    std::fs::write(&tmp, merged.text.as_bytes())
-        .map_err(|e| format!("Could not write {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("Could not replace {}: {e}", path.display()))?;
+    crate::fsutil::write_atomic(&path, merged.text.as_bytes())?;
 
     Ok(ExportResult {
         config_path: path.display().to_string(),
