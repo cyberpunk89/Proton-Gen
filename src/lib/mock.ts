@@ -35,6 +35,7 @@ function emptyMockConfig(): Config {
 export const mockBootstrap: Bootstrap = {
   steam_root: "/home/you/.local/share/Steam",
   load_error: null,
+  runtime_warning: null,
   catalog: {
     meta: { proton_cachyos_build: "20260601", updated: "2026-06-01" },
     wrappers: [

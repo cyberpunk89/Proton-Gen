@@ -85,6 +85,8 @@ class AppStore {
   // ---- bootstrap data (mostly immutable) ----
   ready = $state(false);
   loadError = $state<string | null>(null);
+  /** Set only when Steam was found but zero Proton runtimes exist anywhere. */
+  runtimeWarning = $state<string | null>(null);
   steamRoot = $state<string | null>(null);
   catalog = $state<Catalog>(EMPTY_CATALOG);
   categories = $state<string[]>([]);
@@ -224,6 +226,7 @@ class AppStore {
   private async load() {
     const b = await ipc.bootstrap();
     this.loadError = b.load_error;
+    this.runtimeWarning = b.runtime_warning;
     this.steamRoot = b.steam_root;
     this.catalog = b.catalog;
     this.categories = b.categories;
@@ -341,6 +344,7 @@ class AppStore {
     try {
       const b = await ipc.rescan();
       this.loadError = b.load_error;
+      this.runtimeWarning = b.runtime_warning;
       this.steamRoot = b.steam_root;
       this.runtimes = this.withAutoRuntime(b.runtimes);
       this.games = b.games;

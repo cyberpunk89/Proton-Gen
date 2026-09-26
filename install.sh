@@ -39,7 +39,7 @@ cat > "$app_dir/protongen.desktop" <<EOF
 Type=Application
 Name=protongen
 GenericName=Proton Launch Command Builder
-Comment=Build Steam / umu-launcher commands for CachyOS Proton
+Comment=Build Steam / umu-launcher commands for Proton
 Exec=$bin_dir/protongen
 Icon=protongen
 Terminal=false

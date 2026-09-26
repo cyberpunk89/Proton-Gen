@@ -93,6 +93,17 @@ alone.
   Flatpak Steam is not supported.
 - **`webkit2gtk-4.1`** — the app uses your system WebView instead of bundling a browser engine.
 
+**On a different distro?** The [prebuilt binary](#option-1--prebuilt-binary) is built in an
+`archlinux:latest` container and dynamically linked against Arch's rolling libraries, so it may
+not run as-is elsewhere (glibc/webkit2gtk ABI mismatches). [Building from
+source](#option-2--build-from-source-adds-a-menu-entry-and-icon) works on any modern distro with
+Rust, pnpm, and your distro's `webkit2gtk-4.1` package — e.g. `webkit2gtk4.1-devel` on Fedora,
+`libwebkit2gtk-4.1-dev` on Debian/Ubuntu, `webkit2gtk-4.1` on Arch (see [Tauri's Linux
+prerequisites](https://v2.tauri.app/start/prerequisites/#linux) for the rest of the build
+toolchain). None of protongen's own discovery — Steam, Proton runtimes, wrapper binaries — is
+distro-specific; the first-run **Your system** check and **Settings → Paths** cover any layout
+that isn't one of the built-in guesses.
+
 These are optional, and only needed for the features that use them. protongen checks your
 `$PATH` and badges each option installed or missing, so you can see at a glance what you'd need:
 
@@ -128,6 +139,14 @@ If you already have launch options set, hit **Import**, paste the string, and pr
 it back into toggles so you can keep building from where you are.
 
 ## A quick tour
+
+### First run: your system, at a glance
+
+The welcome tour's first step is a live status check, not static copy: your Steam install (or
+why it couldn't find one), how many Proton runtimes turned up, and which optional tools
+(gamescope, GameMode, MangoHud, umu-launcher…) are on your `$PATH` — with a direct link into
+**Settings → Paths** if anything needs pointing at a non-default location. It shows once; the
+same information stays available afterwards as banners and in **Settings → Paths** itself.
 
 ### Your library, discovered
 

@@ -31,7 +31,7 @@
     "targets": ["deb", "appimage"],
     "category": "Utility",
     "shortDescription": "Build Steam / umu Proton launch commands",
-    "longDescription": "A polished GUI for building Steam launch options and umu-launcher commands for Proton on CachyOS. Scans runtimes, games and shortcuts; toggles a searchable env-var catalog; previews and copies the command.",
+    "longDescription": "A polished GUI for building Steam launch options and umu-launcher commands for Proton. Scans runtimes, games and shortcuts; toggles a searchable env-var catalog; previews and copies the command.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

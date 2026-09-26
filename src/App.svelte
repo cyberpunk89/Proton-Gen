@@ -45,6 +45,24 @@
       {app.loadError}
     </div>
   {/if}
+  {#if app.runtimeWarning}
+    <!-- Yellow, not red: something's missing, not broken — matches the
+         configWarnings/StaleBanner tone. Can never co-occur with loadError,
+         since this is only ever set on the branch where Steam was found. -->
+    <div
+      class="flex items-start gap-2 rounded-xl border px-4 py-2.5 text-xs"
+      style="border-color: color-mix(in srgb, var(--yellow) 35%, transparent); background: color-mix(in srgb, var(--yellow) 8%, transparent)"
+    >
+      <WarningCircle size={16} weight="fill" class="mt-0.5 shrink-0 text-yellow" />
+      <span class="text-subtext">
+        {app.runtimeWarning}
+        <button
+          class="ml-1 underline underline-offset-2 hover:text-text"
+          onclick={() => (app.showSettings = true)}>Open Settings</button
+        >
+      </span>
+    </div>
+  {/if}
   <!-- Keyed on kind+path: a parse warning and a path warning can name the same
        file, and a duplicate key in a keyed {#each} is a crash. -->
   {#each app.configWarnings as w (w.kind + w.path)}
@@ -131,7 +149,7 @@
 
     {#if app.view === "library"}
       <div class="min-h-0 flex-1 overflow-y-auto" in:fade={{ duration: 120 }}>
-        {#if app.loadError || app.persistError || app.configWarnings.length || app.staleVisible || app.updateVisible}
+        {#if app.loadError || app.runtimeWarning || app.persistError || app.configWarnings.length || app.staleVisible || app.updateVisible}
           <div class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 pt-4">
             {@render loadErrorBanner()}
             <UpdateBanner />

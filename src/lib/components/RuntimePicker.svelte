@@ -63,6 +63,26 @@
               transition:fly={{ y: -4, duration: 120 }}
               class="popover max-h-[340px] w-[360px] overflow-y-auto p-1.5"
             >
+              {#if app.runtimeWarning}
+                <!-- `app.runtimes` always carries a synthetic auto-download
+                     entry (see withAutoRuntime in state.svelte.ts), so the
+                     {:else} below never actually fires — this is the real,
+                     reachable "nothing real was found" notice. -->
+                <div
+                  class="flex flex-col items-center gap-1 border-b border-border px-3 py-3 text-center"
+                >
+                  <p class="text-xs text-muted">No Proton runtimes found on this system.</p>
+                  <button
+                    class="text-xs text-accent underline underline-offset-2 hover:opacity-80"
+                    onclick={() => {
+                      open = false;
+                      app.showSettings = true;
+                    }}
+                  >
+                    Open Settings → Paths
+                  </button>
+                </div>
+              {/if}
               {#each app.runtimes as r (r.path)}
                 <Select.Item
                   value={r.path}

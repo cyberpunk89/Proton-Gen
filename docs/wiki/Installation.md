@@ -7,6 +7,28 @@
   `~/.steam/root`.
 - **`webkit2gtk-4.1`** — the app uses your system WebView rather than bundling a browser engine.
 
+### On a distro other than Arch/CachyOS
+
+The [prebuilt binary](#install-the-prebuilt-binary) is built inside an `archlinux:latest`
+container and dynamically linked against Arch's rolling libraries — it may hit glibc/webkit2gtk
+ABI mismatches on a non-Arch distro. [Building from source](#build-and-install-from-source) is
+the portable path: it works anywhere with **Rust**, **pnpm**, and your distro's `webkit2gtk-4.1`
+package, for example:
+
+| Distro | Package |
+|---|---|
+| Arch / CachyOS | `webkit2gtk-4.1` |
+| Fedora | `webkit2gtk4.1-devel` |
+| Debian / Ubuntu | `libwebkit2gtk-4.1-dev` |
+
+See [Tauri's Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux) for the rest
+of the build toolchain on distros other than Arch.
+
+Discovery itself (Steam, Proton runtimes, wrapper binaries) doesn't check what distro you're on
+— only the paths themselves. If your layout doesn't match one of the built-in guesses, the
+first-run **Your system** check says so and points at **Settings → Paths**, covered in
+[Settings and files](Settings-and-files#paths).
+
 Optional, and only needed for the features that use them:
 
 | Package | Used for |

@@ -1,6 +1,6 @@
 # protongen
 
-**A desktop app for building Proton launch commands on CachyOS.**
+**A desktop app for building Proton launch commands.**
 
 Getting a Windows game running well under Proton often comes down to a handful of environment
 variables and wrapper programs — `PROTON_ENABLE_WAYLAND=1`, `DXVK_HDR=1`, `gamescope -W 2560

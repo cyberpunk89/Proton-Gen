@@ -2,7 +2,7 @@
 name = "protongen"
 version = "0.20.0"
 edition = "2024"
-description = "A polished GUI for building Steam / umu-launcher Proton commands on CachyOS"
+description = "A polished GUI for building Steam / umu-launcher Proton commands"
 license = "GPL-3.0-or-later"
 default-run = "protongen"
 

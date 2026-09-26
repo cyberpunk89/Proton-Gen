@@ -478,6 +478,11 @@ export interface ConfigWarning {
 export interface Bootstrap {
   steam_root: string | null;
   load_error: string | null;
+  /** Set only when a Steam install was found but zero Proton runtimes exist
+   *  anywhere (system, this install's own compatibilitytools.d, or bundled
+   *  Valve Proton). Same "name it, don't go silent" treatment as
+   *  `load_error`, for a different failure mode. */
+  runtime_warning: string | null;
   catalog: Catalog;
   categories: string[];
   recipes: Recipe[];

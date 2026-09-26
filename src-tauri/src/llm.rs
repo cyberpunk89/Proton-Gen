@@ -283,7 +283,7 @@ fn troubleshoot_body(
 }
 
 const TROUBLESHOOT_PROMPT: &str = "\
-You are an expert assistant for Linux gaming with Proton on CachyOS. The user \
+You are an expert assistant for Linux gaming with Proton. The user \
 describes a problem with a game (crash, black screen, stutter, no audio, won't \
 launch, etc.). Diagnose it and guide them to a fix.
 
@@ -365,7 +365,7 @@ fn chat_body(
 }
 
 const SYSTEM_PROMPT: &str = "\
-You are an expert assistant for Linux gaming with Proton on CachyOS. You help the \
+You are an expert assistant for Linux gaming with Proton. You help the \
 user make a specific game run more smoothly by reading its Proton log, the launch \
 command, and their hardware.
 

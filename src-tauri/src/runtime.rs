@@ -96,6 +96,37 @@ pub fn discover(
     runtimes
 }
 
+/// Explains a totally empty runtime scan — Steam was found but zero Proton
+/// builds turned up anywhere. Names every location checked, the same way
+/// `steam::locate_native`'s own message does for the Steam root, so a user on
+/// an unfamiliar distro or layout knows exactly what to fix instead of facing
+/// an empty dropdown with no explanation.
+///
+/// Deliberately distro-agnostic: no package manager, distro name, or specific
+/// Proton build (e.g. proton-cachyos) is named, since none of those apply
+/// universally. Takes the already-resolved compat-tools dir rather than a
+/// whole `SteamDir` so this stays trivially unit-testable.
+pub fn no_runtimes_message(user_compat_dir: &Path, extra_dirs: &[String]) -> String {
+    let extra = crate::store::Paths::clean(extra_dirs);
+    let extra_note = if extra.is_empty() {
+        String::new()
+    } else {
+        format!(
+            ", and {} configured Proton director{} under Settings → Paths",
+            extra.len(),
+            if extra.len() == 1 { "y" } else { "ies" }
+        )
+    };
+    format!(
+        "No Proton runtimes found. Checked {SYSTEM_COMPAT_DIR} (system), {} (this Steam \
+         install's own compatibilitytools.d), and Steam's bundled Proton under \
+         steamapps/common{extra_note}. Install one from your Steam Library (filter by Tools), \
+         or extract a community build like GE-Proton into the path above — or add a folder \
+         under Settings → Paths.",
+        user_compat_dir.display()
+    )
+}
+
 /// First run of `n` consecutive ASCII digits in `s`, if any.
 fn first_digit_run(s: &str, n: usize) -> Option<String> {
     let bytes = s.as_bytes();
@@ -291,6 +322,26 @@ mod tests {
         scan_compat_dir(&root, RuntimeKind::Custom, &mut out);
         assert!(out.is_empty());
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn no_runtimes_message_names_every_location_checked() {
+        let user_dir = PathBuf::from("/home/x/.local/share/Steam/compatibilitytools.d");
+        let msg = no_runtimes_message(&user_dir, &[]);
+        assert!(msg.contains(SYSTEM_COMPAT_DIR));
+        assert!(msg.contains(user_dir.to_str().unwrap()));
+        assert!(msg.contains("steamapps/common"));
+        assert!(msg.contains("Settings → Paths"));
+        assert!(!msg.contains("configured Proton director"));
+    }
+
+    #[test]
+    fn no_runtimes_message_notes_configured_dirs_when_present() {
+        let user_dir = PathBuf::from("/home/x/.local/share/Steam/compatibilitytools.d");
+        let one = no_runtimes_message(&user_dir, &["/opt/protons".to_string()]);
+        assert!(one.contains("1 configured Proton directory"));
+        let two = no_runtimes_message(&user_dir, &["/opt/a".to_string(), "/opt/b".to_string()]);
+        assert!(two.contains("2 configured Proton directories"));
     }
 
     #[test]

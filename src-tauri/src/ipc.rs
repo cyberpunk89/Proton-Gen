@@ -106,6 +106,11 @@ pub struct StaleInfo {
 pub struct Bootstrap {
     pub steam_root: Option<String>,
     pub load_error: Option<String>,
+    /// Set only when a Steam install was found but zero Proton runtimes exist
+    /// anywhere (system, this install's own compatibilitytools.d, or bundled
+    /// Valve Proton). Same "name it, don't go silent" treatment as
+    /// `load_error`, for a different failure mode.
+    pub runtime_warning: Option<String>,
     pub catalog: Catalog,
     pub categories: Vec<String>,
     pub recipes: Vec<Recipe>,
@@ -186,6 +191,7 @@ impl AppState {
         Bootstrap {
             steam_root: d.steam_root.clone(),
             load_error: d.load_error.clone(),
+            runtime_warning: d.runtime_warning.clone(),
             catalog: (*self.catalog).clone(),
             categories: self.catalog.categories(),
             recipes: self.recipes.recipes.clone(),
@@ -217,6 +223,7 @@ impl AppState {
 struct Discovery {
     steam_root: Option<String>,
     load_error: Option<String>,
+    runtime_warning: Option<String>,
     runtimes: Vec<RuntimeDto>,
     games: Vec<GameDto>,
     launch_options: HashMap<String, String>,
@@ -238,6 +245,7 @@ struct Discovery {
 fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
     let mut steam_root = None;
     let mut load_error = None;
+    let mut runtime_warning = None;
     let mut runtimes_raw = Vec::new();
     let mut games = Vec::new();
     let mut launch_options = HashMap::new();
@@ -252,6 +260,12 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
         Ok(dir) => {
             steam_root = Some(steam::root_display(&dir));
             runtimes_raw = runtime::discover(&dir, &paths.proton_dirs, &mut path_warnings);
+            if runtimes_raw.is_empty() {
+                runtime_warning = Some(runtime::no_runtimes_message(
+                    &steam::user_compat_tools_dir(&dir),
+                    &paths.proton_dirs,
+                ));
+            }
             // localconfig first: `list_games_dto` reads last-played/playtime out
             // of it, so the parsed map has to exist before the games are built.
             let app_cfgs = steamcfg::current_app_cfgs(&dir);
@@ -284,6 +298,7 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
     Discovery {
         steam_root,
         load_error,
+        runtime_warning,
         runtimes,
         games,
         launch_options,

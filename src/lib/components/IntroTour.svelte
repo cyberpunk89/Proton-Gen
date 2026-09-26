@@ -1,12 +1,27 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import Dialog from "./Dialog.svelte";
-  import { GameController, Sparkle, ClipboardText, ArrowRight } from "phosphor-svelte";
+  import Badges from "./Badges.svelte";
+  import {
+    GameController,
+    Sparkle,
+    ClipboardText,
+    ArrowRight,
+    Desktop,
+    CheckCircle,
+    XCircle,
+  } from "phosphor-svelte";
 
   /**
-   * A one-time, four-step walkthrough of Simple mode, shown the first time a
-   * user lands there. Mounted once at the app root (App.svelte), like
+   * A one-time walkthrough of Simple mode, shown the first time a user lands
+   * there. Mounted once at the app root (App.svelte), like
    * HeroicConfirm/DefaultProfilePrompt.
+   *
+   * Step 0 ("Your system") is dynamic, not static copy: it reads live
+   * discovery results (steamRoot/loadError, runtimeWarning, requiresStatus)
+   * so a first-time user on an unfamiliar distro or layout sees exactly what
+   * protongen found before the feature tour starts, with a direct link into
+   * Settings → Paths. Steps 1-3 are the original static feature tour.
    *
    * Deliberately just a stepped dialog rather than a real DOM spotlight over
    * the library/cards/command bar: those move and resize under real content,
@@ -55,32 +70,101 @@
     },
   ];
 
+  // Step 0 is the dynamic "Your system" summary below; the static feature
+  // steps above start at index 1.
+  const totalSteps = steps.length + 1;
+  const dotIndices = Array.from({ length: totalSteps }, (_, i) => i);
+
   let step = $state(0);
-  const last = $derived(step === steps.length - 1);
+  const last = $derived(step === totalSteps - 1);
+  const current = $derived(step === 0 ? null : steps[step - 1]);
 
   function next() {
     if (last) open = false;
     else step += 1;
   }
+
+  function openSettings() {
+    open = false;
+    app.showSettings = true;
+  }
 </script>
 
-<Dialog bind:open title="Welcome to protongen" width="26rem">
+<Dialog bind:open title="Welcome to protongen" width="28rem">
   <div class="space-y-4">
-    {#each [steps[step]] as s}
+    {#if step === 0}
+      <div class="space-y-3">
+        <div class="flex items-start gap-3">
+          <div class="grid size-9 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
+            <Desktop size={18} weight="duotone" />
+          </div>
+          <div class="min-w-0">
+            <h3 class="text-sm font-medium text-text">Your system</h3>
+            <p class="mt-1 text-sm text-muted">
+              What protongen found here, before the tour — every distro and layout looks a
+              little different.
+            </p>
+          </div>
+        </div>
+
+        <div class="ml-12 space-y-1.5">
+          <div class="flex items-start gap-1.5 text-xs">
+            {#if app.steamRoot}
+              <CheckCircle size={14} weight="fill" class="mt-0.5 shrink-0 text-green" />
+              <span class="text-subtext">
+                Steam found at <code class="font-mono text-text">{app.steamRoot}</code>
+              </span>
+            {:else}
+              <XCircle size={14} weight="fill" class="mt-0.5 shrink-0 text-red" />
+              <span class="text-subtext">{app.loadError ?? "No Steam install found."}</span>
+            {/if}
+          </div>
+
+          {#if app.steamRoot}
+            <div class="flex items-start gap-1.5 text-xs">
+              {#if app.runtimeWarning}
+                <XCircle size={14} weight="fill" class="mt-0.5 shrink-0 text-red" />
+                <span class="text-subtext">{app.runtimeWarning}</span>
+              {:else}
+                <CheckCircle size={14} weight="fill" class="mt-0.5 shrink-0 text-green" />
+                <span class="text-subtext">
+                  {app.runtimes.filter((r) => r.kind !== "auto").length} Proton runtime(s) found
+                </span>
+              {/if}
+            </div>
+          {/if}
+
+          {#if Object.keys(app.requiresStatus).length}
+            <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+              {#each Object.keys(app.requiresStatus).sort() as name (name)}
+                <Badges requires={name} />
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <button
+          onclick={openSettings}
+          class="ml-12 text-xs text-accent underline underline-offset-2 hover:opacity-80"
+        >
+          Open Settings → Paths
+        </button>
+      </div>
+    {:else if current}
       <div class="flex items-start gap-3">
         <div class="grid size-9 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
-          <s.icon size={18} weight="duotone" />
+          <current.icon size={18} weight="duotone" />
         </div>
         <div class="min-w-0">
-          <h3 class="text-sm font-medium text-text">{s.title}</h3>
-          <p class="mt-1 text-sm text-muted">{s.body}</p>
+          <h3 class="text-sm font-medium text-text">{current.title}</h3>
+          <p class="mt-1 text-sm text-muted">{current.body}</p>
         </div>
       </div>
-    {/each}
+    {/if}
 
     <div class="flex items-center justify-between pt-1">
       <div class="flex gap-1">
-        {#each steps as _, i}
+        {#each dotIndices as i (i)}
           <span
             class="size-1.5 rounded-full transition"
             class:bg-accent={i === step}

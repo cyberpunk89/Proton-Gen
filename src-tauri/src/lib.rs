@@ -1,4 +1,4 @@
-//! protongen — a GUI to build Steam / umu-launcher commands for CachyOS Proton.
+//! protongen — a GUI to build Steam / umu-launcher commands for Proton.
 //!
 //! Read-only by default: it scans installed Proton runtimes, Steam games,
 //! non-Steam shortcuts and sideloaded Heroic games, lets you toggle common
@@ -106,6 +106,12 @@ pub fn dump() -> Result<()> {
 
     let runtimes = runtime::discover(&dir, &paths.proton_dirs, &mut warnings);
     println!("\nProton runtimes:");
+    if runtimes.is_empty() {
+        println!(
+            "  {}",
+            runtime::no_runtimes_message(&steam::user_compat_tools_dir(&dir), &paths.proton_dirs)
+        );
+    }
     for r in &runtimes {
         println!(
             "  - {:<55} [{}]  internal: {}",

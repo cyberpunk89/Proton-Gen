@@ -319,6 +319,15 @@
           ? "No games or shortcuts found."
           : "No games match those filters."}
       </p>
+      {#if app.games.length === 0}
+        <p class="text-xs text-muted">
+          If you have games installed, check
+          <button
+            class="underline underline-offset-2 hover:text-text"
+            onclick={() => (app.showSettings = true)}>Settings → Paths</button
+          > for extra Steam library folders.
+        </p>
+      {/if}
     </div>
   {:else}
     <!--
