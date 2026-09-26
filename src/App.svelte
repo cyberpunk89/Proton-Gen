@@ -77,7 +77,7 @@
         {app.runtimeWarning}
         <button
           class="ml-1 underline underline-offset-2 hover:text-text"
-          onclick={() => (app.showSettings = true)}>Open Settings</button
+          onclick={() => app.openSettings("paths")}>Open Settings</button
         >
       </span>
     </div>
@@ -100,7 +100,7 @@
           (<span class="font-mono">{w.error}</span>).
           <button
             class="ml-1 underline underline-offset-2 hover:text-text"
-            onclick={() => (app.showSettings = true)}>Open Settings</button
+            onclick={() => app.openSettings("paths")}>Open Settings</button
           >
         {:else if w.kind === "store"}
           Your settings file couldn't be read

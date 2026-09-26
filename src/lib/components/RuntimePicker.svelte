@@ -76,7 +76,7 @@
                     class="text-xs text-accent underline underline-offset-2 hover:opacity-80"
                     onclick={() => {
                       open = false;
-                      app.showSettings = true;
+                      app.openSettings("paths");
                     }}
                   >
                     Open Settings → Paths

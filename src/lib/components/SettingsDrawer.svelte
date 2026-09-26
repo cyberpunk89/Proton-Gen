@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { app } from "$lib/state.svelte";
   import { keys } from "$lib/keys.svelte";
-  import { THEMES } from "$lib/themes";
+  import { THEMES, SYSTEM_THEME } from "$lib/themes";
+  import { prefersReducedMotion } from "$lib/motion.svelte";
+  import { getVersion } from "@tauri-apps/api/app";
   import { fly, fade } from "$lib/motion.svelte";
   import { mergeStyle } from "$lib/util";
   import { Dialog as DialogPrimitive } from "bits-ui";
@@ -16,6 +19,10 @@
     FolderOpen,
     Trash,
     Robot,
+    Info,
+    ArrowsClockwise,
+    Play,
+    Monitor,
   } from "phosphor-svelte";
   // Aliased: `open` is already the drawer's own bindable prop.
   import { open as pickPath } from "@tauri-apps/plugin-dialog";
@@ -33,8 +40,45 @@
     return () => keys.popOverlay();
   });
 
-  // Sections are collapsible; all start collapsed to keep the drawer tidy.
-  let sections = $state({ appearance: false, behavior: false, ai: false, paths: false });
+  // Sections are collapsible and start collapsed; the open ones live on the
+  // store so a deep link (app.openSettings) can expand and scroll to one.
+  const sections = app.settingsSections;
+
+  $effect(() => {
+    const target = app.settingsFocus;
+    if (!open || !target) return;
+    void target.nonce;
+    void tick().then(() =>
+      document.getElementById(`settings-${target.section}`)?.scrollIntoView({
+        block: "start",
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      }),
+    );
+  });
+
+  // Wrapper programs beyond the fixed four, e.g. prime-run — any catalog
+  // wrapper's program can be overridden.
+  const FIXED_BINS = ["umu-run", "gamescope", "gamemoderun", "mangohud"];
+  let extraBins = $derived([
+    ...new Set(
+      app.catalog.wrappers
+        .map((w) => w.requires ?? w.key)
+        .filter((name) => !FIXED_BINS.includes(name)),
+    ),
+  ]);
+
+  let version = $state<string | null>(null);
+  $effect(() => {
+    if (!open || version) return;
+    if (inTauri) void getVersion().then((v) => (version = v));
+    else version = "dev";
+  });
+
+  let updateCheck = $state<"idle" | "checking" | "available" | "up-to-date" | "failed">("idle");
+  async function checkUpdates() {
+    updateCheck = "checking";
+    updateCheck = await app.checkForUpdate();
+  }
 
   // Local-LLM connection test (populates the model picker from GET /models).
   let llmModels = $state<string[]>([]);
@@ -118,7 +162,7 @@
 
       <div class="flex-1 space-y-6 overflow-y-auto p-4">
         <!-- Appearance -->
-        <section>
+        <section id="settings-appearance" class="scroll-mt-2">
           {@render sectionHeading(
             Palette,
             "Appearance",
@@ -127,6 +171,20 @@
           )}
           {#if sections.appearance}
           <div id="drawer-section-appearance" class="mt-2 grid grid-cols-2 gap-1.5">
+            <button
+              onclick={() => app.setTheme(SYSTEM_THEME)}
+              class="col-span-2 flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-left text-xs transition {app
+                .store.theme === SYSTEM_THEME
+                ? 'border-accent text-text'
+                : 'border-border text-subtext hover:border-accent/50'}"
+            >
+              {#if app.store.theme === SYSTEM_THEME}
+                <Check size={12} class="shrink-0 text-accent" />
+              {:else}
+                <Monitor size={12} class="shrink-0" />
+              {/if}
+              <span class="truncate">Follow system (Latte / Mocha)</span>
+            </button>
             {#each THEMES as t (t.id)}
               <button
                 onclick={() => app.setTheme(t.id)}
@@ -148,7 +206,7 @@
         </section>
 
         <!-- Behavior -->
-        <section>
+        <section id="settings-behavior" class="scroll-mt-2">
           {@render sectionHeading(
             SlidersHorizontal,
             "Behavior",
@@ -159,7 +217,7 @@
           <div id="drawer-section-behavior" class="mt-2 space-y-0.5">
             {@render toggle(
               "Show unsupported options",
-              "List recipes that don't match your detected hardware.",
+              "Include parameters, categories and recipes that don't apply to your detected hardware (shown dimmed).",
               app.store.show_irrelevant,
               () => app.setShowIrrelevant(!app.store.show_irrelevant),
             )}
@@ -188,7 +246,7 @@
         </section>
 
         <!-- AI assistant -->
-        <section>
+        <section id="settings-ai" class="scroll-mt-2">
           {@render sectionHeading(
             Robot,
             "AI assistant",
@@ -211,7 +269,7 @@
         </section>
 
         <!-- Paths -->
-        <section>
+        <section id="settings-paths" class="scroll-mt-2">
           {@render sectionHeading(
             FolderOpen,
             "Paths",
@@ -269,11 +327,50 @@
                   Emitted into the command as-is. Steam launched from a desktop entry
                   often has a PATH without ~/.local/bin.
                 </p>
-                {@render binRow("umu-run")}
-                {@render binRow("gamescope")}
-                {@render binRow("gamemoderun")}
-                {@render binRow("mangohud")}
+                {#each FIXED_BINS as name (name)}
+                  {@render binRow(name)}
+                {/each}
+                {#each extraBins as name (name)}
+                  {@render binRow(name)}
+                {/each}
               </div>
+            </div>
+          {/if}
+        </section>
+
+        <!-- About -->
+        <section id="settings-about" class="scroll-mt-2">
+          {@render sectionHeading(Info, "About", sections.about, () => (sections.about = !sections.about))}
+          {#if sections.about}
+            <div id="drawer-section-about" class="mt-2 space-y-2">
+              <p class="text-xs text-subtext">
+                protongen <span class="font-mono text-text">{version ?? "…"}</span>
+              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  onclick={checkUpdates}
+                  disabled={updateCheck === "checking"}
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 disabled:opacity-60"
+                >
+                  <ArrowsClockwise size={13} class={updateCheck === "checking" ? "animate-spin" : ""} />
+                  Check for updates
+                </button>
+                <button
+                  onclick={() => app.replayTour()}
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+                >
+                  <Play size={13} /> Replay intro tour
+                </button>
+              </div>
+              {#if updateCheck === "up-to-date"}
+                <p class="text-[11px] text-green">You're on the latest version.</p>
+              {:else if updateCheck === "available"}
+                <p class="text-[11px] text-accent">
+                  Version {app.update?.latest} is available — see the banner to install it.
+                </p>
+              {:else if updateCheck === "failed"}
+                <p class="text-[11px] text-red">Couldn't reach GitHub to check.</p>
+              {/if}
             </div>
           {/if}
         </section>

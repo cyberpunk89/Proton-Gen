@@ -224,7 +224,7 @@
       </button>
     {/if}
     <button
-      onclick={() => (app.showSettings = true)}
+      onclick={() => app.openSettings("behavior")}
       class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
     >
       <SlidersHorizontal size={13} /> {gp ? "Edit" : "Set up"}

@@ -40,6 +40,13 @@
     if (app.ready && app.uiMode === "simple" && !app.store.seen_intro_tour) open = true;
   });
 
+  // "Replay intro tour" in Settings → About (which has already closed itself).
+  $effect(() => {
+    if (app.tourReplay === 0) return;
+    step = 0;
+    open = true;
+  });
+
   // Mark seen on any close — Skip, Get started, or the dialog's own X/Escape —
   // without re-firing on mount (`open` starts `false` too, but that's not a
   // close, it's "never shown yet").
@@ -61,12 +68,12 @@
     {
       icon: Sparkle,
       title: "Toggle what you need",
-      body: "Simple mode shows the options people reach for most — upscaling, frame pacing, HDR — as plain switches. Advanced mode (top-right) exposes the full catalog if you ever need it.",
+      body: "Simple mode shows the options people reach for most — upscaling, frame pacing, HDR — as plain switches. Once a game is open, the Simple / Advanced switch in the header exposes the full catalog if you ever need it.",
     },
     {
       icon: ClipboardText,
       title: "Copy the command",
-      body: "The bar at the bottom always shows the exact Steam launch command or umu-run command for your current selections. Copy it into the game's launch options and you're done.",
+      body: "The bar at the bottom always shows the exact Steam launch command or umu-run command for your current selections. Copy it, paste it into the game's launch options in Steam, and switch back — protongen checks and marks it applied.",
     },
   ];
 
@@ -86,7 +93,8 @@
 
   function openSettings() {
     open = false;
-    app.showSettings = true;
+    // After the dialog's close finishes, so two modal layers never overlap (#63).
+    setTimeout(() => app.openSettings("paths"), 250);
   }
 </script>
 

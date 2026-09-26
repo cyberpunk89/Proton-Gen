@@ -176,6 +176,19 @@ class AppStore {
   showImport = $state(false);
   showSave = $state(false);
   showSettings = $state(false);
+  /** Which Settings sections are expanded. On the store (per session) so a
+   *  deep link can open the one it's pointing at. */
+  settingsSections = $state<Record<SettingsSection, boolean>>({
+    appearance: false,
+    behavior: false,
+    ai: false,
+    paths: false,
+    about: false,
+  });
+  /** Scroll request for the drawer; the nonce re-triggers a repeat jump. */
+  settingsFocus = $state<{ section: SettingsSection; nonce: number } | null>(null);
+  /** Bumped to replay the intro tour (IntroTour watches it). */
+  tourReplay = $state(0);
   showPalette = $state(false);
   showShortcuts = $state(false);
   /** The per-game Proton log viewer (opened from the header, for the selected
@@ -1698,6 +1711,22 @@ class AppStore {
     this.persistStore();
   }
 
+  /** Open Settings, optionally expanded and scrolled to one section. */
+  openSettings(section?: SettingsSection) {
+    if (section) {
+      this.settingsSections[section] = true;
+      this.settingsFocus = { section, nonce: ++this.focusNonce };
+    }
+    this.showSettings = true;
+  }
+
+  /** Close Settings, then replay the intro tour once the drawer has finished
+   *  sliding out — two modal layers must never overlap (#63). */
+  replayTour() {
+    this.showSettings = false;
+    setTimeout(() => this.tourReplay++, 250);
+  }
+
   /** Dismiss the Simple-mode first-run tour, permanently (finished or skipped —
    *  both count as "seen", there's no "show me again"). IntroTour.svelte owns
    *  whether the dialog is actually open; this only persists the flag. */
@@ -2189,6 +2218,8 @@ class AppStore {
       });
   }
 }
+
+export type SettingsSection = "appearance" | "behavior" | "ai" | "paths" | "about";
 
 /** Sections Simple mode also shows, and the element id each scrolls to. */
 const SIMPLE_ANCHORS: Record<string, string> = {

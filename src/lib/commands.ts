@@ -131,9 +131,7 @@ export const openSettingsAction: AppCommand = {
   label: "Open settings",
   icon: Gear,
   keywords: ["preferences", "theme"],
-  run: () => {
-    app.showSettings = true;
-  },
+  run: () => app.openSettings(),
 };
 
 export const importCommandAction: AppCommand = {

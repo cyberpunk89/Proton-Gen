@@ -324,7 +324,7 @@
           If you have games installed, check
           <button
             class="underline underline-offset-2 hover:text-text"
-            onclick={() => (app.showSettings = true)}>Settings → Paths</button
+            onclick={() => app.openSettings("paths")}>Settings → Paths</button
           > for extra Steam library folders.
         </p>
       {/if}

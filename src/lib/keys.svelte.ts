@@ -151,7 +151,7 @@ const BINDINGS: Binding[] = [
     needsModifier: true,
     run: (e) => {
       e.preventDefault();
-      app.showSettings = true;
+      app.openSettings();
     },
   },
   {
