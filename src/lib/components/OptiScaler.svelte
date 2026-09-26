@@ -15,8 +15,9 @@
     buildOptiScaler,
     type OptiScalerConfig,
   } from "$lib/optiscaler";
-  import Dialog from "./Dialog.svelte";
-  import { untrack } from "svelte";
+  import { openUrl } from "$lib/util";
+  import { autofocus } from "$lib/actions";
+  import { tick, untrack } from "svelte";
   import {
     ArrowSquareOut,
     ArrowClockwise,
@@ -41,10 +42,18 @@
   let statusLoading = $derived(appId != null && app.optiscalerStatusLoading[String(appId)] === true);
 
   let confirmOpen = $state(false);
+  let fetchButton = $state<HTMLButtonElement | null>(null);
 
   function openConfirm() {
     app.requestOptiscalerLatest();
     confirmOpen = true;
+  }
+
+  /** Back to the button, with focus on it — the panel's buttons are gone. */
+  async function cancelConfirm() {
+    confirmOpen = false;
+    await tick();
+    fetchButton?.focus();
   }
 
   async function doFetch() {
@@ -130,12 +139,17 @@
         <p class="text-xs text-subtext">
           Detected in <span class="font-mono">{status.install_dir}</span>.
         </p>
-        <button
-          onclick={openConfirm}
-          class="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/10"
-        >
-          <CloudArrowDown size={13} /> Fetch latest OptiScaler build…
-        </button>
+        {#if confirmOpen}
+          {@render confirmPanel(status.install_dir)}
+        {:else}
+          <button
+            bind:this={fetchButton}
+            onclick={openConfirm}
+            class="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/10"
+          >
+            <CloudArrowDown size={13} /> Fetch latest OptiScaler build…
+          </button>
+        {/if}
       {/if}
     </div>
   {/if}
@@ -345,8 +359,21 @@
   </div>
 </div>
 
-<Dialog bind:open={confirmOpen} title="Fetch latest OptiScaler build" width="26rem">
-  <div class="space-y-3 text-sm">
+{#snippet confirmPanel(installDir: string)}
+  <!-- Inline, not a second <Dialog>: this panel already lives inside the
+       overlay-builder dialog, and a dialog stacked on a dialog is the #63
+       click-dead pattern. Escape cancels this step, not the whole builder. -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    role="group"
+    aria-label="Fetch latest OptiScaler build"
+    onkeydown={(e) => {
+      if (e.key !== "Escape" || app.optiscalerFetchBusy) return;
+      e.stopPropagation();
+      cancelConfirm();
+    }}
+    class="space-y-3 rounded-lg border border-accent/30 bg-accent/5 p-3 text-sm"
+  >
     {#if app.optiscalerLatestLoading}
       <p class="flex items-center gap-1.5 text-xs text-muted">
         <ArrowClockwise size={12} class="animate-spin" /> Checking the latest release…
@@ -354,25 +381,24 @@
     {:else if app.optiscalerLatestError}
       <p class="text-xs text-red">Couldn't reach GitHub: {app.optiscalerLatestError}</p>
     {:else if app.optiscalerLatest}
+      {@const latest = app.optiscalerLatest}
       <div class="space-y-1.5 rounded-lg border border-border/60 bg-surface-2/60 p-3 text-xs">
         <div class="flex items-center justify-between gap-2">
           <span class="text-muted">Source</span>
-          <a
-            href={app.optiscalerLatest.html_url}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onclick={() => openUrl(latest.html_url)}
             class="inline-flex items-center gap-1 font-medium text-accent hover:underline"
           >
-            optiscaler/OptiScaler {app.optiscalerLatest.tag} <ArrowSquareOut size={11} />
-          </a>
+            optiscaler/OptiScaler {latest.tag} <ArrowSquareOut size={11} />
+          </button>
         </div>
         <div class="flex items-center justify-between gap-2">
           <span class="text-muted">Asset</span>
-          <span class="truncate font-mono text-subtext">{app.optiscalerLatest.asset_name}</span>
+          <span class="truncate font-mono text-subtext">{latest.asset_name}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
           <span class="text-muted">Destination</span>
-          <span class="truncate font-mono text-subtext">{status?.install_dir}</span>
+          <span class="truncate font-mono text-subtext">{installDir}</span>
         </div>
       </div>
       <p class="text-xs leading-snug text-muted">
@@ -385,9 +411,10 @@
       </p>
     {/if}
 
-    <div class="flex justify-end gap-2 pt-1">
+    <div class="flex justify-end gap-2">
       <button
-        onclick={() => (confirmOpen = false)}
+        use:autofocus
+        onclick={cancelConfirm}
         disabled={app.optiscalerFetchBusy}
         class="rounded-lg px-3 py-1.5 text-xs text-muted hover:text-text disabled:opacity-40"
       >
@@ -406,7 +433,7 @@
       </button>
     </div>
   </div>
-</Dialog>
+{/snippet}
 
 {#snippet pick(
   label: string,

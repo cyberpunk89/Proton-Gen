@@ -67,7 +67,7 @@
     </div>
   </div>
 
-  <nav class="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
+  <nav aria-label="Builder sections" class="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
     <!-- The count renders regardless of isActive(): during a search the active
          pill is suppressed, but "how many have I turned on" is exactly the thing
          you still want visible while hunting for one more. -->
@@ -95,6 +95,7 @@
   {@const active = isActive(section)}
   <button
     onclick={() => app.setSection(section)}
+    aria-current={active ? "location" : undefined}
     class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition {active
       ? ''
       : 'text-subtext hover:bg-surface-2'}"
@@ -120,6 +121,7 @@
   {@const active = isActive(name)}
   <button
     onclick={() => app.setSection(name)}
+    aria-current={active ? "location" : undefined}
     class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition {active
       ? ''
       : 'text-subtext hover:bg-surface-2'}"

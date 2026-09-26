@@ -146,7 +146,7 @@
     { key: "cpu_temp", label: "CPU", value: "51°C", kind: "cpu" },
     { key: "ram", label: "RAM", value: "11.2 GiB", kind: "text" },
     { key: "vram", label: "VRAM", value: "6.4 GiB", kind: "text" },
-    { key: "gpu_name", label: "", value: "NVIDIA RTX 4070", kind: "gpu" },
+    { key: "gpu_name", label: "", value: "", kind: "gpu" }, // → gpuLabel
     { key: "fps", label: "", value: "60 FPS", kind: "text" },
     { key: "frametime", label: "", value: "6.9 ms", kind: "text" },
   ];
@@ -168,9 +168,27 @@
     };
   });
 
+  /** Stands in for the card name MangoHud reads from the driver: the vendor
+   *  (and AMD generation) detected here, not somebody else's GPU. On a hybrid
+   *  box NVIDIA wins — an AMD iGPU beside it is the common case — unless the
+   *  user declared an AMD generation in Settings, which says the Radeon is
+   *  the card they game on. */
+  let gpuLabel = $derived.by(() => {
+    const hw = app.hardware;
+    const gen = app.effectiveGpuGen;
+    const radeon =
+      gen === "rdna4" ? "AMD Radeon (RDNA 4)" : gen === "rdna3" ? "AMD Radeon (RDNA 3)" : "AMD Radeon";
+    if (hw.amd && app.store.gpu_gen) return radeon;
+    if (hw.nvidia) return "NVIDIA GeForce";
+    if (hw.amd) return radeon;
+    if (hw.intel) return "Intel Graphics";
+    return "GPU";
+  });
+
   let previewRows = $derived(
     PREVIEW_ROWS.filter((r) => checks[r.key]).map((r) => ({
       ...r,
+      value: r.key === "gpu_name" ? gpuLabel : r.value,
       color: r.kind === "gpu" ? col("gpu") : r.kind === "cpu" ? col("cpu") : pv.text,
     })),
   );

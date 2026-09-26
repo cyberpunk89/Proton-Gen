@@ -11,10 +11,11 @@
   ];
 </script>
 
-<div class="inline-flex rounded-xl border border-border bg-surface-2/60 p-1">
+<div class="inline-flex rounded-xl border border-border bg-surface-2/60 p-1" role="group" aria-label="Interface mode">
   {#each modes as m (m.mode)}
     <button
       onclick={() => app.setUiMode(m.mode)}
+      aria-pressed={app.uiMode === m.mode}
       class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition"
       style={app.uiMode === m.mode
         ? "background: var(--accent); color: var(--on-accent)"
