@@ -1,5 +1,5 @@
 # protongen parameter catalog
-# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-09-05
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-09-26
 #
 # Sources (refresh with the /update-proton-params Claude skill):
 #   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
@@ -37,7 +37,7 @@
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
 proton_cachyos_build = "20260703"
-updated = "2026-09-05"
+updated = "2026-09-26"
 
 # ============================ Wrappers ============================
 
@@ -388,6 +388,28 @@ help = "Enable DXVK-NVAPI's Vulkan Reflex layer (NVIDIA Reflex in Vulkan games).
 details = "Turns on DXVK-NVAPI's Vulkan Reflex layer so NVIDIA Reflex low-latency works in Vulkan/DXVK titles. Requires an NVIDIA GPU with NVAPI active (the default; don't set PROTON_DISABLE_NVAPI). Reduces input latency in supported games."
 example = "DXVK_NVAPI_VKREFLEX=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "DXVK_NVAPI_DRS_SETTINGS"
+tier = "advanced"
+gpu = "nvidia"
+category = "NVIDIA"
+default_value = ""
+help = "Override individual NVIDIA driver settings DXVK-NVAPI reports, comma-separated key=value pairs."
+details = "Pushes arbitrary NVIDIA Driver Settings (DRS) values through DXVK-NVAPI without a vendor control panel, as a comma-separated 'setting=value' list — settings can be a numeric ID (optionally hex, 0x-prefixed) or a known name such as NGX_DLSS_OVERRIDE / NGX_DLSS_SR_MODE. PROTON_DLSS_UPGRADE already sets this to its own latest-preset value unless you override it yourself here."
+example = "DXVK_NVAPI_DRS_SETTINGS=NGX_DLSS_SR_MODE=1 %command%"
+url = "https://github.com/jp7677/dxvk-nvapi/blob/master/README.md"
+
+[[env]]
+key = "__GL_SHADER_DISK_CACHE_SIZE"
+tier = "advanced"
+gpu = "nvidia"
+category = "NVIDIA"
+default_value = "12000000000"
+help = "Raise the NVIDIA driver's on-disk shader cache size limit (bytes; default here is 12GB)."
+details = "Caps how large the proprietary NVIDIA driver's on-disk shader cache is allowed to grow, in bytes. The driver's own default limit is comparatively small and starts evicting old entries once it's full — raising this (e.g. to 12000000000 for 12GB) keeps more compiled shaders cached across sessions, cutting recompile stutter on shader-heavy games. Companion to __GL_SHADER_DISK_CACHE_SKIP_CLEANUP; NVIDIA-driver-level, unrelated to DXVK_SHADER_CACHE_PATH."
+example = "__GL_SHADER_DISK_CACHE_SIZE=12000000000 %command%"
+url = "https://wiki.cachyos.org/configuration/gaming/"
 
 [[env]]
 key = "PROTON_NVIDIA_LIBS"
@@ -844,6 +866,17 @@ example = "DXVK_SHADER_CACHE_PATH=/home/user/.cache/dxvk %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/README.md#hud"
 
 [[env]]
+key = "MESA_SHADER_CACHE_MAX_SIZE"
+tier = "advanced"
+gpu = "amd"
+category = "DXVK"
+default_value = "12G"
+help = "Raise Mesa's on-disk shader cache size limit (RADV/ANV; suffix K/M/G, default here 12G)."
+details = "Caps how large Mesa's own on-disk shader cache (used by RADV on AMD and ANV on Intel, independent of DXVK_SHADER_CACHE_PATH) is allowed to grow, accepting a size with a K/M/G suffix. Mesa's default limit is comparatively small and starts evicting old entries once full; raising it keeps more compiled shaders cached across driver updates and games, cutting recompile stutter. The NVIDIA-driver counterpart is __GL_SHADER_DISK_CACHE_SIZE."
+example = "MESA_SHADER_CACHE_MAX_SIZE=12G %command%"
+url = "https://wiki.cachyos.org/configuration/gaming/"
+
+[[env]]
 key = "DXVK_CONFIG"
 tier = "advanced"
 category = "DXVK"
@@ -903,9 +936,9 @@ key = "VKD3D_CONFIG"
 tier = "advanced"
 category = "VKD3D (D3D12)"
 default_value = "dxr"
-values = ["dxr", "nodxr", "dxr12", "no_invariant_position", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue"]
+values = ["dxr", "nodxr", "dxr12", "no_invariant_position", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue", "breadcrumbs", "vk_debug"]
 help = "Comma-separated vkd3d-proton tweaks, e.g. 'dxr' to force-enable ray tracing."
-details = "A comma- or semicolon-separated list of options that modify vkd3d-proton behavior. Common ones: 'dxr' (force-enable ray tracing even when considered unsafe; DXR is normally auto-detected), 'nodxr' (disable it), 'dxr12' (experimental DXR 1.2 support), 'no_invariant_position' (skips vkd3d-proton's default workaround for shader position invariance — try toggling it if a game has subtle z-fighting or geometry jitter), 'no_upload_hvv' (avoid host-visible VRAM for upload heaps on constrained GPUs), 'force_static_cbv' (NVIDIA constant-buffer optimization), 'single_queue' (disable async compute/transfer), and 'descriptor_heap' (CachyOS-only descriptor-heap path; this replaced the old PROTON_VKD3D_HEAP knob). Most games run fine with defaults — use this for advanced features or specific workarounds."
+details = "A comma- or semicolon-separated list of options that modify vkd3d-proton behavior. Common ones: 'dxr' (force-enable ray tracing even when considered unsafe; DXR is normally auto-detected), 'nodxr' (disable it), 'dxr12' (experimental DXR 1.2 support), 'no_invariant_position' (skips vkd3d-proton's default workaround for shader position invariance — try toggling it if a game has subtle z-fighting or geometry jitter), 'no_upload_hvv' (avoid host-visible VRAM for upload heaps on constrained GPUs), 'force_static_cbv' (NVIDIA constant-buffer optimization), 'single_queue' (disable async compute/transfer), 'descriptor_heap' (CachyOS-only descriptor-heap path; this replaced the old PROTON_VKD3D_HEAP knob), 'breadcrumbs' (instrument command lists so a GPU device-lost/hang writes a crash dump with the offending commands to the log), and 'vk_debug' (load the Vulkan validation layer, pairing with VK_INSTANCE_LAYERS). Most games run fine with defaults — use this for advanced features or specific workarounds."
 example = "VKD3D_CONFIG=dxr %command%"
 url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
 
@@ -1045,6 +1078,27 @@ help = "Block the game from reaching listed hosts (telemetry/DRM), comma-separat
 details = "Blocks network access to the listed hostnames from inside the prefix — handy for stopping telemetry or a broken DRM/phone-home check that stalls launch. Comma- or semicolon-separated, up to 16 hosts; a second-level domain blocks its subdomains too (e.g. 'test.org' also blocks '*.test.org')."
 example = "WINE_BLOCK_HOSTS=telemetry.example.com,ads.example.net %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "WINE_WMCLASS"
+tier = "advanced"
+category = "Wine / Overrides"
+default_value = ""
+help = "Set the WM_CLASS of every Wine window so your window manager can target it with rules."
+details = "Overrides the WM_CLASS property Wine sets on all of its windows. Useful for window-manager rules (tiling layout exceptions, forced floating, workspace assignment) that match by WM_CLASS, when a game's own class name is missing, generic, or shared with an unrelated app."
+example = "WINE_WMCLASS=MyGame %command%"
+url = "https://wiki.cachyos.org/configuration/gaming/"
+
+[[env]]
+key = "WINEUSERSANDBOX"
+tier = "advanced"
+category = "Wine / Overrides"
+default_value = "1"
+values = ["1", "0"]
+help = "Don't symlink Wine's user folders (Documents, Pictures, …) to your real home directory."
+details = "By default Wine symlinks its virtual user folders (Documents, Pictures, Desktop, etc.) to the equivalent real folders in your home directory, so games that write there land in your actual files. Set this to sandbox the prefix instead — those folders become plain directories inside the prefix, isolated from your real home. Useful for games/mods you don't want touching your real Documents or Pictures."
+example = "WINEUSERSANDBOX=1 %command%"
+url = "https://wiki.cachyos.org/configuration/gaming/"
 
 # ==================== Overlay / Post-processing ==================
 #
