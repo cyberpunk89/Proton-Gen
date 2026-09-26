@@ -26,21 +26,12 @@
     if (!app.revealParam(key)) toast.info(`${key} isn't in the catalog.`);
   }
 
-  /**
-   * Apply a notice's remedy through the ordinary mutators, which is what makes it
-   * undoable for free — they all funnel into the history stack.
-   */
+  /** Apply a notice's remedy as one history entry, so the toast's Undo reverts
+   *  all of it rather than only its last step. */
   function applyFix(n: Notice) {
     const fix = n.fix;
     if (!fix) return;
-    for (const key of fix.disable) {
-      if (app.env[key]?.enabled) app.toggleEnv(key);
-      if (app.wrap[key]?.enabled) app.toggleWrap(key);
-    }
-    for (const [key, value] of fix.enable) {
-      app.setEnvValue(key, value);
-      if (!app.env[key]?.enabled) app.toggleEnv(key);
-    }
+    app.applyChanges(fix.label, { enable: fix.enable, disable: fix.disable });
     toast.success(fix.label, { action: { label: "Undo", onClick: () => app.undo() } });
   }
 </script>

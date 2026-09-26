@@ -42,7 +42,9 @@
 
   function applyChange(change: { key: string; value: string }) {
     if (app.applyLlmChange(change)) {
-      toast.success(`Applied ${change.key}${change.value ? `=${change.value}` : ""}`);
+      toast.success(`Applied ${change.key}${change.value ? `=${change.value}` : ""}`, {
+        action: { label: "Undo", onClick: () => app.undo() },
+      });
     }
   }
 

@@ -47,7 +47,9 @@
 
   function apply(change: { key: string; value: string }) {
     if (app.applyLlmChange(change)) {
-      toast.success(`Applied ${change.key}${change.value ? `=${change.value}` : ""}`);
+      toast.success(`Applied ${change.key}${change.value ? `=${change.value}` : ""}`, {
+        action: { label: "Undo", onClick: () => app.undo() },
+      });
     }
   }
 
@@ -65,9 +67,11 @@
       toast.error("PROTON_LOG isn't in the catalog");
       return;
     }
-    if (!cur.enabled) app.toggleEnv("PROTON_LOG");
-    app.setEnvValue("PROTON_LOG", "1");
-    toast.success("Logging enabled — apply the command and relaunch the game", { ms: 6000 });
+    app.applyChanges("enable Proton logging", { enable: [["PROTON_LOG", "1"]] });
+    toast.success("Logging enabled — apply the command and relaunch the game", {
+      ms: 6000,
+      action: { label: "Undo", onClick: () => app.undo() },
+    });
   }
 
   function human(bytes: number): string {

@@ -534,6 +534,24 @@ class AppStore {
   }
 
   /**
+   * Turn keys off and on as **one** undoable action — the shape of a lint fix
+   * or an AI suggestion. Each key may name an env var or a wrapper. These used
+   * to go through the public per-key mutators, one history entry each, so the
+   * single Undo on their toast only reverted the last step.
+   */
+  applyChanges(label: string, changes: { enable?: [string, string][]; disable?: string[] }) {
+    for (const key of changes.disable ?? []) {
+      this.applyEnv(key, false);
+      this.applyWrap(key, false);
+    }
+    for (const [key, value] of changes.enable ?? []) {
+      this.applyEnv(key, true, value);
+      this.applyWrap(key, true, value);
+    }
+    this.mark(label);
+  }
+
+  /**
    * Which recipe set each parameter, so a row can say where its value came from.
    * Apply two recipes and there is otherwise no way to attribute any setting.
    *
@@ -1844,17 +1862,9 @@ class AppStore {
    * the change was applied.
    */
   applyLlmChange(change: { key: string; value: string }): boolean {
-    if (this.env[change.key]) {
-      if (!this.env[change.key].enabled) this.toggleEnv(change.key);
-      if (change.value) this.setEnvValue(change.key, change.value);
-      return true;
-    }
-    if (this.wrap[change.key]) {
-      if (!this.wrap[change.key].enabled) this.toggleWrap(change.key);
-      if (change.value) this.setWrapValue(change.key, change.value);
-      return true;
-    }
-    return false;
+    if (!this.env[change.key] && !this.wrap[change.key]) return false;
+    this.applyChanges(`AI: set ${change.key}`, { enable: [[change.key, change.value]] });
+    return true;
   }
 
   /** True when the catalog has the key an AI change names, so the UI can show a
