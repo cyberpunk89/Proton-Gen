@@ -162,6 +162,30 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
     out.len() - before
 }
 
+/// The target a non-Steam shortcut's `Exe` field points at, or `None` when it
+/// names no single Windows executable.
+///
+/// Steam stores `Exe` as the user typed it: usually one quoted path, sometimes a
+/// command line. `trim_matches('"')` used to turn `bash "/x/launch.sh"` into
+/// `bash "/x/launch.sh` — an unbalanced quote that then prefilled umu mode and
+/// gave OptiScaler a bogus install folder. A command line only yields a target
+/// when one of its words is a `.exe`; otherwise there is nothing umu could run.
+fn shortcut_executable(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    let inner = raw.strip_prefix('"').and_then(|r| r.strip_suffix('"'));
+    let exe = match inner {
+        // One quoted token: the common case, `"/games/My Game/game.exe"`.
+        Some(inner) if !inner.contains('"') => inner.to_string(),
+        // No quotes at all: a bare path, possibly with spaces in it.
+        _ if !raw.contains('"') && !raw.contains('\'') => raw.to_string(),
+        _ => crate::parser::tokenize(raw)
+            .into_iter()
+            .rev()
+            .find(|w| w.to_ascii_lowercase().ends_with(".exe"))?,
+    };
+    (!exe.is_empty()).then_some(exe)
+}
+
 /// The parent directory of an executable path, for sources (non-Steam
 /// shortcuts, Heroic) that only ever hand us a target exe, not a library
 /// folder `steamlocate` can resolve.
@@ -207,8 +231,7 @@ pub fn list_games(
     // Non-Steam game shortcuts (shortcuts.vdf).
     if let Ok(shortcuts) = dir.shortcuts() {
         for sc in shortcuts.flatten() {
-            let exe = sc.executable.trim().trim_matches('"').to_string();
-            let executable = if exe.is_empty() { None } else { Some(exe) };
+            let executable = shortcut_executable(&sc.executable);
             games.push(Game {
                 app_id: sc.app_id,
                 name: sc.app_name.clone(),
@@ -233,6 +256,34 @@ pub fn list_games(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shortcut_executable_unwraps_one_quoted_path() {
+        assert_eq!(
+            shortcut_executable("\"/games/My Game/game.exe\"").as_deref(),
+            Some("/games/My Game/game.exe")
+        );
+        assert_eq!(shortcut_executable("/games/game.exe").as_deref(), Some("/games/game.exe"));
+        // Unquoted with spaces: still one path, not a command line.
+        assert_eq!(
+            shortcut_executable("  /games/My Game/game.exe ").as_deref(),
+            Some("/games/My Game/game.exe")
+        );
+    }
+
+    #[test]
+    fn shortcut_executable_never_returns_an_unbalanced_quote() {
+        // The real case: a FitGirl launch script run through bash. There is no
+        // Windows exe for umu to run, so there is nothing to prefill.
+        assert_eq!(shortcut_executable("bash \"/home/u/Games/cd/launch.sh\""), None);
+        // A command line that does name an exe yields that exe.
+        assert_eq!(
+            shortcut_executable("wine \"/g/My Game/x.exe\" -w").as_deref(),
+            Some("/g/My Game/x.exe")
+        );
+        assert_eq!(shortcut_executable(""), None);
+        assert_eq!(shortcut_executable("\"\""), None);
+    }
 
     fn steam(app_id: u32, name: &str) -> Game {
         Game {
