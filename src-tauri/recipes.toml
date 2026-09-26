@@ -155,9 +155,9 @@ name = "Cap frame rate (60 FPS)"
 kind = "profile"
 icon = "gauge"
 accent = "#89b4fa"
-tags = ["FPS cap", "DXVK"]
-description = "Limit the frame rate via DXVK — no extra tools, works on any GPU. Edit the value for other caps."
-env = [["DXVK_FRAME_RATE", "60"]]
+tags = ["FPS cap", "DXVK", "VKD3D"]
+description = "Limit the frame rate in the translation layer — DXVK for D3D9–11, vkd3d-proton for D3D12. No extra tools, works on any GPU. Edit both values for other caps."
+env = [["DXVK_CONFIG", "dxvk.maxFrameRate=60"], ["VKD3D_FRAME_RATE", "60"]]
 wrappers = []
 
 [[recipe]]
@@ -215,8 +215,8 @@ symptom = "Hitches the first time a shader/effect is used."
 icon = "gauge"
 accent = "#fab387"
 tags = ["shader cache"]
-description = "Keep DXVK's shader state cache and use the gplasync fork (NOT for anti-cheat games)."
-env = [["DXVK_STATE_CACHE", "1"], ["PROTON_DXVK_GPLASYNC", "1"]]
+description = "Compile shaders asynchronously with the gplasync DXVK fork and keep a per-game shader cache (NOT for anti-cheat games)."
+env = [["PROTON_LOCAL_SHADER_CACHE", "1"], ["PROTON_DXVK_GPLASYNC", "1"]]
 wrappers = []
 
 [[recipe]]

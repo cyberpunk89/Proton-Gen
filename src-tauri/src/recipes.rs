@@ -247,6 +247,31 @@ mod tests {
         }
     }
 
+    /// `apply` quietly turns an env key the catalog doesn't know into a custom
+    /// env entry and drops an unknown wrapper, so a recipe naming a renamed or
+    /// invented key "applies" and does nothing. That shipped twice
+    /// (`DXVK_FRAME_RATE`, `DXVK_STATE_CACHE`), hence checked, not trusted.
+    #[test]
+    fn bundled_recipe_keys_exist_in_bundled_catalog() {
+        let cat = Catalog::bundled();
+        for r in &Recipes::bundled().recipes {
+            for (k, _) in &r.env {
+                assert!(
+                    cat.envs.iter().any(|e| &e.key == k),
+                    "recipe '{}' sets {k}, which is not in the bundled catalog",
+                    r.name
+                );
+            }
+            for (k, _) in &r.wrappers {
+                assert!(
+                    cat.wrappers.iter().any(|w| &w.key == k),
+                    "recipe '{}' uses wrapper {k}, which is not in the bundled catalog",
+                    r.name
+                );
+            }
+        }
+    }
+
     fn low_latency() -> Recipe {
         Recipes::bundled()
             .recipes
