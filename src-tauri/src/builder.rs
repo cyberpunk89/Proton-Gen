@@ -27,7 +27,26 @@ pub enum Wrapper {
     Gamemoderun,
     /// `mangohud`
     Mangohud,
+    /// Any other argument-less catalog wrapper (`prime-run`, `dlss-swapper`, …).
+    /// Adding one is a `params.toml` edit; only a wrapper that takes arguments,
+    /// like gamescope, needs its own variant.
+    Plain(PlainWrapper),
 }
+
+/// A catalog wrapper emitted as a bare program token.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlainWrapper {
+    /// Catalog key.
+    pub key: String,
+    /// The program to run: the catalog's `requires`, else the key.
+    pub program: String,
+    /// Position among wrappers, outer (low) to inner (high). See [`Wrapper::rank`].
+    pub rank: u8,
+}
+
+/// Rank for a plain catalog wrapper that doesn't set `order` — just outside
+/// mangohud, inside everything else.
+pub const DEFAULT_PLAIN_RANK: u8 = 45;
 
 /// Program tokens for the wrapper binaries and `umu-run`.
 ///
@@ -51,6 +70,9 @@ pub struct Bins {
     pub gamemoderun: String,
     pub mangohud: String,
     pub umu_run: String,
+    /// Overrides for any other wrapper program, keyed by its catalog `requires`
+    /// name (blank rows already dropped).
+    pub extra: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for Bins {
@@ -60,6 +82,7 @@ impl Default for Bins {
             gamemoderun: "gamemoderun".to_string(),
             mangohud: "mangohud".to_string(),
             umu_run: "umu-run".to_string(),
+            extra: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -81,7 +104,20 @@ impl Bins {
         pick(&mut b.gamemoderun, "gamemoderun");
         pick(&mut b.mangohud, "mangohud");
         pick(&mut b.umu_run, "umu-run");
+        const FIXED: [&str; 4] = ["gamescope", "gamemoderun", "mangohud", "umu-run"];
+        for (k, v) in map {
+            let v = v.trim();
+            if !v.is_empty() && !FIXED.contains(&k.as_str()) {
+                b.extra.insert(k.clone(), v.to_string());
+            }
+        }
         b
+    }
+
+    /// The token to emit for a plain wrapper's `program`: its override if one
+    /// is set, else the name itself.
+    pub fn program<'a>(&'a self, name: &'a str) -> &'a str {
+        self.extra.get(name).map_or(name, String::as_str)
     }
 
     /// (catalog name, program actually emitted), for `compute_requires_status`
@@ -98,16 +134,20 @@ impl Bins {
 }
 
 impl Wrapper {
-    /// Lower rank = more outer (placed further left).
-    fn rank(&self) -> u8 {
+    /// Lower rank = more outer (placed further left). Spaced out so a catalog
+    /// wrapper's `order` can slot between the built-in ones: prime-run sits at
+    /// 10 (just inside gamescope, which must stay outermost to own `--`),
+    /// dlss-swapper at 40, and anything unordered at [`DEFAULT_PLAIN_RANK`].
+    pub fn rank(&self) -> u8 {
         match self {
             Wrapper::Gamescope(_) => 0,
             // game-performance and gamemoderun are alternatives; if both are on,
             // game-performance sits just outside gamemoderun. Both stay inside
             // gamescope and outside mangohud.
-            Wrapper::GamePerformance => 1,
-            Wrapper::Gamemoderun => 2,
-            Wrapper::Mangohud => 3,
+            Wrapper::GamePerformance => 20,
+            Wrapper::Gamemoderun => 30,
+            Wrapper::Mangohud => 50,
+            Wrapper::Plain(p) => p.rank,
         }
     }
 }
@@ -143,6 +183,7 @@ fn env_and_wrappers(env: &[(String, String)], wrappers: &[Wrapper], bins: &Bins)
             Wrapper::GamePerformance => parts.push("game-performance".to_string()),
             Wrapper::Gamemoderun => parts.push(sh_quote(&bins.gamemoderun)),
             Wrapper::Mangohud => parts.push(sh_quote(&bins.mangohud)),
+            Wrapper::Plain(p) => parts.push(sh_quote(bins.program(&p.program))),
         }
     }
     parts

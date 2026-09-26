@@ -14,6 +14,7 @@
 
 use serde::Serialize;
 
+use crate::builder::PlainWrapper;
 use crate::parser;
 
 /// What a token is, for the frontend's colouring and hover copy.
@@ -92,7 +93,8 @@ fn env_key(word: &str) -> Option<&str> {
 ///
 /// Classification mirrors `builder::env_and_wrappers` and `build_umu_command`:
 /// env assignments and wrappers precede the target, game arguments follow it.
-pub fn explain(command: &str) -> Vec<Token> {
+/// `known` is the catalog's plain wrappers, so `prime-run` is a wrapper here too.
+pub fn explain(command: &str, known: &[PlainWrapper]) -> Vec<Token> {
     let pieces = split_preserving(command);
 
     // umu commands are recognised the same way `parser::parse` recognises them,
@@ -141,6 +143,8 @@ pub fn explain(command: &str) -> Vec<Token> {
             (TokenKind::Wrapper, Some(prog.clone()))
         } else if prog == "game-performance" || prog == "gamemoderun" || prog == "mangohud" {
             (TokenKind::Wrapper, Some(prog.clone()))
+        } else if let Some(w) = known.iter().find(|w| parser::basename(&w.program) == prog) {
+            (TokenKind::Wrapper, Some(w.key.clone()))
         } else if let Some(k) = env_key(bare) {
             (TokenKind::Env, Some(k.to_string()))
         } else {
@@ -158,6 +162,11 @@ mod tests {
     use super::*;
     use crate::builder::{self, Wrapper};
     use crate::params::{self, Catalog, Options};
+
+    /// Explain against the bundled catalog's plain wrappers, like the app does.
+    fn explain(cmd: &str) -> Vec<Token> {
+        super::explain(cmd, &Catalog::bundled().plain_wrappers())
+    }
 
     fn env(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
@@ -354,7 +363,15 @@ mod tests {
     #[test]
     fn foreign_wrapper_is_unknown() {
         use TokenKind::*;
-        assert_eq!(kinds("prime-run mangohud %command%"), vec![Unknown, Wrapper, Target]);
+        assert_eq!(kinds("strangle mangohud %command%"), vec![Unknown, Wrapper, Target]);
+    }
+
+    #[test]
+    fn a_catalog_plain_wrapper_is_a_wrapper_with_its_catalog_key() {
+        use TokenKind::*;
+        let cmd = "prime-run mangohud %command%";
+        assert_eq!(kinds(cmd), vec![Wrapper, Wrapper, Target]);
+        assert_eq!(explain(cmd)[0].key.as_deref(), Some("prime-run"));
     }
 
     #[test]

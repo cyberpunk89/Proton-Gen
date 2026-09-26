@@ -420,8 +420,9 @@ fn compute_requires_status(catalog: &Catalog, bins: &builder::Bins) -> HashMap<S
         .filter_map(|w| w.requires.clone())
         .chain(catalog.envs.iter().filter_map(|e| e.requires.clone()));
     for bin in extra {
-        out.entry(bin)
-            .or_insert_with_key(|b| crate::which::is_installed(b));
+        // Badge the program that will actually be emitted, override included.
+        let installed = crate::which::is_installed(bins.program(&bin));
+        out.entry(bin).or_insert(installed);
     }
     out
 }
@@ -538,8 +539,8 @@ pub async fn heroic_running() -> bool {
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
 #[tauri::command]
 pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
-    let p = parser::parse(&input);
     let catalog = &state.catalog;
+    let p = parser::parse(&input, &catalog.plain_wrappers());
 
     // Reconstruct wrapper key/value list from the parsed wrappers.
     let wrappers: Vec<(String, String)> = p
@@ -550,6 +551,7 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
             Wrapper::GamePerformance => ("game-performance".to_string(), String::new()),
             Wrapper::Gamemoderun => ("gamemoderun".to_string(), String::new()),
             Wrapper::Mangohud => ("mangohud".to_string(), String::new()),
+            Wrapper::Plain(p) => (p.key.clone(), String::new()),
         })
         .collect();
 
@@ -572,12 +574,12 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
     }
 }
 
-/// Tokenize a launch command for the annotated preview. Stateless: tokens carry
-/// only a catalog `key`, which the frontend resolves against the already-loaded
-/// catalog.
+/// Tokenize a launch command for the annotated preview. Tokens carry only a
+/// catalog `key`, which the frontend resolves against the already-loaded
+/// catalog; the state is read only for the catalog's plain wrappers.
 #[tauri::command]
-pub fn explain_command(command: String) -> Vec<Token> {
-    explain::explain(&command)
+pub fn explain_command(state: State<'_, AppState>, command: String) -> Vec<Token> {
+    explain::explain(&command, &state.catalog.plain_wrappers())
 }
 
 /// Compare a built launch command against the one Steam currently has set.
@@ -588,8 +590,8 @@ pub fn explain_command(command: String) -> Vec<Token> {
 /// `game.source` and `app.umu`, and pushing them here would drag game/mode
 /// state through an otherwise trivially pure function.
 #[tauri::command]
-pub fn launch_diff(built: String, current: String) -> LaunchDiff {
-    diff::compare(&built, &current)
+pub fn launch_diff(state: State<'_, AppState>, built: String, current: String) -> LaunchDiff {
+    diff::compare(&built, &current, &state.catalog.plain_wrappers())
 }
 
 /// Applied / drifted / not-applied for every remembered game in one call, so

@@ -18,6 +18,9 @@
 #   key            env var name, or wrapper command
 #   label          friendly name (wrappers; optional for env)
 #   kind           wrapper only: "plain" | "gamescope"
+#   order          plain wrapper only: position in the command, outer (low) to
+#                  inner (high) — gamescope 0, game-performance 20, gamemoderun 30,
+#                  mangohud 50; unset = 45
 #   category       env only: section heading in the UI
 #   default_value  prefilled value (env) / args (gamescope)
 #   values         optional list of suggested values (combo box)
@@ -90,6 +93,7 @@ url = "https://github.com/ValveSoftware/gamescope#options"
 key = "prime-run"
 label = "PRIME Run (NVIDIA hybrid)"
 kind = "plain"
+order = 10
 gpu = "nvidia"
 requires = "prime-run"
 pkg = "nvidia-prime"
@@ -102,6 +106,7 @@ url = "https://wiki.cachyos.org/configuration/dual_gpu/"
 key = "dlss-swapper"
 label = "DLSS Swapper"
 kind = "plain"
+order = 40
 gpu = "nvidia"
 requires = "dlss-swapper"
 pkg = "cachyos-settings"

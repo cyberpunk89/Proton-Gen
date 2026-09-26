@@ -322,11 +322,11 @@ pub fn options_to_lists(
 /// it to park an unknown key; hence the out-of-band return rather than a flag.
 ///
 /// **Unknown wrapper keys are still dropped, deliberately.** A wrapper is
-/// emitted as a program token by the closed 3-variant [`crate::builder::Wrapper`]
-/// enum, so an unknown wrapper has no representation in a built command and no
-/// field to survive in. It also cannot drift the way env keys do: the skill
-/// never touches `[[wrapper]]`, so the only way to lose one is to hand-edit a
-/// user `params.toml`, which is the user saying they don't want it.
+/// emitted from its `[[wrapper]]` catalog entry (program, order), so a key the
+/// catalog no longer has carries nothing to emit and no field to survive in.
+/// It also cannot drift the way env keys do: the skill never renames
+/// `[[wrapper]]` entries, so the only way to lose one is to hand-edit a user
+/// `params.toml`, which is the user saying they don't want it.
 #[must_use]
 pub fn options_from_lists(
     catalog: &Catalog,

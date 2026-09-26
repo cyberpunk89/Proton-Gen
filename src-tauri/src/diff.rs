@@ -20,14 +20,14 @@
 //!
 //! What is *not* normalised away: anything protongen cannot model. Those tokens
 //! land in `unmodeled` (via `Parsed::unknown`) and force a `Drifted` verdict —
-//! a launch string full of `prime-run`/`strangle` that happens to set no env
+//! a launch string full of `strangle`/`primusrun` that happens to set no env
 //! must never read as "in sync".
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 
-use crate::builder::Wrapper;
+use crate::builder::{PlainWrapper, Wrapper};
 use crate::compose;
 use crate::params::Catalog;
 use crate::parser::{self, Parsed};
@@ -95,6 +95,9 @@ fn normal_form(p: &Parsed) -> BTreeMap<String, String> {
             Wrapper::Mangohud => {
                 map.insert("mangohud".to_string(), String::new());
             }
+            Wrapper::Plain(p) => {
+                map.insert(p.key, String::new());
+            }
         }
     }
     map
@@ -106,10 +109,11 @@ fn squash(s: &str) -> String {
 }
 
 /// Compare a built launch command against the one currently set in Steam.
-/// Pure: everything it needs is in the two strings.
-pub fn compare(built: &str, current: &str) -> LaunchDiff {
-    let b = parser::parse(built);
-    let c = parser::parse(current);
+/// Pure: everything it needs is in the two strings plus the catalog's plain
+/// wrappers (`known`), without which a `prime-run` would read as unmodeled.
+pub fn compare(built: &str, current: &str, known: &[PlainWrapper]) -> LaunchDiff {
+    let b = parser::parse(built, known);
+    let c = parser::parse(current, known);
 
     let bm = normal_form(&b);
     let cm = normal_form(&c);
@@ -203,6 +207,7 @@ pub fn statuses(
     launch_options: &HashMap<String, String>,
     bins: &crate::builder::Bins,
 ) -> HashMap<String, DiffStatus> {
+    let known = catalog.plain_wrappers();
     memory
         .iter()
         .map(|(appid, config)| {
@@ -212,7 +217,7 @@ pub fn statuses(
             } else {
                 let built = compose::assemble(catalog, config, None, bins);
                 let current = launch_options.get(appid).map(String::as_str).unwrap_or("");
-                compare(&built, current).status
+                compare(&built, current, &known).status
             };
             (appid.clone(), status)
         })
@@ -222,6 +227,11 @@ pub fn statuses(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Compare against the bundled catalog's plain wrappers, like the app does.
+    fn compare(built: &str, current: &str) -> LaunchDiff {
+        super::compare(built, current, &Catalog::bundled().plain_wrappers())
+    }
 
     #[test]
     fn env_order_and_quoting_do_not_count_as_drift() {
@@ -288,6 +298,14 @@ mod tests {
     }
 
     #[test]
+    fn a_catalog_plain_wrapper_is_in_sync_with_itself() {
+        assert_eq!(compare("prime-run %command%", "prime-run %command%").status, DiffStatus::InSync);
+        let d = compare("prime-run %command%", "%command%");
+        assert_eq!(d.added, vec!["prime-run"]);
+        assert!(d.unmodeled.is_empty());
+    }
+
+    #[test]
     fn a_differently_quoted_value_is_in_sync() {
         let d = compare("DXVK_CONFIG=\"a;b\" %command%", "DXVK_CONFIG='a;b' %command%");
         assert_eq!(d.status, DiffStatus::InSync, "{d:?}");
@@ -307,9 +325,9 @@ mod tests {
     fn foreign_wrappers_force_drift_even_with_matching_env() {
         // The env sets match exactly; only the unmodelable token differs. Before
         // #27 this parsed away to nothing and read as in-sync.
-        let d = compare("DXVK_HUD=fps %command%", "DXVK_HUD=fps prime-run %command%");
+        let d = compare("DXVK_HUD=fps %command%", "DXVK_HUD=fps strangle %command%");
         assert_eq!(d.status, DiffStatus::Drifted);
-        assert_eq!(d.unmodeled, vec!["prime-run"]);
+        assert_eq!(d.unmodeled, vec!["strangle"]);
         assert!(d.added.is_empty() && d.removed.is_empty() && d.changed.is_empty());
     }
 
@@ -404,7 +422,7 @@ mod tests {
 
     #[test]
     fn an_absolute_wrapper_path_does_not_read_as_drift() {
-        // #66. `prime-run` in `foreign_wrappers_force_drift_even_with_matching_env`
+        // #66. `strangle` in `foreign_wrappers_force_drift_even_with_matching_env`
         // *should* drift — it is a program we don't model. `/usr/bin/mangohud` is
         // the same program we emit, named by path, and used to drift for no
         // reason other than string equality.

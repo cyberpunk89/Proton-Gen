@@ -206,8 +206,9 @@ This is the heart of the application and the most heavily tested module. It asse
 the launch string from `(env pairs, wrappers, game args)` with **deterministic
 ordering**:
 
-- A `Wrapper` enum: `Gamescope(args)` | `Gamemoderun` | `Mangohud`, each with a `rank()`
-  (lower = more outer). Wrappers are **sorted by rank**, so output is identical
+- A `Wrapper` enum: `Gamescope(args)` | `GamePerformance` | `Gamemoderun` | `Mangohud` |
+  `Plain(PlainWrapper)` (any other catalog wrapper, e.g. `prime-run`), each with a `rank()`
+  (lower = more outer; a plain wrapper's comes from its catalog `order`). Wrappers are **sorted by rank**, so output is identical
   regardless of the order the user toggled them.
 - `gamescope` is always outermost and **owns the `--` separator** (`gamescope <args> --`)
   — it launches everything to its right.
@@ -542,9 +543,9 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 - **The user wiki** is generated from `docs/wiki/` — `scripts/sync-wiki.sh` mirrors it into
   the GitHub wiki, and `.github/workflows/wiki.yml` runs that on every push to `main` that
   touches those files. Edit the repo copy, never the wiki in the browser.
-- **Adding a parameter** is a TOML edit — no Rust change — as long as it's an env var or
-  one of the three known wrappers. New *wrapper programs* require a `Wrapper` enum variant
-  + `rank()` + `to_spec`/`parser` handling.
+- **Adding a parameter** is a TOML edit — no Rust change — for any env var and any
+  argument-less wrapper program (set `order` to place it among the others). Only a
+  wrapper that takes arguments, like gamescope, needs its own `Wrapper` variant.
 - **Adding a recipe** is a TOML edit in `recipes.toml`.
 - **Adding a theme** is a `[data-theme]` palette block in `app.css` + an entry in
   `themes.ts`.

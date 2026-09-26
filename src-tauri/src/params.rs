@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::builder::Wrapper;
+use crate::builder::{PlainWrapper, Wrapper, DEFAULT_PLAIN_RANK};
 
 /// The bundled default catalog.
 const BUNDLED: &str = include_str!("../params.toml");
@@ -103,6 +103,10 @@ pub struct WrapperDef {
     /// else (including unset) is a basic entry. See [`TIER_ADVANCED`].
     #[serde(default)]
     pub tier: String,
+    /// Where a plain wrapper sits in the command, outer (low) to inner (high);
+    /// see `builder::Wrapper::rank`. Builder-only, so it never crosses IPC.
+    #[serde(default, skip_serializing)]
+    pub order: Option<u8>,
 }
 
 impl WrapperDef {
@@ -193,6 +197,12 @@ pub struct Catalog {
 }
 
 impl Catalog {
+    /// Plain catalog wrappers that have no built-in [`Wrapper`] variant, in the
+    /// form the builder emits and the parser/diff/explain recognise.
+    pub fn plain_wrappers(&self) -> Vec<PlainWrapper> {
+        self.wrappers.iter().filter_map(plain_wrapper).collect()
+    }
+
     /// Load from the user override if present, else the bundled default.
     ///
     /// Returns a warning rather than only printing to stderr: a GUI user who
@@ -352,6 +362,21 @@ impl Options {
     }
 }
 
+/// Keys of the plain wrappers the builder models with a dedicated variant.
+const BUILTIN_PLAIN: [&str; 3] = ["game-performance", "gamemoderun", "mangohud"];
+
+/// A plain catalog wrapper without a built-in variant, as a [`PlainWrapper`].
+fn plain_wrapper(def: &WrapperDef) -> Option<PlainWrapper> {
+    if def.kind != WrapperKind::Plain || BUILTIN_PLAIN.contains(&def.key.as_str()) {
+        return None;
+    }
+    Some(PlainWrapper {
+        key: def.key.clone(),
+        program: def.requires.clone().unwrap_or_else(|| def.key.clone()),
+        rank: def.order.unwrap_or(DEFAULT_PLAIN_RANK),
+    })
+}
+
 /// Translate enabled options into (env pairs, wrappers) for the builder.
 pub fn to_spec(cat: &Catalog, opts: &Options) -> (Vec<(String, String)>, Vec<Wrapper>) {
     let mut env = Vec::new();
@@ -367,7 +392,9 @@ pub fn to_spec(cat: &Catalog, opts: &Options) -> (Vec<(String, String)>, Vec<Wra
                 "game-performance" => wrappers.push(Wrapper::GamePerformance),
                 "gamemoderun" => wrappers.push(Wrapper::Gamemoderun),
                 "mangohud" => wrappers.push(Wrapper::Mangohud),
-                _ => {}
+                // Every other plain wrapper used to fall into `_ => {}`, so
+                // enabling prime-run or dlss-swapper emitted nothing at all.
+                _ => wrappers.extend(plain_wrapper(def).map(Wrapper::Plain)),
             },
         }
     }
@@ -524,6 +551,49 @@ mod tests {
         let (env, wrappers) = to_spec(&cat, &opts);
         let cmd = crate::builder::build_command(&env, &wrappers, "", &crate::builder::Bins::default());
         assert_eq!(cmd, "PROTON_ENABLE_WAYLAND=1 gamemoderun mangohud %command%");
+    }
+
+    /// The guard for the bug where prime-run/dlss-swapper toggled on and the
+    /// command didn't change: every catalog wrapper, enabled alone, must show
+    /// up in the built command and parse back as itself.
+    #[test]
+    fn every_catalog_wrapper_reaches_the_command_and_parses_back() {
+        let cat = Catalog::bundled();
+        let known = cat.plain_wrappers();
+        for (i, w) in cat.wrappers.iter().enumerate() {
+            let mut opts = Options::from_catalog(&cat);
+            opts.wrappers[i].enabled = true;
+            let (env, wrappers) = to_spec(&cat, &opts);
+            assert_eq!(wrappers.len(), 1, "wrapper {} was not emitted", w.key);
+
+            let cmd = crate::builder::build_command(&env, &wrappers, "", &crate::builder::Bins::default());
+            let program = w.requires.as_deref().unwrap_or(&w.key);
+            assert!(cmd.starts_with(program), "{} missing from {cmd:?}", w.key);
+
+            let parsed = crate::parser::parse(&cmd, &known);
+            assert!(parsed.unknown.is_empty(), "{}: unmodeled {:?}", w.key, parsed.unknown);
+            assert_eq!(parsed.wrappers(), wrappers, "{} did not parse back", w.key);
+        }
+    }
+
+    #[test]
+    fn wrappers_nest_in_rank_order() {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        for w in opts.wrappers.iter_mut() {
+            w.enabled = true;
+        }
+        for (i, def) in cat.wrappers.iter().enumerate() {
+            if def.key == "gamescope" {
+                opts.wrappers[i].value = "-f".to_string();
+            }
+        }
+        let (env, wrappers) = to_spec(&cat, &opts);
+        let cmd = crate::builder::build_command(&env, &wrappers, "", &crate::builder::Bins::default());
+        assert_eq!(
+            cmd,
+            "gamescope -f -- prime-run game-performance gamemoderun dlss-swapper mangohud %command%"
+        );
     }
 
     #[test]

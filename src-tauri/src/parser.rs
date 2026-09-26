@@ -1,7 +1,7 @@
 //! Parse an existing launch string back into structured options (the inverse of
 //! `builder.rs`), so a user can paste a command and have the UI populate.
 
-use crate::builder::Wrapper;
+use crate::builder::{PlainWrapper, Wrapper};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // used in tests; gui reads `Parsed.umu` directly
@@ -24,6 +24,8 @@ pub struct Parsed {
     pub game_performance: bool,
     pub gamemoderun: bool,
     pub mangohud: bool,
+    /// Catalog plain wrappers (`prime-run`, …) found in the command.
+    pub plain: Vec<PlainWrapper>,
     pub game_args: String,
     pub umu_exe: String,
     pub umu_wineprefix: Option<String>,
@@ -51,6 +53,7 @@ impl Parsed {
         if self.mangohud {
             v.push(Wrapper::Mangohud);
         }
+        v.extend(self.plain.iter().cloned().map(Wrapper::Plain));
         v
     }
 }
@@ -159,11 +162,19 @@ pub(crate) fn basename(tok: &str) -> &str {
 /// verbatim source so their quoting survives a round trip.
 fn take_wrapper(
     input: &str,
+    known: &[PlainWrapper],
     tok: &Word,
     iter: &mut std::iter::Peekable<std::slice::Iter<Word>>,
     p: &mut Parsed,
 ) -> bool {
-    match basename(&tok.text) {
+    let name = basename(&tok.text);
+    if let Some(w) = known.iter().find(|w| basename(&w.program) == name) {
+        if !p.plain.contains(w) {
+            p.plain.push(w.clone());
+        }
+        return true;
+    }
+    match name {
         "game-performance" => {
             p.game_performance = true;
             true
@@ -196,7 +207,9 @@ fn take_wrapper(
 }
 
 /// Parse a Steam launch-options string or a standalone `umu-run` command.
-pub fn parse(input: &str) -> Parsed {
+/// `known` is the catalog's plain wrappers ([`crate::params::Catalog::plain_wrappers`]),
+/// so a user-added wrapper is recognised rather than read as unmodeled.
+pub fn parse(input: &str, known: &[PlainWrapper]) -> Parsed {
     let tokens = words(input);
     let mut p = Parsed::default();
 
@@ -218,7 +231,7 @@ pub fn parse(input: &str) -> Parsed {
 
     let mut it = pre.iter().peekable();
     while let Some(word) = it.next() {
-        if take_wrapper(input, word, &mut it, &mut p) {
+        if take_wrapper(input, known, word, &mut it, &mut p) {
             continue;
         }
         let tok = &word.text;
@@ -272,6 +285,12 @@ pub fn parse(input: &str) -> Parsed {
 mod tests {
     use super::*;
     use crate::builder;
+    use crate::params::Catalog;
+
+    /// Parse against the bundled catalog's plain wrappers, like the app does.
+    fn parse(input: &str) -> Parsed {
+        super::parse(input, &Catalog::bundled().plain_wrappers())
+    }
 
     #[test]
     fn roundtrip_steam() {
@@ -318,10 +337,23 @@ mod tests {
 
     #[test]
     fn foreign_wrapper_is_kept_as_unknown() {
-        let p = parse("DXVK_ASYNC=1 prime-run mangohud %command%");
+        let p = parse("DXVK_ASYNC=1 strangle mangohud %command%");
         assert!(p.mangohud);
         assert_eq!(p.env, vec![("DXVK_ASYNC".to_string(), "1".to_string())]);
-        assert_eq!(p.unknown, vec!["prime-run".to_string()]);
+        assert_eq!(p.unknown, vec!["strangle".to_string()]);
+    }
+
+    #[test]
+    fn a_catalog_plain_wrapper_is_recognised() {
+        // prime-run used to be "foreign" here, so a command containing it read
+        // as permanently drifted even when protongen had built it.
+        let p = parse("prime-run /usr/bin/dlss-swapper mangohud %command%");
+        assert!(p.unknown.is_empty(), "{:?}", p.unknown);
+        let keys: Vec<&str> = p.plain.iter().map(|w| w.key.as_str()).collect();
+        assert_eq!(keys, ["prime-run", "dlss-swapper"]);
+        // Without the catalog list it is unknown again — the list is what
+        // lets a user-added wrapper be recognised.
+        assert_eq!(super::parse("prime-run %command%", &[]).unknown, vec!["prime-run"]);
     }
 
     #[test]

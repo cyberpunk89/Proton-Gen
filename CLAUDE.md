@@ -76,7 +76,9 @@ extra `--` into cargo).
   `--list` CLI all consume the same logic.
 - **Data-driven catalog.** `params.toml` / `recipes.toml` are baked in via `include_str!`
   and overridable by a user copy in `$XDG_CONFIG_HOME`. Adding an env var or recipe is a
-  TOML edit — no Rust change (a new *wrapper program* does need a `Wrapper` enum variant).
+  TOML edit — no Rust change, including a new argument-less *wrapper program* (it becomes a
+  `Wrapper::Plain`; set `order` to place it). Only a wrapper that takes arguments, like
+  gamescope, needs its own `Wrapper` variant.
 - **Release versioning.** Semver `X.Y.Z`, with the number signalling the scope: **patch
   (`Z`)** = parameter/catalog refresh only (`params.toml`/`recipes.toml`, no code), **minor
   (`Y`)** = features / UI / backend, **major (`X`)** = milestone. Cut with

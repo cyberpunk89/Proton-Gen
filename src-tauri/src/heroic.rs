@@ -390,6 +390,9 @@ pub fn apply_to_config(
             Wrapper::GamePerformance => {
                 wrapper_opts.push(json!({ "exe": "game-performance", "args": "" }));
             }
+            Wrapper::Plain(p) => {
+                wrapper_opts.push(json!({ "exe": bins.program(&p.program), "args": "" }));
+            }
             Wrapper::Gamescope(args) => {
                 let args = args.trim();
                 // Trailing `--` so Heroic's `exe args %command%` composition
