@@ -15,6 +15,7 @@ import {
   DownloadSimple,
   FloppyDisk,
   Eye,
+  Trash,
 } from "phosphor-svelte";
 
 import { app } from "./state.svelte";
@@ -49,6 +50,22 @@ export const resetCommandAction: AppCommand = {
   run() {
     app.resetCommand();
     toast.success("Command reset", {
+      action: { label: "Undo", onClick: () => app.undo() },
+    });
+  },
+};
+
+export const forgetTuningAction: AppCommand = {
+  id: "forget-tuning",
+  get label() {
+    return `Forget tuning for ${app.selectedGameName ?? "this game"}`;
+  },
+  icon: Trash,
+  keywords: ["clear", "reset", "memory", "untune"],
+  available: () => app.hasGameMemory,
+  run() {
+    app.forgetGameTuning();
+    toast.success("Forgot this game's tuning", {
       action: { label: "Undo", onClick: () => app.undo() },
     });
   },
@@ -220,6 +237,7 @@ export const protondbAction: AppCommand = {
 export const APP_COMMANDS: AppCommand[] = [
   copyCommandAction,
   resetCommandAction,
+  forgetTuningAction,
   undoAction,
   backToLibraryAction,
   activeOptionsAction,

@@ -6,7 +6,8 @@
   import ProtonDbChip from "./ProtonDbChip.svelte";
   import SyncPill from "./SyncPill.svelte";
   import LauncherAction from "./LauncherAction.svelte";
-  import { DownloadSimple, Cpu, CheckCircle, WarningCircle } from "phosphor-svelte";
+  import { forgetTuningAction } from "$lib/commands";
+  import { DownloadSimple, Cpu, CheckCircle, WarningCircle, Trash } from "phosphor-svelte";
 
   let isSteam = $derived(app.selectedGame?.source === "steam");
   let isHeroic = $derived(app.selectedGame?.source === "heroic");
@@ -37,6 +38,15 @@
   <div class="flex items-center gap-2">
     <Cpu size={18} class="text-accent" />
     <h2 class="text-sm font-medium tracking-wide text-text">Game &amp; runtime</h2>
+    {#if app.hasGameMemory}
+      <button
+        class="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted hover:bg-surface-2 hover:text-text"
+        title="Drop this game's saved options and start it fresh (undoable)"
+        onclick={() => forgetTuningAction.run()}
+      >
+        <Trash size={13} /> Forget tuning
+      </button>
+    {/if}
   </div>
 
   <RuntimePicker />

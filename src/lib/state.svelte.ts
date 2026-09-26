@@ -247,6 +247,9 @@ class AppStore {
     // Establish the default runtime first; a restored session overrides it.
     this.selectedRuntime = this.defaultRuntime();
 
+    // Needs `games` (each entry's own exe) and the default runtime, both set above.
+    this.repairGameMemory();
+
     // Restore the last session (selected game + every builder selection) so the
     // user reopens exactly where they left off; otherwise start from defaults.
     const sess = this.store.last_session;
@@ -667,13 +670,8 @@ class AppStore {
    *  undoable action now — the old "returns the prior config so the caller can
    *  offer a 2-second undo" contract is gone, replaced by the real stack. */
   resetCommand() {
-    this.resetOptions();
-    this.umu = false;
-    this.umuExe = "";
-    this.umuWineprefix = "";
-    this.umuGameid = "";
+    this.resetLaunchFields(this.selectedGame);
     this.activePresetName = null;
-    this.selectedRuntime = this.defaultRuntime();
     this.mark("reset command");
   }
 
@@ -816,9 +814,7 @@ class AppStore {
       const cfg = this.toConfig();
       this.store.last_session = cfg;
       this.store.last_game_appid = this.selectedAppId;
-      if (this.selectedAppId != null) {
-        this.store.game_memory[String(this.selectedAppId)] = cfg;
-      }
+      this.rememberCurrent();
       this.persistStore();
       if (this.firstPersist) this.firstPersist = false;
       else this.flashSaved();
@@ -853,9 +849,7 @@ class AppStore {
     // `selectGame` does on the way out — the debounced session persist may not
     // have fired yet, and a badge computed from the previous config would be
     // wrong exactly when the user looks at it.
-    if (this.selectedAppId != null) {
-      this.store.game_memory[String(this.selectedAppId)] = this.toConfig();
-    }
+    this.rememberCurrent();
     this.refreshLaunchStatuses();
   }
 
@@ -952,10 +946,95 @@ class AppStore {
 
   // ------------------------------- game memory ------------------------------
 
+  /** Every launch field back to its default for `game` — the options *and* the
+   *  umu/runtime fields `resetOptions` leaves alone. No history entry; callers
+   *  mark. A fresh game used to skip the umu/runtime half, so it inherited the
+   *  previous game's exe, prefix and runtime, which then got saved under it. */
+  private resetLaunchFields(game: GameDto | null) {
+    this.resetOptions();
+    // Heroic launches its games itself via umu/Proton; Steam mode's `%command%`
+    // is meaningless for them, so a Heroic game defaults to umu.
+    this.umu = game?.source === "heroic";
+    this.umuExe = game?.executable ?? "";
+    this.umuWineprefix = "";
+    this.umuGameid = "";
+    this.selectedRuntime = this.defaultRuntime();
+  }
+
+  /** Whether `cfg` is exactly what opening `game` fresh would produce — i.e.
+   *  the user hasn't tuned anything. umu fields only count in umu mode. */
+  private isBaseline(cfg: Config, game: GameDto | null): boolean {
+    const freshUmu = game?.source === "heroic";
+    if (cfg.env.length || cfg.wrappers.length || cfg.extra_env.trim() || cfg.game_args.trim()) {
+      return false;
+    }
+    if (cfg.umu !== freshUmu) return false;
+    // A null runtime means "none chosen" — loadConfig keeps the default for it.
+    if (cfg.runtime !== null && cfg.runtime !== (this.defaultRuntime()?.internal_name ?? null)) {
+      return false;
+    }
+    return (
+      !cfg.umu ||
+      (cfg.umu_exe === (game?.executable ?? "") && !cfg.umu_wineprefix.trim() && !cfg.umu_gameid.trim())
+    );
+  }
+
+  /** Save the selected game's config to `game_memory`, or drop its entry when
+   *  it's untouched: merely opening a game used to save it, which put it under
+   *  "Tuned" and suppressed the default-profile prompt for it forever. */
+  private rememberCurrent() {
+    if (this.selectedAppId == null) return;
+    const key = String(this.selectedAppId);
+    const cfg = this.toConfig();
+    if (this.isBaseline(cfg, this.selectedGame)) delete this.store.game_memory[key];
+    else this.store.game_memory[key] = cfg;
+  }
+
+  /** One-time repair of `game_memory` written before the fixes above: prune
+   *  untouched entries, and give each Steam-mode entry back its own exe instead
+   *  of the one it inherited from whichever game was open before it.
+   *  Idempotent, so it simply runs on every load. */
+  private repairGameMemory() {
+    let changed = false;
+    for (const [key, cfg] of Object.entries(this.store.game_memory)) {
+      const game = this.games.find((g) => String(g.app_id) === key) ?? null;
+      if (!cfg.umu) {
+        const own = game?.executable ?? "";
+        if (cfg.umu_exe !== own || cfg.umu_wineprefix || cfg.umu_gameid) {
+          cfg.umu_exe = own;
+          cfg.umu_wineprefix = "";
+          cfg.umu_gameid = "";
+          changed = true;
+        }
+      }
+      if (this.isBaseline(cfg, game)) {
+        delete this.store.game_memory[key];
+        changed = true;
+      }
+    }
+    if (changed) this.persistStore();
+  }
+
+  /** Whether the selected game has saved tuning to forget. */
+  get hasGameMemory(): boolean {
+    return this.selectedAppId != null && String(this.selectedAppId) in this.store.game_memory;
+  }
+
+  /** Drop the selected game's saved tuning and reset it to a fresh open.
+   *  Undoable like any other change. */
+  forgetGameTuning() {
+    if (this.selectedAppId == null) return;
+    delete this.store.game_memory[String(this.selectedAppId)];
+    this.resetLaunchFields(this.selectedGame);
+    this.activePresetName = null;
+    this.persistStore();
+    this.mark(`forget tuning for ${this.selectedGameName ?? "this game"}`);
+  }
+
   selectGame(game: GameDto | null) {
     // Persist the outgoing game's config.
     if (this.selectedAppId != null) {
-      this.store.game_memory[String(this.selectedAppId)] = this.toConfig();
+      this.rememberCurrent();
       this.persistStore();
     }
 
@@ -973,8 +1052,6 @@ class AppStore {
     this.selectedGameName = game.name;
     this.activePresetName = null;
 
-    if (game.executable) this.umuExe = game.executable;
-
     // Honour the "Auto-check ProtonDB" setting, which until now nothing read —
     // the toggle promised exactly this and did nothing. Steam apps only: a
     // shortcut's or Heroic game's appid is a synthetic hash protondb.com knows
@@ -988,10 +1065,7 @@ class AppStore {
     if (remembered) {
       this.loadConfig(remembered);
     } else {
-      this.resetOptions();
-      // Heroic launches its games itself via umu/Proton; Steam mode's `%command%`
-      // is meaningless for them, so default a freshly-opened Heroic game to umu.
-      if (game.source === "heroic") this.umu = true;
+      this.resetLaunchFields(game);
       // No saved tuning for this game: offer the default profile if the user has
       // authored one. Prompt-each-time rather than auto-apply, so it never
       // silently overwrites what a first-time game should start clean with.
