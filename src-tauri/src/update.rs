@@ -71,6 +71,15 @@ pub fn download_and_swap(info: &UpdateInfo) -> Result<(), String> {
     if info.download_url.is_empty() {
         return Err("release has no protongen binary asset".to_string());
     }
+    // The checksum is the only integrity check there is (no code signing), so a
+    // release without one is refused rather than installed on trust.
+    if info.sha256_url.is_empty() {
+        return Err(format!(
+            "release v{} has no {SHA_ASSET} checksum, so it can't be verified — \
+             install it manually from {} or re-run install.sh",
+            info.latest, info.html_url
+        ));
+    }
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let dir = current_exe
         .parent()
@@ -80,18 +89,7 @@ pub fn download_and_swap(info: &UpdateInfo) -> Result<(), String> {
     if bin.is_empty() {
         return Err("downloaded binary was empty".to_string());
     }
-
-    // Verify against the published checksum when present ("<hex>  protongen").
-    if !info.sha256_url.is_empty() {
-        let sums = fetch_text(&info.sha256_url, USER_AGENT)?;
-        let expected = sums.split_whitespace().next().unwrap_or_default().to_lowercase();
-        if !expected.is_empty() {
-            let got = sha256_hex(&bin);
-            if got != expected {
-                return Err(format!("checksum mismatch (expected {expected}, got {got})"));
-            }
-        }
-    }
+    verify_checksum(&bin, &fetch_text(&info.sha256_url, USER_AGENT)?)?;
 
     // Write into the install dir first so the final rename is atomic (same fs).
     let tmp = dir.join(".protongen.update.tmp");
@@ -144,4 +142,64 @@ fn sha256_hex(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Check `bin` against a `sha256sum`-style file (`"<hex>  protongen"`). An
+/// empty or malformed file is an error, not a pass.
+fn verify_checksum(bin: &[u8], sums: &str) -> Result<(), String> {
+    let expected = sums.split_whitespace().next().unwrap_or_default().to_lowercase();
+    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!("{SHA_ASSET} is malformed — refusing to install an unverified binary"));
+    }
+    let got = sha256_hex(bin);
+    if got != expected {
+        return Err(format!("checksum mismatch (expected {expected}, got {got})"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // sha256("hello")
+    const HELLO: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+
+    fn info(sha256_url: &str) -> UpdateInfo {
+        UpdateInfo {
+            available: true,
+            current: "0.1.0".into(),
+            latest: "9.9.9".into(),
+            notes: String::new(),
+            html_url: "https://example.invalid/release".into(),
+            download_url: "https://example.invalid/protongen".into(),
+            sha256_url: sha256_url.into(),
+        }
+    }
+
+    #[test]
+    fn a_release_without_a_checksum_is_refused_before_downloading() {
+        let err = download_and_swap(&info("")).unwrap_err();
+        assert!(err.contains("checksum"), "{err}");
+        assert!(err.contains("https://example.invalid/release"), "names the manual path: {err}");
+    }
+
+    #[test]
+    fn verify_checksum_accepts_a_match_in_either_case() {
+        assert!(verify_checksum(b"hello", &format!("{HELLO}  protongen\n")).is_ok());
+        assert!(verify_checksum(b"hello", &HELLO.to_uppercase()).is_ok());
+    }
+
+    #[test]
+    fn verify_checksum_rejects_a_mismatch() {
+        let err = verify_checksum(b"tampered", HELLO).unwrap_err();
+        assert!(err.contains("mismatch"), "{err}");
+    }
+
+    #[test]
+    fn verify_checksum_rejects_empty_or_malformed_files() {
+        for bad in ["", "   \n", "not-a-hash  protongen", &HELLO[..63], &format!("{}zz", &HELLO[..62])] {
+            assert!(verify_checksum(b"hello", bad).is_err(), "accepted {bad:?}");
+        }
+    }
 }
