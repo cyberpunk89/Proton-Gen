@@ -26,14 +26,33 @@
   import ResizeGrips from "$lib/components/ResizeGrips.svelte";
   import { CircleNotch, WarningCircle, ArrowsClockwise, Copy } from "phosphor-svelte";
   import { copyText } from "$lib/util";
+  import { inTauri } from "$lib/ipc";
 
   onMount(() => {
     app.init();
+    // WebKitGTK doesn't always fire DOM focus when the OS window is re-focused
+    // (alt-tab back from Steam), so also listen to Tauri's own window event.
+    // All three sources funnel into one throttled re-read.
+    let unlisten: (() => void) | undefined;
+    if (inTauri) {
+      void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+        getCurrentWindow()
+          .onFocusChanged(({ payload: focused }) =>
+            focused ? app.onWindowFocus() : app.onWindowBlur(),
+          )
+          .then((fn) => (unlisten = fn)),
+      );
+    }
+    return () => unlisten?.();
   });
-
 </script>
 
-<svelte:window onkeydown={keys.handle} />
+<svelte:window
+  onkeydown={keys.handle}
+  onfocus={() => app.onWindowFocus()}
+  onblur={() => app.onWindowBlur()}
+/>
+<svelte:document onvisibilitychange={() => !document.hidden && app.onWindowFocus()} />
 
 {#snippet loadErrorBanner()}
   {#if app.loadError}

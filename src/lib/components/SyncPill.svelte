@@ -4,7 +4,13 @@
   import Popover from "./Popover.svelte";
   import OpenInSteam from "./OpenInSteam.svelte";
   import { mergeStyle } from "$lib/util";
-  import { CheckCircle, WarningCircle, CircleDashed, DownloadSimple } from "phosphor-svelte";
+  import {
+    CheckCircle,
+    WarningCircle,
+    CircleDashed,
+    DownloadSimple,
+    ArrowsClockwise,
+  } from "phosphor-svelte";
 
   /**
    * "Is what I built actually live in Steam?" — answered where the user is
@@ -152,7 +158,23 @@
             Load current
           </button>
         {/if}
+        {#if state !== "in-sync"}
+          <button
+            type="button"
+            onclick={() => void app.refreshSteamConfig(true)}
+            title="Re-read Steam's launch options now"
+            class="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-muted transition hover:text-text active:scale-95"
+          >
+            <ArrowsClockwise size={13} /> Re-check
+          </button>
+        {/if}
       </div>
+      {#if state !== "in-sync"}
+        <p class="text-[11px] text-muted">
+          Pasted it already? This updates when you switch back to protongen. If it
+          hasn't, Steam may not have saved yet — try Re-check in a moment.
+        </p>
+      {/if}
     </div>
   </Popover>
 {/if}

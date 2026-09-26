@@ -78,6 +78,7 @@ export const copyCommandAction: AppCommand = {
   keywords: ["clipboard"],
   async run() {
     await copyText(app.command);
+    app.expectPaste();
     toast.success("Command copied");
   },
 };
@@ -194,7 +195,10 @@ export const openInSteamAction: AppCommand = {
     if (id == null) return;
     const { openSteamUrl, steamPropertiesUrl } = await import("./util");
     const { inTauri } = await import("./ipc");
-    if (await openSteamUrl(steamPropertiesUrl(id))) return;
+    if (await openSteamUrl(steamPropertiesUrl(id))) {
+      app.expectPaste();
+      return;
+    }
     toast.info(
       inTauri
         ? "Couldn't hand that link to Steam. Is Steam installed?"

@@ -33,13 +33,12 @@ impl AppUserCfg {
     ///
     /// `launch_options` cannot be merged that way — two users can legitimately
     /// set different strings for the same app and there is no "greater" one. The
-    /// winner here is simply the last non-empty value seen, i.e. **filesystem
-    /// iteration order over `userdata/`, which is arbitrary and may differ
-    /// between runs**. That was already true before this function existed, but
-    /// it matters more now: the value feeds the in-sync / drifted verdict (#29),
-    /// so on a multi-user install that verdict is only as stable as the readdir
-    /// order. Picking the *right* user needs the logged-in SteamID, which this
-    /// read-only scan deliberately does not resolve.
+    /// winner is the last non-empty value seen, with `userdata/` read in sorted
+    /// order (see [`merge_userdata`]) so it is at least the *same* user every
+    /// time: the value feeds the in-sync / drifted verdict (#29), which is
+    /// re-read whenever the window regains focus, and readdir order would make
+    /// it flicker. Picking the *right* user needs the logged-in SteamID, which
+    /// this read-only scan deliberately does not resolve.
     fn merge(&mut self, other: AppUserCfg) {
         if !other.launch_options.is_empty() {
             self.launch_options = other.launch_options;
@@ -105,14 +104,19 @@ fn parse_localconfig(text: &str) -> HashMap<u32, AppUserCfg> {
 /// Per-app user settings merged across every Steam user on this install.
 /// See [`AppUserCfg::merge`] for how conflicting values are resolved.
 pub fn current_app_cfgs(dir: &SteamDir) -> HashMap<u32, AppUserCfg> {
+    merge_userdata(&dir.path().join("userdata"))
+}
+
+/// Every `userdata/<user>/config/localconfig.vdf`, merged in sorted user order.
+fn merge_userdata(userdata: &std::path::Path) -> HashMap<u32, AppUserCfg> {
     let mut out: HashMap<u32, AppUserCfg> = HashMap::new();
-    let userdata = dir.path().join("userdata");
-    let Ok(entries) = std::fs::read_dir(&userdata) else {
+    let Ok(entries) = std::fs::read_dir(userdata) else {
         return out;
     };
-    for entry in entries.flatten() {
-        let cfg = entry.path().join("config/localconfig.vdf");
-        if let Ok(text) = std::fs::read_to_string(&cfg) {
+    let mut users: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+    users.sort();
+    for user in users {
+        if let Ok(text) = std::fs::read_to_string(user.join("config/localconfig.vdf")) {
             for (id, app) in parse_localconfig(&text) {
                 out.entry(id).or_default().merge(app);
             }
@@ -180,6 +184,28 @@ mod tests {
     }
 }
 "#;
+
+    #[test]
+    fn conflicting_users_resolve_to_the_same_winner_every_time() {
+        let root = std::env::temp_dir().join(format!("protongen-userdata-{}", std::process::id()));
+        let one_app = |opts: &str| {
+            format!(
+                r#""UserLocalConfigStore" {{ "Software" {{ "Valve" {{ "Steam" {{ "apps" {{
+                    "10" {{ "LaunchOptions" "{opts}" }} }} }} }} }} }}"#
+            )
+        };
+        // Created in reverse so readdir order is unlikely to match sorted order.
+        for (user, opts) in [("222", "B=1 %command%"), ("111", "A=1 %command%")] {
+            let dir = root.join(user).join("config");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("localconfig.vdf"), one_app(opts)).unwrap();
+        }
+        for _ in 0..3 {
+            let merged = merge_userdata(&root);
+            assert_eq!(merged[&10].launch_options, "B=1 %command%", "last user in sorted order wins");
+        }
+        std::fs::remove_dir_all(&root).ok();
+    }
 
     #[test]
     fn extracts_launch_options() {

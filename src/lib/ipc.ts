@@ -17,6 +17,7 @@ import type {
   TroubleshootResult,
   RecipeChange,
   Store,
+  SteamUserConfig,
   Tier,
   Token,
   UpdateInfo,
@@ -33,6 +34,7 @@ import {
   mockLaunchStatuses,
   mockNotices,
   mockPreviewRecipe,
+  mockSteam,
 } from "./mock";
 
 // True when running inside the Tauri webview (vs. a plain browser for design/dev).
@@ -84,6 +86,16 @@ export const ipc = {
     inTauri
       ? invoke<LaunchDiff>("launch_diff", { built, current })
       : Promise.resolve(mockLaunchDiff(built, current)),
+
+  // Re-read only Steam's launch options + compat tools (no full scan), for the
+  // window-focus refresh after the user pastes into Steam. `null` = no Steam.
+  steamUserConfig: () =>
+    inTauri
+      ? invoke<SteamUserConfig | null>("steam_user_config")
+      : Promise.resolve<SteamUserConfig>({
+          launch_options: { ...mockSteam.launch_options },
+          compat_tools: { ...mockSteam.compat_tools },
+        }),
 
   // Batch form of launchDiff for the library grid: one status per remembered
   // game. `launchOptions` is passed in rather than read from AppState, whose

@@ -21,7 +21,10 @@
     const id = app.steamAppId;
     if (id == null) return;
 
-    if (await openSteamUrl(steamPropertiesUrl(id))) return;
+    if (await openSteamUrl(steamPropertiesUrl(id))) {
+      app.expectPaste();
+      return;
+    }
 
     // Two distinct failures worth telling apart: the dev browser has no handler
     // by design, whereas a failure in the real shell means something is wrong.

@@ -575,6 +575,17 @@ export const mockBootstrap: Bootstrap = {
   config_warnings: [],
 };
 
+/**
+ * What "Steam" currently holds, for `steamUserConfig`'s focus refresh. A
+ * separate mutable object rather than `mockBootstrap.launch_options`, which the
+ * store wraps in a proxy at load — mutate this (e.g. from the devtools console)
+ * to simulate pasting into Steam, then focus the window.
+ */
+export const mockSteam = {
+  launch_options: { ...mockBootstrap.launch_options } as Record<string, string>,
+  compat_tools: { ...mockBootstrap.compat_tools } as Record<string, string>,
+};
+
 // Static stand-in for lint::warnings. Three real rule ids across three
 // severities, two with a fix and one without, so the notices UI can be iterated
 // under `pnpm dev` — the browser mock has no rule engine to derive them from.

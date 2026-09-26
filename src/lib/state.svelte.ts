@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { ipc } from "./ipc";
 import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
@@ -120,6 +121,17 @@ class AppStore {
   updating = $state(false);
   /** True while a library re-scan (rescan IPC) is in flight. */
   refreshing = $state(false);
+
+  // ---- focus refresh of Steam's launch options (see refreshSteamConfig) ----
+  /** Until when (epoch ms) the user counts as "about to paste into Steam":
+   *  set by Copy / Open in Steam, so focus also schedules follow-up re-reads. */
+  private awaitingPasteUntil = 0;
+  private steamReadInFlight = false;
+  private lastSteamRead = 0;
+  private followUps: ReturnType<typeof setTimeout>[] = [];
+  /** A re-read during the paste window changed the options; announce the next
+   *  diff if it lands in sync. */
+  private announceApplied = false;
   store = $state<Store>(EMPTY_STORE);
 
   // ---- builder selection ----
@@ -296,10 +308,6 @@ class AppStore {
     $effect.root(() => {
       $effect(() => {
         const cfg = this.toConfig();
-        // Read so that a rescan — which rewrites launchOptions and games — also
-        // re-runs the sync diff. Otherwise the pill would keep asserting a
-        // verdict from before the rescan.
-        void this.currentLaunchOptions;
         // Every mutation path funnels through here, so history cannot miss one.
         // The extra reads (appId/gameName/preset) are what make a game switch
         // undoable — toConfig() alone wouldn't see it.
@@ -311,6 +319,13 @@ class AppStore {
         });
         this.scheduleRecompute(cfg);
         this.scheduleSessionPersist();
+      });
+      // Steam's side changing (a rescan, or the focus refresh) only needs the
+      // sync diff re-run. Reading it in the effect above also re-ran the session
+      // persist, which wrote game_memory and flashed "Saved" on every refocus.
+      $effect(() => {
+        void this.currentLaunchOptions;
+        untrack(() => this.scheduleRecompute(this.toConfig()));
       });
     });
   }
@@ -805,7 +820,16 @@ class AppStore {
       if (built !== null && current !== null) {
         try {
           const diff = await ipc.launchDiff(built, current);
-          if (seq === this.recomputeSeq) this.launchDiff = diff;
+          if (seq === this.recomputeSeq) {
+            this.launchDiff = diff;
+            if (this.announceApplied) {
+              this.announceApplied = false;
+              if (diff.status === "in-sync") {
+                this.awaitingPasteUntil = 0;
+                toast.success("Applied in Steam");
+              }
+            }
+          }
         } catch (e) {
           console.error("launchDiff failed", e);
           // Better to show no pill than a stale verdict about whether the user's
@@ -910,6 +934,65 @@ class AppStore {
     const id = this.steamAppId;
     if (id == null) return null;
     return this.launchOptions[String(id)] ?? "";
+  }
+
+  /** The user just copied the command or opened Steam's properties: for the
+   *  next 10 minutes, coming back to the window also re-checks a little later. */
+  expectPaste() {
+    this.awaitingPasteUntil = Date.now() + 10 * 60_000;
+  }
+
+  /**
+   * Re-read Steam's launch options and compat tools so the sync pill and the
+   * library badges catch up after the user pastes into Steam — no manual
+   * refresh. Throttled (`force` skips it, for "Re-check" and the follow-ups).
+   *
+   * Stale data is harmless by construction: every read comes straight from
+   * disk, so the verdict is never older than the last read and can never claim
+   * "Applied" early. If Steam flushes localconfig.vdf late, the pill just keeps
+   * its previous verdict until a later read.
+   */
+  async refreshSteamConfig(force = false) {
+    if (!this.ready || this.refreshing || this.steamReadInFlight || this.steamRoot == null) return;
+    const now = Date.now();
+    if (!force && now - this.lastSteamRead < 2000) return;
+    this.lastSteamRead = now;
+    this.steamReadInFlight = true;
+    const wasInSync = this.syncState === "in-sync";
+    try {
+      const fresh = await ipc.steamUserConfig();
+      if (!fresh) return;
+      const optionsChanged = !sameEntries(this.launchOptions, fresh.launch_options);
+      if (optionsChanged) this.launchOptions = fresh.launch_options;
+      if (!sameEntries(this.compatTools, fresh.compat_tools)) this.compatTools = fresh.compat_tools;
+      if (optionsChanged) {
+        if (!wasInSync && Date.now() < this.awaitingPasteUntil) this.announceApplied = true;
+        this.refreshLaunchStatuses();
+      }
+    } catch (e) {
+      console.error("steamUserConfig failed", e);
+    } finally {
+      this.steamReadInFlight = false;
+    }
+  }
+
+  /** The window regained focus. While a paste is expected but not yet seen,
+   *  also re-check after 3 s and 10 s: Steam can write the file a moment after
+   *  its Properties dialog closes. */
+  onWindowFocus() {
+    void this.refreshSteamConfig();
+    this.onWindowBlur();
+    if (Date.now() < this.awaitingPasteUntil && this.syncState !== "in-sync") {
+      this.followUps = [3_000, 10_000].map((ms) =>
+        setTimeout(() => void this.refreshSteamConfig(true), ms),
+      );
+    }
+  }
+
+  /** Back to Steam (or elsewhere): stop the follow-up re-checks. */
+  onWindowBlur() {
+    for (const t of this.followUps) clearTimeout(t);
+    this.followUps = [];
   }
 
   /** What the pill should say, or "hidden" when it must not appear. */
@@ -2004,6 +2087,12 @@ class AppStore {
         }
       });
   }
+}
+
+/** Same keys, same values — so an unchanged re-read doesn't churn reactivity. */
+function sameEntries(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 }
 
 export const app = new AppStore();

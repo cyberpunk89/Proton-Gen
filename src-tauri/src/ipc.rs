@@ -582,6 +582,39 @@ pub fn explain_command(state: State<'_, AppState>, command: String) -> Vec<Token
     explain::explain(&command, &state.catalog.plain_wrappers())
 }
 
+/// Steam's per-game launch options and compat-tool mapping, freshly read.
+#[derive(Clone, Serialize)]
+pub struct SteamUserConfig {
+    pub launch_options: HashMap<String, String>,
+    pub compat_tools: HashMap<String, String>,
+}
+
+/// Re-read only what pasting into Steam changes — launch options and the
+/// compat-tool mapping — without a full library scan, so the window regaining
+/// focus can refresh the sync verdict cheaply. `None` without a Steam install.
+/// Also updates the cached discovery, so a later `bootstrap` (Retry) agrees.
+#[tauri::command]
+pub async fn steam_user_config(
+    state: State<'_, AppState>,
+) -> Result<Option<SteamUserConfig>, String> {
+    let paths = state.store.lock().unwrap().paths.clone();
+    let fresh = tauri::async_runtime::spawn_blocking(move || {
+        let dir = steam::locate_native(&paths.steam_roots, &mut Vec::new()).ok()?;
+        let cfgs = steamcfg::current_app_cfgs(&dir);
+        Some(SteamUserConfig {
+            launch_options: stringify_keys(steamcfg::launch_options(&cfgs)),
+            compat_tools: stringify_keys(steamcfg::current_compat_tools(&dir)),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if let (Some(cfg), Some(d)) = (&fresh, state.discovery.lock().unwrap().as_mut()) {
+        d.launch_options = cfg.launch_options.clone();
+        d.compat_tools = cfg.compat_tools.clone();
+    }
+    Ok(fresh)
+}
+
 /// Compare a built launch command against the one Steam currently has set.
 /// Stateless and pure — see `diff.rs` for what is deliberately normalised away.
 ///
@@ -598,10 +631,9 @@ pub fn launch_diff(state: State<'_, AppState>, built: String, current: String) -
 /// the library grid can badge them all at a glance.
 ///
 /// `launch_options` comes from the frontend rather than `AppState`: the
-/// discovery snapshot there is deliberately not refreshed by `rescan` (see
-/// above), so reading it would silently go stale after a library refresh. The
-/// frontend already holds the fresh copy as `app.launchOptions`, and passing it
-/// in keeps `diff::statuses` a pure function of its arguments.
+/// frontend holds the freshest copy as `app.launchOptions` (a focus refresh can
+/// update it between scans), and passing it in keeps `diff::statuses` a pure
+/// function of its arguments.
 #[tauri::command]
 pub async fn launch_statuses(
     state: State<'_, AppState>,

@@ -476,6 +476,12 @@ export interface ConfigWarning {
   error: string;
 }
 
+/** Mirrors ipc::SteamUserConfig — the focus-refresh re-read of Steam's config. */
+export interface SteamUserConfig {
+  launch_options: Record<string, string>;
+  compat_tools: Record<string, string>;
+}
+
 export interface Bootstrap {
   steam_root: string | null;
   load_error: string | null;

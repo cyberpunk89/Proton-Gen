@@ -69,6 +69,7 @@ pub fn run() {
             ipc::parse_command,
             ipc::explain_command,
             ipc::launch_diff,
+            ipc::steam_user_config,
             ipc::launch_statuses,
             ipc::apply_recipe,
             ipc::preview_recipe,

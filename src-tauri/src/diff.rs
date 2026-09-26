@@ -186,8 +186,7 @@ pub fn compare(built: &str, current: &str, known: &[PlainWrapper]) -> LaunchDiff
 
 /// One status per remembered game, for the library grid — the batch form of
 /// [`compare`]. Pure: `launch_options` is passed in rather than read off
-/// `AppState`, whose discovery snapshot is deliberately never refreshed by
-/// `rescan` and would go stale after a library refresh.
+/// `AppState`, so the frontend's freshest copy is what gets compared.
 ///
 /// `proton_path` is `None` throughout: it only feeds `PROTONPATH` in umu mode,
 /// and umu configs short-circuit to [`DiffStatus::Umu`] before anything is
