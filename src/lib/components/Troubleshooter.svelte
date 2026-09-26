@@ -35,9 +35,8 @@
     }
   }
 
-  async function applyRecipe(index: number, name: string) {
-    await app.applyRecipe(index);
-    toast.success(`Applied: ${name}`);
+  function applyRecipe(index: number) {
+    void app.applyRecipe(index);
   }
 
   function applyChange(change: { key: string; value: string }) {
@@ -147,7 +146,7 @@
                   <div class="flex items-center gap-1.5">
                     <RecipePreview index={idx} {accent} />
                     <button
-                      onclick={() => applyRecipe(idx, r.name)}
+                      onclick={() => applyRecipe(idx)}
                       class="ml-auto rounded-lg px-2.5 py-1 text-xs font-medium transition active:scale-95"
                       style="background: color-mix(in srgb, {accent} 20%, transparent); color: {accent}"
                     >

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
-  import { toast } from "$lib/toast.svelte";
   import { irrelevance, matchesTier } from "$lib/util";
   import {
     Sparkle,
@@ -100,9 +99,8 @@
     { id: "fix", label: "Troubleshooter" },
   ];
 
-  async function apply(i: number, name: string) {
-    await app.applyRecipe(i);
-    toast.success(`Applied: ${name}`);
+  function apply(i: number) {
+    void app.applyRecipe(i);
   }
 </script>
 
@@ -253,7 +251,7 @@
               {/if}
               <RecipePreview index={i} {accent} />
               <button
-                onclick={() => apply(i, r.name)}
+                onclick={() => apply(i)}
                 class="ml-auto rounded-lg px-2.5 py-1 text-xs font-medium transition active:scale-95"
                 style="background: color-mix(in srgb, {accent} 20%, transparent); color: {accent}"
               >

@@ -3,7 +3,6 @@ import { GameController, Faders, Sparkle, FloppyDisk, Package } from "phosphor-s
 import { computeCommandScore } from "bits-ui";
 
 import { app } from "./state.svelte";
-import { toast } from "./toast.svelte";
 import { irrelevance } from "./util";
 import { subsequence } from "./fuzzy";
 import { APP_COMMANDS } from "./commands";
@@ -156,7 +155,6 @@ export function buildItems(): PaletteItem[] {
       dimReason: irrelevance(app.hwCaps, r.gpu === "any" ? null : r.gpu, r.needs),
       async run() {
         await app.applyRecipe(i);
-        toast.success(`Applied: ${r.name}`);
       },
     });
   });

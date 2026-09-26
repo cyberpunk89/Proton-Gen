@@ -25,6 +25,8 @@
   } from "phosphor-svelte";
 
   let importText = $state("");
+  let importError = $state<string | null>(null);
+  let importing = $state(false);
   let saveName = $state("");
 
   // Custom window controls (native decorations are off). No-op in the browser
@@ -48,8 +50,19 @@
     else if (result === "failed") toast.error("Couldn't refresh the library");
   }
   async function doImport() {
-    await app.importCommand(importText);
-    toast.success("Imported");
+    if (!importText.trim() || importing) return;
+    importing = true;
+    importError = null;
+    try {
+      await app.importCommand(importText);
+    } catch (e) {
+      // Kept open with the text intact, so a typo can be fixed in place.
+      importError = e instanceof Error ? e.message : String(e);
+      return;
+    } finally {
+      importing = false;
+    }
+    toast.success("Imported", { action: { label: "Undo", onClick: () => app.undo() } });
     app.showImport = false;
     importText = "";
   }
@@ -233,18 +246,25 @@
 >
   <textarea
     bind:value={importText}
+    oninput={() => (importError = null)}
     aria-label="Command to import"
+    aria-invalid={importError != null}
+    aria-describedby={importError ? "import-error" : undefined}
     rows="3"
     placeholder="PROTON_USE_NTSYNC=1 mangohud %command%"
     class="w-full rounded-lg border border-border bg-surface-2 p-2.5 font-mono text-xs text-text outline-none focus:border-accent"
   ></textarea>
+  {#if importError}
+    <p id="import-error" role="alert" class="mt-2 text-xs text-red">{importError}</p>
+  {/if}
   <div class="mt-4 flex justify-end gap-2">
     <button onclick={() => (app.showImport = false)} class="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-text"
       >Cancel</button
     >
     <button
       onclick={doImport}
-      class="rounded-lg px-3 py-1.5 text-sm font-medium"
+      disabled={!importText.trim() || importing}
+      class="rounded-lg px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
       style="background: var(--accent); color: var(--on-accent)">Parse &amp; fill</button
     >
   </div>

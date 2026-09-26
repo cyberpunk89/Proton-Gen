@@ -168,9 +168,8 @@
     return out.sort((a, b) => b.score - a.score);
   });
 
-  function applyRecipe(index: number, name: string) {
-    app.applyRecipe(index);
-    toast.success(`Applied “${name}”`);
+  function applyRecipe(index: number) {
+    void app.applyRecipe(index);
   }
 
   let visible = $derived(
@@ -427,7 +426,7 @@
       <span class="mt-0.5 block truncate text-xs text-muted">{r.description}</span>
     </span>
     <button
-      onclick={() => applyRecipe(index, r.name)}
+      onclick={() => applyRecipe(index)}
       class="shrink-0 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-subtext transition hover:border-accent/50 hover:text-text"
     >
       Apply

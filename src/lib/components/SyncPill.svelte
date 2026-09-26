@@ -46,8 +46,15 @@
   async function loadCurrent() {
     const current = app.currentLaunchOptions;
     if (!current) return;
-    await app.importCommand(current);
-    toast.success("Loaded current launch options");
+    try {
+      await app.importCommand(current);
+    } catch (e) {
+      toast.error(`Couldn't load Steam's launch options: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
+    toast.success("Loaded current launch options", {
+      action: { label: "Undo", onClick: () => app.undo() },
+    });
   }
 </script>
 

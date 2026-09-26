@@ -1219,8 +1219,21 @@ class AppStore {
 
   // ------------------------------- import -----------------------------------
 
+  /** Replace the current config with a parsed launch command. Throws — rather
+   *  than wiping the config — when the text isn't recognisably a command. */
   async importCommand(text: string) {
     const cfg = await ipc.parseCommand(text);
+    const empty =
+      !cfg.env.length &&
+      !cfg.wrappers.length &&
+      !cfg.extra_env.trim() &&
+      !cfg.game_args.trim() &&
+      !cfg.umu_exe.trim();
+    if (empty && !/%command%|umu-run/.test(text)) {
+      throw new Error(
+        "Nothing recognisable — paste a Steam launch-options string or a umu-run command.",
+      );
+    }
     this.loadConfig(cfg);
     this.mark("import command");
   }
@@ -1284,9 +1297,23 @@ class AppStore {
 
   // ------------------------------- recipes ----------------------------------
 
-  async applyRecipe(index: number) {
+  /** Apply a recipe as one undoable step. Owns its feedback (success toast with
+   *  Undo, or an error toast), so every call site reports the same way. */
+  async applyRecipe(index: number): Promise<boolean> {
     const recipe = this.recipes[index];
-    const cfg = await ipc.applyRecipe(index, this.toConfig());
+    const name = recipe?.name ?? "recipe";
+    const appId = this.selectedAppId;
+    let cfg: Config;
+    try {
+      cfg = await ipc.applyRecipe(index, this.toConfig());
+    } catch (e) {
+      console.error("applyRecipe failed", e);
+      toast.error(`Couldn't apply “${name}”: ${e}`);
+      return false;
+    }
+    // The result was merged onto the config of the game that was open when the
+    // request went out; landing it on a game opened since would overwrite that one.
+    if (this.selectedAppId !== appId) return false;
     this.loadConfig(cfg);
     // loadConfig → resetOptions clears the map, so attribute after, not before.
     if (recipe) {
@@ -1296,7 +1323,9 @@ class AppStore {
     }
     // The most destructive action in the app: recipes.rs is additive-only, so
     // stacking them accumulates with no way back short of a reset.
-    this.mark(`apply "${this.recipes[index]?.name ?? "recipe"}"`);
+    this.mark(`apply "${name}"`);
+    toast.success(`Applied: ${name}`, { action: { label: "Undo", onClick: () => this.undo() } });
+    return true;
   }
 
   // ------------------------------- theme/store ------------------------------
