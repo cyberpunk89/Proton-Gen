@@ -4,6 +4,7 @@
   import GameTile from "./GameTile.svelte";
   import type { GameDto } from "$lib/types";
   import { groupGames } from "$lib/util";
+  import { fuzzy } from "$lib/fuzzy";
   import {
     GameController,
     MagnifyingGlass,
@@ -40,8 +41,8 @@
 
   /**
    * Lowercased names, keyed by appid — built once per library change rather than
-   * per comparison. The filter below and the comparator underneath it both need
-   * them, and the comparator runs O(n log n) times on every keystroke.
+   * per comparison. The comparator below runs O(n log n) times on every
+   * keystroke.
    */
   let lowerNames = $derived.by(() => {
     const m = new Map<number, string>();
@@ -50,11 +51,27 @@
   });
   const lower = (g: GameDto) => lowerNames.get(g.app_id) ?? g.name.toLowerCase();
 
+  /**
+   * Fuzzy relevance per matching game, or null with no query — "eldn" finds
+   * ELDEN RING. A number also finds a game by the start of its appid, ranked
+   * below every name match.
+   */
+  let scores = $derived.by(() => {
+    const q = query.trim();
+    if (!q) return null;
+    const digits = /^\d+$/.test(q);
+    const m = new Map<number, number>();
+    for (const g of app.games) {
+      const hit = fuzzy(g.name, q);
+      if (hit) m.set(g.app_id, hit.score);
+      else if (digits && String(g.app_id).startsWith(q)) m.set(g.app_id, Number.EPSILON);
+    }
+    return m;
+  });
+
   let matching = $derived.by(() => {
-    // Hoisted: this was re-normalized once per game.
-    const needle = query.trim().toLowerCase();
     return app.games.filter((g) => {
-      if (needle && !lower(g).includes(needle)) return false;
+      if (scores && !scores.has(g.app_id)) return false;
       if (installedOnly && !g.installed) return false;
       if (tunedOnly && !isTuned(g.app_id)) return false;
       if (favoritesOnly && !app.isFavorite(g.app_id)) return false;
@@ -71,15 +88,20 @@
    * Re-sorted here rather than relying on the order `games.rs` happens to emit,
    * so DTO ordering never becomes load-bearing.
    *
-   * Favourites are a primary sort key, not a separate mode — pinning is expected
-   * to hold under whatever sort is active. Every comparator tiebreaks on the
-   * lowercased name so the grid can't jitter between renders.
+   * While searching, relevance comes first: the best match for what was typed
+   * leads. Otherwise favourites are a primary sort key, not a separate mode —
+   * pinning is expected to hold under whatever sort is active. Every comparator
+   * tiebreaks on the lowercased name so the grid can't jitter between renders.
    */
   let games = $derived.by(() => {
     const sort = app.librarySort;
     const byName = (a: GameDto, b: GameDto) => lower(a).localeCompare(lower(b));
 
     return [...matching].sort((a, b) => {
+      if (scores) {
+        const d = (scores.get(b.app_id) ?? 0) - (scores.get(a.app_id) ?? 0);
+        if (d !== 0) return d;
+      }
       const favA = app.isFavorite(a.app_id) ? 0 : 1;
       const favB = app.isFavorite(b.app_id) ? 0 : 1;
       if (favA !== favB) return favA - favB;

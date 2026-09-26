@@ -3,6 +3,7 @@
   import { toast } from "$lib/toast.svelte";
   import Dialog from "./Dialog.svelte";
   import RecipePreview from "./RecipePreview.svelte";
+  import Markdown from "./Markdown.svelte";
   import { Robot, Lightning, Wrench, ArrowsClockwise } from "phosphor-svelte";
 
   /**
@@ -116,7 +117,7 @@
           <Robot size={14} weight="fill" /> Diagnosis
           <span class="font-normal text-muted">· {app.store.llm_model}</span>
         </p>
-        <p class="whitespace-pre-wrap text-sm leading-relaxed text-subtext">{app.tsResult.text}</p>
+        <Markdown source={app.tsResult.text} />
       </div>
 
       <!-- Recommended Fix recipes -->

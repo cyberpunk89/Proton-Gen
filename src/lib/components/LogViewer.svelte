@@ -3,6 +3,7 @@
   import { ipc } from "$lib/ipc";
   import { toast } from "$lib/toast.svelte";
   import Dialog from "./Dialog.svelte";
+  import Markdown from "./Markdown.svelte";
   import type { ProtonLog } from "$lib/types";
   import {
     ArrowsClockwise,
@@ -180,9 +181,7 @@
               <ArrowsClockwise size={12} /> Retry
             </button>
           {:else if app.aiResult}
-            <p class="whitespace-pre-wrap text-sm leading-relaxed text-subtext">
-              {app.aiResult.text}
-            </p>
+            <Markdown source={app.aiResult.text} />
             {#if app.aiResult.changes.length > 0}
               <div class="mt-2.5 flex flex-wrap gap-1.5">
                 {#each app.aiResult.changes as c (c.key + c.value)}

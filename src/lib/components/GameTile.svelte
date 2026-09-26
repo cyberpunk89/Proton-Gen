@@ -2,7 +2,7 @@
   import { app } from "$lib/state.svelte";
   import { inView, clickOutside, autofocus } from "$lib/actions";
   import { keys } from "$lib/keys.svelte";
-  import { tierColor } from "$lib/util";
+  import { tierColor, formatPlaytime, formatLastPlayed } from "$lib/util";
   import type { GameDto } from "$lib/types";
   import {
     GameController,
@@ -170,18 +170,26 @@
     }
   });
 
+  /** "12 h · 3 days ago". Only Steam records these, so a merged tile takes the
+   *  best of its entries rather than whatever `primary` happens to be. */
+  let playLine = $derived.by(() => {
+    const minutes = Math.max(0, ...entries.map((e) => e.playtime_minutes ?? 0));
+    const last = Math.max(0, ...entries.map((e) => e.last_played ?? 0));
+    return [formatPlaytime(minutes), formatLastPlayed(last)].filter(Boolean).join(" · ");
+  });
+
   /** Hover/accessible text for the open target — folds in the multi-source
    *  hint so "there's a choice here" isn't badge-only information. */
   let openDescription = $derived(
     multi ? `choose ${entries.map((e) => sourceLabel(e.source)).join(" or ")} to open` : "",
   );
   let titleText = $derived(
-    [game.name, status?.label, openDescription].filter(Boolean).join(" — "),
+    [game.name, playLine, status?.label, openDescription].filter(Boolean).join(" — "),
   );
   let srText = $derived(
-    `${game.name}${status ? `, ${status.label}` : ""}${favorite ? ", favourite" : ""}${
-      openDescription ? `, ${openDescription}` : ""
-    }`,
+    `${game.name}${playLine ? `, ${playLine}` : ""}${status ? `, ${status.label}` : ""}${
+      favorite ? ", favourite" : ""
+    }${openDescription ? `, ${openDescription}` : ""}`,
   );
 </script>
 
@@ -219,6 +227,9 @@
     class="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-2.5 pb-2 pt-8"
   >
     <span class="line-clamp-2 text-xs font-medium leading-snug text-white">{game.name}</span>
+    {#if playLine}
+      <span class="mt-0.5 block truncate text-[10px] leading-tight text-white/65">{playLine}</span>
+    {/if}
   </span>
 
   <!-- The open target: full-bleed, and the tile's accessible name. The sr-only
