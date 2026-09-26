@@ -12,7 +12,8 @@ use crate::params::ConfigWarning;
 pub enum GameSource {
     Steam,
     NonSteam,
-    /// A sideloaded game discovered from Heroic (see [`crate::heroic`]).
+    /// A game discovered from Heroic (see [`crate::heroic`]) — sideloaded, or
+    /// installed through one of Heroic's native stores (Epic, GOG, Amazon).
     Heroic,
 }
 
@@ -110,11 +111,14 @@ fn heroic_app_id(app_name: &str) -> u32 {
     hash | 0x8000_0000
 }
 
-/// Sideloaded Heroic games as [`Game`]s (source [`GameSource::Heroic`]).
-/// Independent of any Steam install; empty when Heroic isn't present.
+/// Heroic games as [`Game`]s (source [`GameSource::Heroic`]) — both
+/// sideloaded exes and titles installed through Heroic's native stores
+/// (Epic/GOG/Amazon). Independent of any Steam install; empty when Heroic
+/// isn't present.
 pub fn list_heroic_games() -> Vec<Game> {
     crate::heroic::list_sideloaded()
         .into_iter()
+        .chain(crate::heroic::list_installed_native())
         .map(|h| Game {
             app_id: heroic_app_id(&h.app_name),
             name: h.title,
@@ -218,8 +222,9 @@ pub fn list_games(
         }
     }
 
-    // Sideloaded Heroic games — independent of Steam, but folded in here so
-    // `--list`/`dump()` shows them and they go through the same dedup + sort.
+    // Heroic games (sideloaded + native-store installs) — independent of
+    // Steam, but folded in here so `--list`/`dump()` shows them and they go
+    // through the same dedup + sort.
     games.extend(list_heroic_games());
 
     dedup_and_sort(games)

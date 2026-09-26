@@ -1,6 +1,8 @@
-//! Heroic Games Launcher integration: read-only discovery of *sideloaded*
-//! (exe-installed) games, plus a **sanctioned write path** that injects
-//! protongen's env vars + wrappers into a game's per-game config.
+//! Heroic Games Launcher integration: read-only discovery of Heroic's games —
+//! both manually-added *sideloaded* exes and titles installed through Heroic's
+//! native stores (Epic via legendary, GOG, Amazon via nile) — plus a
+//! **sanctioned write path** that injects protongen's env vars + wrappers into
+//! a game's per-game config.
 //!
 //! Heroic does not consume a launch string the way Steam does — it reads
 //! structured per-game JSON under `GamesConfig/<app_name>.json`. So for a Heroic
@@ -33,14 +35,19 @@ fn game_config_path(app_name: &str) -> Option<PathBuf> {
 
 // ----------------------------- discovery -----------------------------
 
+/// Shared shape of every Heroic game-list file this module reads: the
+/// sideload library (`sideload_apps/library.json`, top-level key `games`) and
+/// each native store's cached library under `store_cache/`
+/// (`legendary_library.json`/`nile_library.json` use `library`,
+/// `gog_library.json` uses `games`) — otherwise identical `GameInfo` records.
 #[derive(Deserialize)]
-struct SideloadLibrary {
-    #[serde(default)]
-    games: Vec<SideloadEntry>,
+struct LibraryFile {
+    #[serde(alias = "library", default)]
+    games: Vec<LibraryEntry>,
 }
 
 #[derive(Deserialize)]
-struct SideloadEntry {
+struct LibraryEntry {
     #[serde(default)]
     runner: String,
     #[serde(default)]
@@ -48,7 +55,7 @@ struct SideloadEntry {
     #[serde(default)]
     title: String,
     #[serde(default)]
-    install: SideloadInstall,
+    install: LibraryInstall,
     #[serde(default)]
     is_installed: bool,
     /// Vertical box art Heroic shows in its own library grid — a `file://` path
@@ -63,12 +70,18 @@ struct SideloadEntry {
 }
 
 #[derive(Default, Deserialize)]
-struct SideloadInstall {
+struct LibraryInstall {
+    /// The sideload library stores an absolute path here directly; the native
+    /// stores store just the exe filename, resolved against `install_path`.
     #[serde(default)]
     executable: Option<String>,
+    #[serde(default)]
+    install_path: Option<String>,
+    #[serde(default)]
+    is_dlc: bool,
 }
 
-/// A sideloaded Heroic game — the only kind we scan (not GOG/Epic).
+/// A Heroic game — sideloaded or a native GOG/Epic/Amazon install.
 pub struct HeroicGame {
     /// Heroic's stable per-game id (base62), and the `GamesConfig` filename stem.
     pub app_name: String,
@@ -95,27 +108,80 @@ pub fn list_sideloaded() -> Vec<HeroicGame> {
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return Vec::new();
     };
-    let Ok(lib) = serde_json::from_str::<SideloadLibrary>(&raw) else {
+    // Defensive: sideload_apps should only hold `sideload` runners, but a
+    // stray gog/epic entry must never leak into the sideloaded scan. Every
+    // sideload entry the user added is shown regardless of `is_installed`
+    // (it's already a small, manually-curated list, unlike a native store's
+    // full owned-games library).
+    parse_library(&raw, "sideload", false)
+}
+
+/// Installed games from Heroic's native stores — Epic (via legendary), GOG,
+/// and Amazon (via nile) — as opposed to [`list_sideloaded`]'s manually-added
+/// exes. Heroic caches each store's *entire owned library* (installed or not)
+/// under `store_cache/<store>_library.json`, so unlike sideload entries this
+/// filters to `is_installed` (and drops DLC records): showing every
+/// not-yet-installed Epic game would flood the picker with titles that have
+/// nothing local to tune. Any absence — no Heroic, no store, an unreadable or
+/// malformed cache file — yields an empty list for that store rather than an
+/// error, matching [`list_sideloaded`]'s tolerance.
+pub fn list_installed_native() -> Vec<HeroicGame> {
+    let Some(cache_dir) = config_dir().map(|d| d.join("store_cache")) else {
+        return Vec::new();
+    };
+    const SOURCES: &[(&str, &str)] = &[
+        ("legendary_library.json", "legendary"),
+        ("gog_library.json", "gog"),
+        ("nile_library.json", "nile"),
+    ];
+    SOURCES
+        .iter()
+        .flat_map(|(file, runner)| {
+            let raw = std::fs::read_to_string(cache_dir.join(file)).unwrap_or_default();
+            parse_library(&raw, runner, true)
+        })
+        .collect()
+}
+
+/// Parse a `LibraryFile` (sideload library or a native store's cached
+/// library), keeping only entries for `runner` that aren't DLC, and — when
+/// `require_installed` — that Heroic reports as installed. Split from the
+/// callers (which own the filesystem read) so parsing is unit-testable
+/// against hand-built JSON with no XDG/filesystem plumbing involved.
+fn parse_library(raw: &str, runner: &str, require_installed: bool) -> Vec<HeroicGame> {
+    let Ok(lib) = serde_json::from_str::<LibraryFile>(raw) else {
         return Vec::new();
     };
     lib.games
         .into_iter()
-        // Defensive: sideload_apps should only hold `sideload` runners, but a
-        // stray gog/epic entry must never leak into the sideloaded scan.
-        .filter(|g| g.runner == "sideload" && !g.app_name.is_empty())
+        .filter(|g| g.runner == runner && !g.app_name.is_empty() && !g.install.is_dlc)
+        .filter(|g| !require_installed || g.is_installed)
         .map(entry_to_game)
         .collect()
 }
 
-/// `SideloadEntry` -> `HeroicGame`. Split out from [`list_sideloaded`] (which
-/// owns the filesystem read) so the field mapping can be unit-tested against a
-/// hand-built entry, with no XDG/filesystem plumbing involved.
-fn entry_to_game(g: SideloadEntry) -> HeroicGame {
-    let executable =
-        g.install.executable.map(|e| e.trim().to_string()).filter(|e| !e.is_empty());
+/// `LibraryEntry` -> `HeroicGame`. Split out from [`parse_library`] so the
+/// field mapping can be unit-tested against a hand-built entry.
+fn entry_to_game(g: LibraryEntry) -> HeroicGame {
+    let executable = resolve_executable(g.install.install_path.as_deref(), g.install.executable.as_deref());
     let art =
         g.art_cover.or(g.art_square).map(|a| a.trim().to_string()).filter(|a| !a.is_empty());
     HeroicGame { app_name: g.app_name, title: g.title, executable, installed: g.is_installed, art }
+}
+
+/// Resolve an install's target exe to an absolute-ish path. The sideload
+/// library stores the full path directly in `executable`; the native stores
+/// (legendary/gog/nile) store just the exe filename, relative to
+/// `install_path`, so those two must be joined.
+fn resolve_executable(install_path: Option<&str>, executable: Option<&str>) -> Option<String> {
+    let exe = executable.map(str::trim).filter(|e| !e.is_empty())?;
+    if exe.starts_with('/') {
+        return Some(exe.to_string());
+    }
+    match install_path.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(dir) => Some(format!("{}/{exe}", dir.trim_end_matches('/'))),
+        None => Some(exe.to_string()),
+    }
 }
 
 // ------------------------------ play stats ----------------------------------
@@ -544,40 +610,100 @@ mod tests {
                   "install": { "executable": "/games/x.exe" }, "is_installed": true }
             ]
         }"#;
-        let lib: SideloadLibrary = serde_json::from_str(raw).unwrap();
-        let games: Vec<_> = lib
-            .games
-            .into_iter()
-            .filter(|g| g.runner == "sideload" && !g.app_name.is_empty())
-            .collect();
+        let games = parse_library(raw, "sideload", false);
         assert_eq!(games.len(), 1);
         assert_eq!(games[0].app_name, "abc");
         assert_eq!(games[0].title, "Crimson Desert");
-        assert_eq!(
-            games[0].install.executable.as_deref(),
-            Some("/games/cd/CrimsonDesert.exe")
-        );
+        assert_eq!(games[0].executable.as_deref(), Some("/games/cd/CrimsonDesert.exe"));
         // art_cover wins over art_square when both are present.
+        assert_eq!(games[0].art.as_deref(), Some("https://cdn2.steamgriddb.com/grid/abc.png"));
+    }
+
+    #[test]
+    fn parse_library_reads_the_library_key_alias_and_joins_install_path() {
+        // legendary/nile's store_cache file uses "library", not "games", and
+        // stores just the exe filename under install_path.
+        let raw = r#"{
+            "library": [
+                { "runner": "legendary", "app_name": "Snowdrop", "title": "Jackbox Party Pack 4",
+                  "install": { "executable": "Jackbox.exe",
+                               "install_path": "/home/u/Games/Heroic/JackboxPartyPack4",
+                               "is_dlc": false },
+                  "is_installed": true }
+            ]
+        }"#;
+        let games = parse_library(raw, "legendary", true);
+        assert_eq!(games.len(), 1);
         assert_eq!(
-            games[0].art_cover.as_deref(),
-            Some("https://cdn2.steamgriddb.com/grid/abc.png")
+            games[0].executable.as_deref(),
+            Some("/home/u/Games/Heroic/JackboxPartyPack4/Jackbox.exe")
         );
     }
 
     #[test]
+    fn parse_library_drops_dlc_and_not_installed_when_required() {
+        let raw = r#"{
+            "games": [
+                { "runner": "gog", "app_name": "base", "title": "Base Game",
+                  "install": { "is_dlc": false }, "is_installed": true },
+                { "runner": "gog", "app_name": "dlc", "title": "Some DLC",
+                  "install": { "is_dlc": true }, "is_installed": true },
+                { "runner": "gog", "app_name": "owned", "title": "Owned Not Installed",
+                  "install": { "is_dlc": false }, "is_installed": false }
+            ]
+        }"#;
+        let games = parse_library(raw, "gog", true);
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].app_name, "base");
+    }
+
+    #[test]
+    fn parse_library_tolerates_malformed_or_missing_data() {
+        assert!(parse_library("not json", "legendary", true).is_empty());
+        assert!(parse_library("{}", "legendary", true).is_empty());
+    }
+
+    #[test]
+    fn resolve_executable_prefers_an_already_absolute_path() {
+        assert_eq!(
+            resolve_executable(Some("/should/be/ignored"), Some("/games/x/game.exe")),
+            Some("/games/x/game.exe".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_executable_joins_relative_exe_with_install_path() {
+        assert_eq!(
+            resolve_executable(Some("/games/x/"), Some("game.exe")),
+            Some("/games/x/game.exe".to_string())
+        );
+        assert_eq!(
+            resolve_executable(Some("/games/x"), Some("game.exe")),
+            Some("/games/x/game.exe".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_executable_handles_absent_fields() {
+        assert_eq!(resolve_executable(None, Some("game.exe")), Some("game.exe".to_string()));
+        assert_eq!(resolve_executable(Some("/games/x"), None), None);
+        assert_eq!(resolve_executable(Some("/games/x"), Some("")), None);
+    }
+
+    #[test]
     fn entry_to_game_prefers_art_cover_falls_back_to_art_square() {
-        let mut e = SideloadEntry {
+        let mut e = LibraryEntry {
             runner: "sideload".to_string(),
             app_name: "a".to_string(),
             title: "Has cover".to_string(),
-            install: SideloadInstall::default(),
+            install: LibraryInstall::default(),
             is_installed: true,
             art_cover: Some("file:///covers/a.jpg".to_string()),
             art_square: Some("file:///covers/a-sq.jpg".to_string()),
         };
         assert_eq!(entry_to_game(e).art.as_deref(), Some("file:///covers/a.jpg"));
 
-        e = SideloadEntry {
+        e = LibraryEntry {
             app_name: "b".to_string(),
             art_cover: None,
             art_square: Some("file:///covers/b-sq.jpg".to_string()),
@@ -585,16 +711,16 @@ mod tests {
         };
         assert_eq!(entry_to_game(e).art.as_deref(), Some("file:///covers/b-sq.jpg"));
 
-        e = SideloadEntry { app_name: "c".to_string(), ..blank_entry() };
+        e = LibraryEntry { app_name: "c".to_string(), ..blank_entry() };
         assert_eq!(entry_to_game(e).art, None);
     }
 
-    fn blank_entry() -> SideloadEntry {
-        SideloadEntry {
+    fn blank_entry() -> LibraryEntry {
+        LibraryEntry {
             runner: "sideload".to_string(),
             app_name: String::new(),
             title: String::new(),
-            install: SideloadInstall::default(),
+            install: LibraryInstall::default(),
             is_installed: false,
             art_cover: None,
             art_square: None,
