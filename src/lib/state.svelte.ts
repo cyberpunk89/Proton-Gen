@@ -1,4 +1,5 @@
 import { untrack } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { ipc } from "./ipc";
 import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
@@ -21,6 +22,7 @@ import type {
   OptiscalerExtractResult,
   OptiscalerRelease,
   OptiscalerStatus,
+  Preset,
   Recipe,
   RuntimeDto,
   ConfigWarning,
@@ -1250,18 +1252,55 @@ class AppStore {
     return this.store.presets.filter((p) => p.game_appid !== this.selectedAppId);
   }
 
+  presetExists(name: string): boolean {
+    return this.store.presets.some((p) => p.name === name);
+  }
+
+  /** Exactly what `toConfig()` read right after each preset was loaded or saved
+   *  this session, for `presetModified`. Keyed by name so undoing back onto a
+   *  preset still compares against the right baseline. */
+  private presetBaselines = new SvelteMap<string, string>();
+
+  /** Whether the loaded preset has been edited since it was loaded or saved —
+   *  the header shows a dot, so "Presets: X" never claims a stale match. */
+  presetModified = $derived.by((): boolean => {
+    const name = this.activePresetName;
+    if (!name) return false;
+    const now = JSON.stringify(this.toConfig());
+    const baseline = this.presetBaselines.get(name);
+    if (baseline !== undefined) return now !== baseline;
+    const p = this.store.presets.find((x) => x.name === name);
+    return !!p && now !== JSON.stringify(p.config);
+  });
+
   savePreset(name: string) {
+    const config = this.toConfig();
+    const i = this.store.presets.findIndex((p) => p.name === name);
+    // Overwriting keeps the preset's original game rather than silently
+    // re-homing it onto whichever game happens to be open.
+    const existing = i >= 0 ? this.store.presets[i] : null;
     const preset = {
       name,
-      game_appid: this.selectedAppId,
-      game_name: this.selectedGameName,
-      config: this.toConfig(),
+      game_appid: existing ? existing.game_appid : this.selectedAppId,
+      game_name: existing ? existing.game_name : this.selectedGameName,
+      config,
     };
-    const i = this.store.presets.findIndex((p) => p.name === name);
     if (i >= 0) this.store.presets[i] = preset;
     else this.store.presets.push(preset);
     this.activePresetName = name;
+    this.presetBaselines.set(name, JSON.stringify(config));
     this.persistStore();
+  }
+
+  /** Save a preset received as a share code, optionally loading it too. */
+  addSharedPreset(preset: { name: string; config: Config }, load: boolean) {
+    const i = this.store.presets.findIndex((p) => p.name === preset.name);
+    const entry = { name: preset.name, game_appid: null, game_name: null, config: preset.config };
+    if (i >= 0) this.store.presets[i] = entry;
+    else this.store.presets.push(entry);
+    this.presetBaselines.delete(preset.name);
+    this.persistStore();
+    if (load) this.loadPreset(preset.name);
   }
 
   loadPreset(name: string) {
@@ -1269,12 +1308,42 @@ class AppStore {
     if (!p) return;
     this.loadConfig(p.config);
     this.activePresetName = name;
+    this.presetBaselines.set(name, JSON.stringify(this.toConfig()));
     this.mark(`load preset "${name}"`);
   }
 
-  deletePreset(name: string) {
-    this.store.presets = this.store.presets.filter((p) => p.name !== name);
+  /** Rename a preset. Returns why it couldn't, or null on success. */
+  renamePreset(from: string, to: string): string | null {
+    const name = to.trim();
+    if (!name) return "A preset needs a name.";
+    if (name === from) return null;
+    if (this.presetExists(name)) return `There's already a preset called “${name}”.`;
+    const p = this.store.presets.find((x) => x.name === from);
+    if (!p) return null;
+    p.name = name;
+    const baseline = this.presetBaselines.get(from);
+    this.presetBaselines.delete(from);
+    if (baseline !== undefined) this.presetBaselines.set(name, baseline);
+    if (this.activePresetName === from) this.activePresetName = name;
+    this.persistStore();
+    return null;
+  }
+
+  /** Delete a preset, returning what `restorePreset` needs to undo it. */
+  deletePreset(name: string): { preset: Preset; index: number } | null {
+    const index = this.store.presets.findIndex((p) => p.name === name);
+    if (index < 0) return null;
+    const preset = $state.snapshot(this.store.presets[index]) as Preset;
+    this.store.presets.splice(index, 1);
     if (this.activePresetName === name) this.activePresetName = null;
+    this.persistStore();
+    return { preset, index };
+  }
+
+  /** Put a deleted preset back where it was — unless its name was taken since. */
+  restorePreset(preset: Preset, index: number) {
+    if (this.presetExists(preset.name)) return;
+    this.store.presets.splice(Math.min(index, this.store.presets.length), 0, preset);
     this.persistStore();
   }
 
