@@ -23,7 +23,11 @@ src/                     FRONTEND (Svelte 5 + TS + Tailwind)
   lib/state.svelte.ts    single reactive store (runes) — the source of truth
   lib/ipc.ts + mock.ts   typed Tauri invoke + browser-dev mock fallback
   lib/types.ts           TS DTOs that MIRROR the Rust serde structs in ipc.rs
-  lib/util.ts            irrelevance() (mirrors hardware.rs), matches(), tier colours
+  lib/util.ts            irrelevance() (the relevance filter), mergeStyle(), tier colours
+  lib/shell.ts           POSIX env tokenize/quote — the TS twin of builder::sh_quote
+  lib/fuzzy.ts           fuzzy() matcher: palette, parameter search, library filter
+  lib/markdown.ts        LLM text → plain blocks for Markdown.svelte (never {@html})
+  lib/presetCode.ts      `protongen:v1:` preset share codes (strict, untrusted decode)
   lib/mangohud.ts        pure MANGOHUD_CONFIG parse/build for the overlay builder
   lib/components/*.svelte Hero, GamePicker, RuntimePicker, UmuFields, Parameters, …
   app.css + lib/themes.ts design tokens + 10 themes
@@ -35,7 +39,8 @@ src-tauri/               BACKEND (Rust / Tauri)
   src/recipes.rs         loads recipes.toml (profiles + troubleshooter)
   src/parser.rs          command → Config (inverse of builder)
   src/lint.rs            conflict / footgun notices
-  src/store.rs           state.toml persistence + Config
+  src/store.rs           state.toml persistence + Config (corrupt file → quarantined)
+  src/fsutil.rs          write_atomic(): temp file + rename, for every file we write
   src/{steam,runtime,games,steamcfg}.rs   read-only discovery
   src/hardware.rs        GPU/session/ntsync detection + relevance
   params.toml            data-driven parameter catalog (single source of truth)
@@ -89,6 +94,20 @@ extra `--` into cargo).
   in `src-tauri/src/ipc.rs` one-to-one. `pnpm check` enforces the FE side; update both.
 - **One store, debounced recompute.** `state.svelte.ts` holds all selection; a root
   `$effect` serializes to a `Config` and (debounced ~60 ms) calls `build_command` + `lint`.
+- **Shell quoting has one rule, in two languages.** `builder::sh_quote` leaves a value bare
+  when it is shell-safe, else double-quotes it (escaping only `"` `\` `` ` ``) so `$VAR`
+  still expands; `game_args` and gamescope args are emitted verbatim (they *are* shell).
+  `parser.rs` reads the same rules back and flags unquoted `; & | < > ( )` before the
+  target as unmodeled. `src/lib/shell.ts` is the TS twin for custom env — change both.
+- **The paste loop.** `steam_user_config` re-reads only launch options + compat tools, so
+  `app.refreshSteamConfig` can run on every window focus (throttled to one read per 2 s,
+  with extra re-checks for 10 min after Copy / Open in Steam). The root effect is split so
+  that re-read only recomputes the sync status — it must never persist `game_memory` or
+  flash "Saved".
+- **Deep links into Settings** go through `app.openSettings(section?)`, which expands and
+  scrolls to that section. A link inside another dialog closes its host first, and a
+  confirm step inside a builder dialog is an inline panel, not a nested `<Dialog>` —
+  stacked bits-ui modals are the #63 click-dead pattern.
 - **Browser-mock dev path.** `ipc.ts` detects `__TAURI_INTERNALS__`; outside Tauri it
   returns `mock.ts` data so the whole UI can be iterated with `pnpm dev`. Mock data has a
   reduced catalog — FSR/large catalogs and the native file dialog only exist in the real
