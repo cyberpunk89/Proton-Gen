@@ -395,7 +395,11 @@ pub fn apply_to_config(
     let mut mangohud = false;
     let mut gamemode = false;
     let mut wrapper_opts: Vec<Value> = Vec::new();
-    for w in wrappers {
+    // Outermost first, by the Steam builder's own rank — catalog order put
+    // game-performance outside gamescope.
+    let mut wrappers = wrappers.to_vec();
+    wrappers.sort_by_key(Wrapper::rank);
+    for w in &wrappers {
         match w {
             Wrapper::Mangohud => mangohud = true,
             Wrapper::Gamemoderun => gamemode = true,
@@ -515,6 +519,20 @@ mod tests {
             assert!(!is_valid_app_name(bad), "{bad:?}");
             assert!(inject(bad, &[], &[], &Bins::default()).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn wrapper_options_are_outermost_first_like_the_steam_builder() {
+        let bins = Bins { gamescope: "gamescope".into(), ..Bins::default() };
+        let wrappers = [Wrapper::GamePerformance, Wrapper::Gamescope("-f".into())];
+        let out = apply_to_config(base_config(), "7Hm5", &[], &wrappers, &bins);
+        let exes: Vec<&str> = out["7Hm5"]["wrapperOptions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w["exe"].as_str().unwrap())
+            .collect();
+        assert_eq!(exes, ["gamescope", "game-performance"]);
     }
 
     #[test]

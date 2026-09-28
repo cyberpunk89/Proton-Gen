@@ -393,6 +393,18 @@ const RULES: &[Rule] = &[
 ///
 /// `gpu_gen` is the user's declared AMD generation from the settings store —
 /// see [`Ctx::gpu_gen`].
+/// The AMD generation lint should assume — the same answer the frontend's
+/// `effectiveGpuGen` + `hwCaps` give the visibility filter: the declared
+/// generation, else the detected one, and nothing at all off AMD hardware (a
+/// `state.toml` carried to an NVIDIA box keeps its `gpu_gen`). If the two ever
+/// disagree, lint offers fixes for rows the filter hides.
+pub fn effective_gpu_gen(declared: &str, detected: Option<&str>, amd: bool) -> String {
+    if !amd {
+        return String::new();
+    }
+    if declared.is_empty() { detected.unwrap_or_default() } else { declared }.to_string()
+}
+
 /// A notice for custom-env tokens that aren't shell assignments (see
 /// `compose::invalid_extra_env`) — they're left out of the command, and the
 /// user should know why their `A-B=x` did nothing.
@@ -421,6 +433,14 @@ pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware, gpu_gen: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_gen_falls_back_to_detection_and_is_ignored_off_amd() {
+        assert_eq!(effective_gpu_gen("", Some("rdna4"), true), "rdna4");
+        assert_eq!(effective_gpu_gen("rdna3", Some("rdna4"), true), "rdna3");
+        assert_eq!(effective_gpu_gen("", None, true), "");
+        assert_eq!(effective_gpu_gen("rdna3", Some("rdna3"), false), "");
+    }
     use crate::params::Catalog;
 
     fn enable(cat: &Catalog, opts: &mut Options, key: &str, val: &str) {

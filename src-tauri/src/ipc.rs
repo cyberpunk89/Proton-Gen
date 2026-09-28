@@ -731,14 +731,11 @@ pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
     // the visibility filter would disagree about which generation is in force,
     // and a user who never touched the Settings selector would see RDNA4 rows
     // while the RDNA4 lint notices stayed silent.
-    let gpu_gen = {
-        let declared = state.store.lock().unwrap().gpu_gen.clone();
-        if declared.is_empty() {
-            state.hardware.gpu_gen_detected.clone().unwrap_or_default()
-        } else {
-            declared
-        }
-    };
+    let gpu_gen = lint::effective_gpu_gen(
+        &state.store.lock().unwrap().gpu_gen,
+        state.hardware.gpu_gen_detected.as_deref(),
+        state.hardware.amd,
+    );
     let mut notices = lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen);
     notices.extend(lint::invalid_custom_env(&compose::invalid_extra_env(&config.extra_env)));
     notices
