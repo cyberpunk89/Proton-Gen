@@ -205,7 +205,7 @@
        Heroic cover when the Steam listing has none cached. -->
   <div
     class="absolute inset-0"
-    use:inView={() => entries.forEach((e) => app.requestArt(e.app_id, e.source, "portrait", e.art_url))}
+    use:inView={() => entries.forEach((e) => app.requestArt(e.app_id, e.source, "portrait"))}
   >
     {#if art}
       <img

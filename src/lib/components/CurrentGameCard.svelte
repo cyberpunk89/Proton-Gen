@@ -13,7 +13,7 @@
   );
 
   $effect(() => {
-    if (game) app.requestArt(game.app_id, game.source, "portrait", game.art_url);
+    if (game) app.requestArt(game.app_id, game.source, "portrait");
   });
 
   let art = $derived(

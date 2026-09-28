@@ -65,7 +65,7 @@ pub struct GameDto {
     /// Used by the OptiScaler-upgrade commands to find/write files there.
     pub install_dir: Option<String>,
     /// Box art hint for `source == "heroic"` — see `games::Game::art_url`.
-    /// Passed back into the `game_art` command as `art_hint`.
+    /// `game_art` looks it up from discovery; the webview never passes it back.
     pub art_url: Option<String>,
 }
 
@@ -734,9 +734,11 @@ pub async fn protondb_fetch(appid: u32) -> Result<Tier, String> {
 /// Resolve a game's artwork to a `data:` URL (local cache → optional CDN), or
 /// `null` if none is available. Runs off the UI thread.
 ///
-/// `art_hint` is `GameDto::art_url` round-tripped back in — a Heroic sideload
-/// has no Steam appid a cache lookup could key off, so its own `art_cover` /
-/// `art_square` (a `file://` path or remote URL) is the only way to find it.
+/// A Heroic sideload has no Steam appid a cache lookup could key off, so its
+/// own `art_cover` / `art_square` (a `file://` path or remote URL) is the only
+/// way to find its art. That hint is looked up here from discovery, never
+/// taken from the webview: it is read off disk or fetched as given, so a
+/// caller-supplied one would read any file or fetch any URL.
 #[tauri::command]
 pub async fn game_art(
     state: State<'_, AppState>,
@@ -744,8 +746,15 @@ pub async fn game_art(
     source: String,
     kind: String,
     online: bool,
-    art_hint: Option<String>,
 ) -> Result<Option<String>, String> {
+    // Both end up in a cache file name, so only the known values pass.
+    if !art::SOURCES.contains(&source.as_str()) || !art::KINDS.contains(&kind.as_str()) {
+        return Err(format!("unknown art source/kind: {source}/{kind}"));
+    }
+    let art_hint = state
+        .game(app_id)
+        .filter(|g| g.source == source)
+        .and_then(|g| g.art_url);
     let steam_root = state.steam_root();
     tauri::async_runtime::spawn_blocking(move || {
         art::fetch(steam_root, app_id, &source, &kind, online, art_hint)

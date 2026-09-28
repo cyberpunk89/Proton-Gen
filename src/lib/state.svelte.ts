@@ -1857,13 +1857,9 @@ class AppStore {
 
   /**
    * Lazily fetch a game's art once; result lands in `artCache` reactively.
-   *
-   * `artHint` is `GameDto.art_url` — a Heroic sideload's own `art_cover` /
-   * `art_square` (a `file://` path or remote URL). It's the only lead the
-   * backend has on a Heroic game's art, since a sideload has no Steam appid a
-   * cache lookup could key off; every other source ignores it.
+   * A Heroic sideload's `art_url` hint is looked up by the backend itself.
    */
-  requestArt(appId: number, source: string, kind: ArtKind, artHint?: string | null) {
+  requestArt(appId: number, source: string, kind: ArtKind) {
     const key = this.artKey(appId, source, kind);
     if (this.artRequested.has(key)) return;
     this.artRequested.add(key);
@@ -1872,7 +1868,7 @@ class AppStore {
     const run = () => {
       this.artInFlight++;
       ipc
-        .gameArt(appId, source, kind, true, artHint ?? null)
+        .gameArt(appId, source, kind, true)
         .then((url) => (this.artCache[key] = url))
         .catch(() => (this.artCache[key] = null))
         .finally(() => {

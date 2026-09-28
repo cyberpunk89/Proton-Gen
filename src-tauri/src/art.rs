@@ -8,7 +8,16 @@
 //! Returns a `data:` URL (base64) so the frontend can drop it straight into an
 //! `<img src>` without any asset-protocol/capability configuration.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+/// The `source` values `fetch` accepts — `GameDto::source`'s vocabulary.
+pub const SOURCES: &[&str] = &["steam", "non-steam", "heroic"];
+/// The `kind` values `fetch` accepts.
+pub const KINDS: &[&str] = &["portrait", "hero", "header"];
+/// Largest art file read or downloaded. Box art is well under this; anything
+/// bigger is not an image worth base64-ing into the webview.
+const MAX_ART_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Candidate local file paths for a game's art, in priority order.
 fn local_candidates(steam_root: &Path, app_id: u32, source: &str, kind: &str) -> Vec<PathBuf> {
@@ -93,8 +102,13 @@ fn to_data_url(bytes: &[u8], mime: &str) -> String {
 /// too since nothing guarantees the scheme survived whatever wrote it.
 fn read_local_hint(hint: &str) -> Option<Vec<u8>> {
     let path = hint.strip_prefix("file://").unwrap_or(hint);
-    let bytes = std::fs::read(path).ok()?;
-    if bytes.is_empty() {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(MAX_ART_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_ART_BYTES {
         return None;
     }
     Some(bytes)
@@ -161,7 +175,7 @@ pub fn fetch(
         if let Some(url) = remote_url {
             let req = ehttp::Request::get(url);
             if let Ok(resp) = ehttp::fetch_blocking(&req) {
-                if resp.ok && !resp.bytes.is_empty() {
+                if resp.ok && !resp.bytes.is_empty() && resp.bytes.len() as u64 <= MAX_ART_BYTES {
                     if let Some(cp) = &cached {
                         if let Some(parent) = cp.parent() {
                             let _ = std::fs::create_dir_all(parent);
