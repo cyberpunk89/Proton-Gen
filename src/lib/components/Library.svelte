@@ -5,6 +5,7 @@
   import type { GameDto } from "$lib/types";
   import { groupGames } from "$lib/util";
   import { fuzzy } from "$lib/fuzzy";
+  import { slide } from "$lib/motion.svelte";
   import {
     GameController,
     MagnifyingGlass,
@@ -13,15 +14,17 @@
     WarningCircle,
     CircleDashed,
     Circle,
+    CaretRight,
   } from "phosphor-svelte";
 
   let query = $state("");
   /** Filters are deliberately local, not persisted: a filter you forgot you set
    *  and that survives a restart looks like a missing library. */
-  let installedOnly = $state(false);
   let tunedOnly = $state(false);
   let favoritesOnly = $state(false);
 
+  /** Wraps both shelves: tile lookup and column measuring go through it, so
+   *  either grid can be the one that exists. */
   let grid = $state<HTMLDivElement | null>(null);
   let cols = $state(1);
   let activeIndex = $state(0);
@@ -72,7 +75,6 @@
   let matching = $derived.by(() => {
     return app.games.filter((g) => {
       if (scores && !scores.has(g.app_id)) return false;
-      if (installedOnly && !g.installed) return false;
       if (tunedOnly && !isTuned(g.app_id)) return false;
       if (favoritesOnly && !app.isFavorite(g.app_id)) return false;
       return true;
@@ -127,7 +129,47 @@
    * governs where a merged tile sits; `GameTile` picks which underlying entry
    * to open, directly if there's only one.
    */
-  let groups = $derived(groupGames(games));
+  let allGroups = $derived(groupGames(games));
+
+  /**
+   * Installed titles first; anything whose files are gone (see `on_disk` in
+   * games.rs) goes on its own shelf below, collapsed by default — kept, not
+   * hidden, since its saved tuning is still worth reaching. A merged tile is
+   * installed if any of its launch paths is.
+   */
+  let installedGroups = $derived(allGroups.filter((g) => g.entries.some((e) => e.installed)));
+  let missingGroups = $derived(allGroups.filter((g) => g.entries.every((e) => !e.installed)));
+
+  const SHELF_KEY = "protongen.library.missingShelfOpen";
+  let shelfOpen = $state(readShelf());
+  function readShelf(): boolean {
+    try {
+      return localStorage.getItem(SHELF_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+  function toggleShelf() {
+    shelfOpen = !shelfOpen;
+    try {
+      localStorage.setItem(SHELF_KEY, shelfOpen ? "1" : "0");
+    } catch {
+      // Private window / blocked storage: the shelf just won't remember.
+    }
+  }
+  /** A search opens the shelf for its matches without changing the saved
+   *  preference — a result you can't see looks like no result. */
+  let shelfShown = $derived(shelfOpen || (scores != null && missingGroups.length > 0));
+
+  /** Every tile the keyboard can reach, in index order: the roving index runs
+   *  straight on from the installed grid into the shelf. */
+  let groups = $derived(shelfShown ? [...installedGroups, ...missingGroups] : installedGroups);
+
+  /** The shelf a tile index sits on, as [start, length]. */
+  function sectionOf(i: number): [number, number] {
+    const n = installedGroups.length;
+    return i < n ? [0, n] : [n, missingGroups.length];
+  }
   /** Tiles in the whole library, for the filter placeholder — counting raw
    *  entries said "5 games" over 4 tiles when one title is on two stores. */
   let tileCount = $derived(groupGames(app.games).length);
@@ -154,7 +196,9 @@
   $effect(() => {
     if (!grid) return;
     const measure = () => {
-      const n = getComputedStyle(grid!).gridTemplateColumns.split(" ").filter(Boolean).length;
+      const g = grid!.querySelector<HTMLElement>("[data-grid]");
+      if (!g) return;
+      const n = getComputedStyle(g).gridTemplateColumns.split(" ").filter(Boolean).length;
       cols = Math.max(1, n);
     };
     measure();
@@ -169,7 +213,6 @@
   $effect(() => {
     query;
     app.librarySort;
-    installedOnly;
     tunedOnly;
     favoritesOnly;
     activeIndex = 0;
@@ -209,17 +252,35 @@
         e.preventDefault();
         move(-1);
         break;
-      case "ArrowDown":
+      case "ArrowDown": {
         e.preventDefault();
-        move(cols);
+        // Rows are counted per shelf: the shelf starts a fresh row, so from the
+        // installed grid's last row, Down lands in the same column below.
+        const [start, len] = sectionOf(activeIndex);
+        const r = activeIndex - start;
+        if (r + cols < len) move(cols);
+        else if (start + len < groups.length) {
+          activeIndex = start + len + Math.min(r % cols, groups.length - start - len - 1);
+          keyboardMoved = true;
+        }
         break;
-      case "ArrowUp":
+      }
+      case "ArrowUp": {
         e.preventDefault();
+        const [start] = sectionOf(activeIndex);
+        const r = activeIndex - start;
+        if (r >= cols) move(-cols);
+        else if (start > 0) {
+          // Into the installed grid's last row, same column where it has one.
+          const lastRow = Math.floor((start - 1) / cols) * cols;
+          activeIndex = Math.min(lastRow + (r % cols), start - 1);
+          keyboardMoved = true;
+        }
         // From the top row, step out to the filter box so `/` → Down → arrows →
         // Up is one continuous loop rather than a dead end.
-        if (activeIndex < cols) focusByName("library-filter");
-        else move(-cols);
+        else focusByName("library-filter");
         break;
+      }
       case "Home":
         e.preventDefault();
         activeIndex = 0;
@@ -240,6 +301,8 @@
     activeIndex = 0;
     keyboardMoved = true;
   }
+
+  const GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
 
   const chip = (on: boolean) =>
     `rounded-full border px-2.5 py-1 text-xs transition ${
@@ -304,11 +367,6 @@
     </div>
 
     <div class="flex flex-wrap items-center gap-1.5">
-      <button
-        onclick={() => (installedOnly = !installedOnly)}
-        aria-pressed={installedOnly}
-        class={chip(installedOnly)}>Installed</button
-      >
       <button onclick={() => (tunedOnly = !tunedOnly)} aria-pressed={tunedOnly} class={chip(tunedOnly)}
         >Tuned</button
       >
@@ -368,21 +426,53 @@
       svelte:window so it is correctly scoped and needs no typing guard.
     -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div
-      bind:this={grid}
-      onkeydown={onKeydown}
-      role="group"
-      aria-label="Game library"
-      class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-    >
-      {#each groups as grp, i (grp.key)}
-        <GameTile
-          entries={grp.entries}
-          index={i}
-          active={i === activeIndex}
-          onactivate={(n) => (activeIndex = n)}
-        />
-      {/each}
+    <div bind:this={grid} onkeydown={onKeydown} role="group" aria-label="Game library" class="flex flex-col gap-6">
+      {#if installedGroups.length}
+        <div data-grid class={GRID}>
+          {#each installedGroups as grp, i (grp.key)}
+            <GameTile
+              entries={grp.entries}
+              index={i}
+              active={i === activeIndex}
+              onactivate={(n) => (activeIndex = n)}
+            />
+          {/each}
+        </div>
+      {/if}
+
+      {#if missingGroups.length}
+        <section class="flex flex-col gap-3" aria-label="Not installed">
+          <button
+            onclick={toggleShelf}
+            aria-expanded={shelfShown}
+            class="group/shelf flex items-center gap-2 self-start rounded-lg py-1 pr-2 text-sm text-muted transition hover:text-text"
+          >
+            <CaretRight
+              size={13}
+              weight="bold"
+              class="transition-transform duration-200 {shelfShown ? 'rotate-90' : ''}"
+            />
+            <span class="font-medium">Not installed</span>
+            <span class="rounded-full bg-surface-2 px-1.5 py-px text-[11px] tabular-nums">{missingGroups.length}</span>
+            <span class="hidden text-xs text-muted/80 group-hover/shelf:inline">
+              — missing from disk or not fully installed. Saved settings are kept.
+            </span>
+          </button>
+          {#if shelfShown}
+            <div data-grid class={GRID} transition:slide={{ duration: 180 }}>
+              {#each missingGroups as grp, i (grp.key)}
+                {@const n = installedGroups.length + i}
+                <GameTile
+                  entries={grp.entries}
+                  index={n}
+                  active={n === activeIndex}
+                  onactivate={(k) => (activeIndex = k)}
+                />
+              {/each}
+            </div>
+          {/if}
+        </section>
+      {/if}
     </div>
   {/if}
 </div>

@@ -34,8 +34,9 @@ pub struct Game {
     pub source: GameSource,
     /// Target executable (non-Steam shortcuts + Heroic games) — prefills umu mode.
     pub executable: Option<String>,
-    /// Whether the launcher reports the app as installed. Non-Steam shortcuts
-    /// point at a path Steam does not manage, so they are always `true`.
+    /// Whether the game is really there: the launcher reports it installed
+    /// *and* its folder / executable still exists on disk (see [`on_disk`]).
+    /// `false` puts it on the library's "Not installed" shelf, never hides it.
     pub installed: bool,
     /// Heroic's per-game id (base62 `app_name`), the key to its `GamesConfig`
     /// file. `Some` only for [`GameSource::Heroic`]; the inject command needs it.
@@ -111,6 +112,31 @@ fn heroic_app_id(app_name: &str) -> u32 {
     hash | 0x8000_0000
 }
 
+/// Whether what a game points at is still on disk. A launcher's own
+/// "installed" record outlives a folder deleted by hand, a library drive that
+/// was swapped out, or a repack moved somewhere else — nothing re-checks it.
+///
+/// Only an absolute path counts as evidence. No path, or a command line
+/// `shortcut_executable` couldn't reduce to one, is assumed present, and so is
+/// a path we merely can't read (permissions): a game is never shelved on a
+/// guess. Read-only — a single `stat`.
+fn on_disk(g: &Game) -> bool {
+    let target = match g.source {
+        GameSource::Steam => g.install_dir.clone(),
+        GameSource::NonSteam | GameSource::Heroic => g.executable.as_deref().map(PathBuf::from),
+    };
+    match target.filter(|p| p.is_absolute()) {
+        None => true,
+        Some(p) => !matches!(std::fs::metadata(p), Err(e) if e.kind() == std::io::ErrorKind::NotFound),
+    }
+}
+
+/// `g` with `installed` cleared when its files are gone (see [`on_disk`]).
+fn checked(mut g: Game) -> Game {
+    g.installed = g.installed && on_disk(&g);
+    g
+}
+
 /// Heroic games as [`Game`]s (source [`GameSource::Heroic`]) — both
 /// sideloaded exes and titles installed through Heroic's native stores
 /// (Epic/GOG/Amazon). Independent of any Steam install; empty when Heroic
@@ -129,6 +155,7 @@ pub fn list_heroic_games() -> Vec<Game> {
             heroic_id: Some(h.app_name),
             art_url: h.art,
         })
+        .map(checked)
         .collect()
 }
 
@@ -148,7 +175,7 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
         let installed = app
             .state_flags
             .map_or(true, |f| f.flags().any(|s| s == StateFlag::FullyInstalled));
-        out.push(Game {
+        out.push(checked(Game {
             app_id: app.app_id,
             name,
             source: GameSource::Steam,
@@ -157,7 +184,7 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
             heroic_id: None,
             install_dir: Some(library.resolve_app_dir(&app)),
             art_url: None,
-        });
+        }));
     }
     out.len() - before
 }
@@ -232,7 +259,7 @@ pub fn list_games(
     if let Ok(shortcuts) = dir.shortcuts() {
         for sc in shortcuts.flatten() {
             let executable = shortcut_executable(&sc.executable);
-            games.push(Game {
+            games.push(checked(Game {
                 app_id: sc.app_id,
                 name: sc.app_name.clone(),
                 source: GameSource::NonSteam,
@@ -241,7 +268,7 @@ pub fn list_games(
                 installed: true,
                 heroic_id: None,
                 art_url: None,
-            });
+            }));
         }
     }
 
@@ -335,6 +362,43 @@ mod tests {
             games.iter().map(|g| g.name.as_str()).collect::<Vec<_>>(),
             vec!["Alpha", "beta", "zed"]
         );
+    }
+
+    #[test]
+    fn on_disk_shelves_only_a_missing_absolute_path() {
+        let root = std::env::temp_dir().join(format!("protongen-on-disk-{}", std::process::id()));
+        let game_dir = root.join("common/Present Game");
+        std::fs::create_dir_all(&game_dir).unwrap();
+        let exe = game_dir.join("game.exe");
+        std::fs::write(&exe, b"").unwrap();
+
+        let mut present = steam(1, "Present");
+        present.install_dir = Some(game_dir.clone());
+        assert!(checked(present).installed);
+
+        // Manifest still says installed, folder deleted by hand.
+        let mut gone = steam(2, "Gone");
+        gone.install_dir = Some(root.join("common/Deleted Game"));
+        assert!(!checked(gone).installed);
+
+        let shortcut = |exe: Option<String>| Game {
+            source: GameSource::NonSteam,
+            executable: exe,
+            ..steam(3, "Shortcut")
+        };
+        assert!(checked(shortcut(Some(exe.display().to_string()))).installed);
+        assert!(!checked(shortcut(Some(root.join("moved/game.exe").display().to_string()))).installed);
+        // Nothing checkable is never evidence of absence.
+        assert!(checked(shortcut(None)).installed);
+        assert!(checked(shortcut(Some("game.exe".to_string()))).installed);
+
+        // A launcher that already says "not installed" stays that way.
+        let mut flagged = steam(4, "Downloading");
+        flagged.installed = false;
+        flagged.install_dir = Some(game_dir);
+        assert!(!checked(flagged).installed);
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

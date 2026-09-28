@@ -62,6 +62,9 @@
     entries.forEach((e) => app.requestArt(e.app_id, e.source, "portrait"));
   });
   let multi = $derived(entries.length > 1);
+  /** Every launch path's files are gone (or the launcher says so): the tile
+   *  sits on the library's "Not installed" shelf, drawn dimmed. */
+  let missing = $derived(entries.every((e) => !e.installed));
 
   /**
    * The "open via" choice for a multi-source tile, shown as a scrim over the
@@ -193,10 +196,12 @@
     multi ? `choose ${entries.map((e) => sourceLabel(e.source)).join(" or ")} to open` : "",
   );
   let titleText = $derived(
-    [game.name, playLine, status?.label, openDescription].filter(Boolean).join(" — "),
+    [game.name, missing && "Not installed", playLine, status?.label, openDescription]
+      .filter(Boolean)
+      .join(" — "),
   );
   let srText = $derived(
-    `${game.name}${playLine ? `, ${playLine}` : ""}${status ? `, ${status.label}` : ""}${
+    `${game.name}${missing ? ", not installed" : ""}${playLine ? `, ${playLine}` : ""}${status ? `, ${status.label}` : ""}${
       favorite ? ", favourite" : ""
     }${openDescription ? `, ${openDescription}` : ""}`,
   );
@@ -212,7 +217,12 @@
        requestArt de-dupes internally, so re-asking costs nothing. Every
        entry is requested, not just `game`, so a merged tile can still show a
        Heroic cover when the Steam listing has none cached. -->
-  <div class="absolute inset-0" use:inView={() => (seen = true)}>
+  <div
+    class="absolute inset-0 transition duration-300 {missing
+      ? 'opacity-50 grayscale group-hover/tile:opacity-90 group-hover/tile:grayscale-0'
+      : ''}"
+    use:inView={() => (seen = true)}
+  >
     {#if art}
       <img
         src={art}
@@ -297,6 +307,7 @@
                   : 'var(--accent)'}"
             ></span>
             {sourceLabel(e.source)}
+            {#if !e.installed}<span class="ml-auto text-[10px] font-normal text-white/60">not installed</span>{/if}
           </button>
         {/each}
         <button onclick={closePicker} class="mt-1 text-center text-[10px] text-white/60 transition hover:text-white">
@@ -320,6 +331,11 @@
   <!-- Badges sit above the open target so their own titles/labels win on hover,
        but only the star is interactive. -->
   <span class="pointer-events-none absolute left-2 top-2 z-30 flex items-center gap-1">
+    {#if missing}
+      <span class="rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white/80 backdrop-blur-sm"
+        >Not installed</span
+      >
+    {/if}
     {#each extraSources as src (src)}
       <span
         class="rounded-full px-1.5 py-0.5 text-[10px] font-medium backdrop-blur-sm"
