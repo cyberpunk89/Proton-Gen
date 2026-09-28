@@ -91,11 +91,14 @@
       <span
         transition:fade={{ duration: 200 }}
         class="hidden shrink-0 text-[11px] text-muted @xl:inline"
-        aria-live="polite"
+        aria-hidden="true"
       >
         Saved
       </span>
     {/if}
+    <!-- Always mounted: screen readers skip live regions inserted along with
+         their text, and ones that are display:none at this width. -->
+    <span class="sr-only" aria-live="polite">{app.saved ? "Saved" : ""}</span>
 
     <div class="ml-auto flex shrink-0 items-center gap-1.5">
       <!-- Naming the specific action is what makes a stack legible: a disabled

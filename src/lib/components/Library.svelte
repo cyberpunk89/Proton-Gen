@@ -173,6 +173,12 @@
     keyboardMoved = false;
   });
 
+  // A rescan can shrink the library under an unchanged query; an index past
+  // the end leaves no tile with tabindex=0, dropping the grid from Tab order.
+  $effect(() => {
+    if (activeIndex >= groups.length) activeIndex = Math.max(0, groups.length - 1);
+  });
+
   $effect(() => {
     if (!keyboardMoved || !grid) return;
     const el = grid.querySelector<HTMLElement>(`[data-tile="${activeIndex}"]`);
