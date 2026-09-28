@@ -260,28 +260,23 @@ impl Store {
         crate::fsutil::write_atomic(path, text.as_bytes())
     }
 
+    #[cfg(test)]
     pub fn remember(&mut self, appid: u32, config: Config) {
         self.game_memory.insert(appid.to_string(), config);
     }
 
+    #[cfg(test)]
     pub fn recall(&self, appid: u32) -> Option<&Config> {
         self.game_memory.get(&appid.to_string())
     }
 
-    pub fn preset_names(&self) -> Vec<String> {
-        self.presets.iter().map(|p| p.name.clone()).collect()
-    }
-
+    #[cfg(test)]
     pub fn upsert_preset(&mut self, preset: Preset) {
         if let Some(slot) = self.presets.iter_mut().find(|p| p.name == preset.name) {
             *slot = preset;
         } else {
             self.presets.push(preset);
         }
-    }
-
-    pub fn delete_preset(&mut self, name: &str) {
-        self.presets.retain(|p| p.name != name);
     }
 }
 

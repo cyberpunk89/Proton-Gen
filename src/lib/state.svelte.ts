@@ -7,7 +7,7 @@ import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { formatExtraEnv, mergeIntoExtraEnv, setInExtraEnv, splitExtraEnv } from "./shell";
 import { irrelevance, isRecommended } from "./util";
-import { emptyConfig, isAdvanced, withoutLaunchTarget } from "./types";
+import { isAdvanced, withoutLaunchTarget } from "./types";
 import type {
   Catalog,
   Config,
@@ -1669,6 +1669,19 @@ class AppStore {
   }
 
   /**
+   * The AMD generation in force: the user's Settings declaration if they made
+   * one, else what `hardware.rs` detected from the PCI id.
+   *
+   * The declaration wins outright. Detection is best-effort — it needs hwdata's
+   * `pci.ids` on disk and a `Navi <n>` codename in the entry — so it fills a
+   * gap, it never overrules someone who has said what they have. Mirrored on the
+   * Rust side in `lint::effective_gpu_gen` (with `hwCaps`'s AMD gate below), or
+   * the lint rules and this filter would disagree about which generation is in
+   * force.
+   */
+  effectiveGpuGen = $derived(this.store.gpu_gen || (this.hardware.gpu_gen_detected ?? ""));
+
+  /**
    * Hardware facts plus the opt-in HDR/FSR/GPU-generation capabilities, for
    * relevance filtering. `fsr4` is true for either RDNA generation (with the
    * legacy `store.fsr4` flag as a fallback for pre-`gpu_gen` state files);
@@ -1686,18 +1699,6 @@ class AppStore {
    * fresh object 100+ times per render of the parameter list and again for every
    * entry in the command palette.
    */
-  /**
-   * The AMD generation in force: the user's Settings declaration if they made
-   * one, else what `hardware.rs` detected from the PCI id.
-   *
-   * The declaration wins outright. Detection is best-effort — it needs hwdata's
-   * `pci.ids` on disk and a `Navi <n>` codename in the entry — so it fills a
-   * gap, it never overrules someone who has said what they have. Mirrored on the
-   * Rust side in `ipc::lint`, or the lint rules and this filter would disagree
-   * about which generation is in force.
-   */
-  effectiveGpuGen = $derived(this.store.gpu_gen || (this.hardware.gpu_gen_detected ?? ""));
-
   hwCaps = $derived.by((): HwCaps => {
     const gen = this.effectiveGpuGen;
     const amd = this.hardware.amd;
@@ -1789,10 +1790,6 @@ class AppStore {
   }
   setHdr(v: boolean) {
     this.store.hdr = v;
-    this.persistStore();
-  }
-  setFsr4(v: boolean) {
-    this.store.fsr4 = v;
     this.persistStore();
   }
   /** Set the AMD GPU generation. Clears the legacy `fsr4` flag once a
@@ -2311,7 +2308,3 @@ function sameEntries(a: Record<string, string>, b: Record<string, string>): bool
 }
 
 export const app = new AppStore();
-
-export function freshConfig(): Config {
-  return emptyConfig();
-}

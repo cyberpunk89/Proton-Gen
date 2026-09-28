@@ -251,7 +251,7 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
     let mut load_error = None;
     let mut runtime_warning = None;
     let mut runtimes_raw = Vec::new();
-    let mut games = Vec::new();
+    let games;
     let mut launch_options = HashMap::new();
     let mut compat_tools = HashMap::new();
     let mut path_warnings = Vec::new();

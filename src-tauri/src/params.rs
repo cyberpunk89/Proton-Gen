@@ -55,20 +55,6 @@ pub enum WrapperKind {
     Gamescope,
 }
 
-/// Rich, optional info surfaced in the GUI's per-parameter popup.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct InfoText<'a> {
-    pub details: Option<&'a str>,
-    pub example: Option<&'a str>,
-    pub url: Option<&'a str>,
-}
-
-impl InfoText<'_> {
-    pub fn is_empty(&self) -> bool {
-        self.details.is_none() && self.example.is_none() && self.url.is_none()
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WrapperDef {
     pub key: String,
@@ -107,16 +93,6 @@ pub struct WrapperDef {
     /// see `builder::Wrapper::rank`. Builder-only, so it never crosses IPC.
     #[serde(default, skip_serializing)]
     pub order: Option<u8>,
-}
-
-impl WrapperDef {
-    pub fn info(&self) -> InfoText<'_> {
-        InfoText {
-            details: self.details.as_deref(),
-            example: self.example.as_deref(),
-            url: self.url.as_deref(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -160,16 +136,6 @@ pub struct EnvDef {
     /// without being *pre-selected* for it.
     #[serde(default)]
     pub recommended_for: Vec<String>,
-}
-
-impl EnvDef {
-    pub fn info(&self) -> InfoText<'_> {
-        InfoText {
-            details: self.details.as_deref(),
-            example: self.example.as_deref(),
-            url: self.url.as_deref(),
-        }
-    }
 }
 
 fn default_category() -> String {
@@ -603,7 +569,6 @@ mod tests {
     fn all_entries_have_full_info() {
         let cat = Catalog::bundled();
         for w in &cat.wrappers {
-            assert!(!w.info().is_empty(), "wrapper {} missing info", w.key);
             assert!(w.details.is_some() && w.example.is_some() && w.url.is_some(),
                 "wrapper {} missing a details/example/url field", w.key);
         }

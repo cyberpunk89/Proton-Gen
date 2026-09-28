@@ -97,6 +97,7 @@ impl Recipes {
         toml::from_str(BUNDLED).expect("bundled recipes.toml must parse")
     }
 
+    #[cfg(test)]
     pub fn by_kind(&self, kind: RecipeKind) -> impl Iterator<Item = (usize, &Recipe)> {
         self.recipes
             .iter()
