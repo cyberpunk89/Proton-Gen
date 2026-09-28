@@ -1394,22 +1394,24 @@ class AppStore {
   // ------------------------------- import -----------------------------------
 
   /** Replace the current config with a parsed launch command. Throws — rather
-   *  than wiping the config — when the text isn't recognisably a command. */
-  async importCommand(text: string) {
-    const cfg = await ipc.parseCommand(text);
+   *  than wiping the config — when the text isn't recognisably a command.
+   *  Returns the tokens that couldn't be imported, for the caller to report. */
+  async importCommand(text: string): Promise<string[]> {
+    const { config: cfg, dropped } = await ipc.parseCommand(text);
     const empty =
       !cfg.env.length &&
       !cfg.wrappers.length &&
       !cfg.extra_env.trim() &&
       !cfg.game_args.trim() &&
       !cfg.umu_exe.trim();
-    if (empty && !/%command%|umu-run/.test(text)) {
+    if (empty && !dropped.length && !/%command%|umu-run/.test(text)) {
       throw new Error(
         "Nothing recognisable — paste a Steam launch-options string or a umu-run command.",
       );
     }
     this.loadConfig(cfg);
     this.mark("import command");
+    return dropped;
   }
 
   // ------------------------------- mangohud ---------------------------------

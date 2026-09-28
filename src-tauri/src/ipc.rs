@@ -545,7 +545,7 @@ pub async fn heroic_running() -> bool {
 
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
 #[tauri::command]
-pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
+pub fn parse_command(state: State<'_, AppState>, input: String) -> ParsedCommand {
     let catalog = &state.catalog;
     let p = parser::parse(&input, &catalog.plain_wrappers());
 
@@ -568,17 +568,35 @@ pub fn parse_command(state: State<'_, AppState>, input: String) -> Config {
     let (options, unknown) = store::options_from_lists(catalog, &p.env, &wrappers);
     let (env, wrappers) = store::options_to_lists(catalog, &options);
 
-    Config {
-        umu: p.umu,
-        runtime: None,
-        env,
-        wrappers,
-        extra_env: compose::format_extra_env(&unknown),
-        umu_exe: p.umu_exe,
-        umu_wineprefix: p.umu_wineprefix.unwrap_or_default(),
-        umu_gameid: p.umu_gameid.unwrap_or_default(),
-        game_args: p.game_args,
+    // `Parsed::unknown` also flags an assignment the shell never exported
+    // (`A=x;y`) — that one *was* imported, as env, so it isn't reported here.
+    let imported = |t: &String| t.split_once('=').is_some_and(|(k, _)| p.env.iter().any(|(e, _)| e == k));
+    let dropped = p.unknown.iter().filter(|t| !imported(t)).cloned().collect();
+
+    ParsedCommand {
+        config: Config {
+            umu: p.umu,
+            runtime: None,
+            env,
+            wrappers,
+            extra_env: compose::format_extra_env(&unknown),
+            umu_exe: p.umu_exe,
+            umu_wineprefix: p.umu_wineprefix.unwrap_or_default(),
+            umu_gameid: p.umu_gameid.unwrap_or_default(),
+            game_args: p.game_args,
+        },
+        dropped,
     }
+}
+
+/// A pasted command read back into a `Config`, plus what couldn't be.
+#[derive(Clone, Serialize)]
+pub struct ParsedCommand {
+    pub config: Config,
+    /// Pre-target tokens with no place in a `Config` — a foreign wrapper
+    /// (`strangle`), its flags, `PROTONPATH=` in Steam mode. Reported so an
+    /// import never silently loses part of the command.
+    pub dropped: Vec<String>,
 }
 
 /// Tokenize a launch command for the annotated preview. Tokens carry only a

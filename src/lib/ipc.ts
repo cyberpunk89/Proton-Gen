@@ -12,6 +12,7 @@ import type {
   OptiscalerExtractResult,
   OptiscalerRelease,
   OptiscalerStatus,
+  ParsedCommand,
   ProtonLog,
   TroubleshootRequest,
   TroubleshootResult,
@@ -70,7 +71,9 @@ export const ipc = {
   heroicRunning: () => (inTauri ? invoke<boolean>("heroic_running") : Promise.resolve(false)),
 
   parseCommand: (input: string) =>
-    inTauri ? invoke<Config>("parse_command", { input }) : Promise.resolve(emptyParse()),
+    inTauri
+      ? invoke<ParsedCommand>("parse_command", { input })
+      : Promise.resolve<ParsedCommand>({ config: emptyParse(), dropped: [] }),
 
   // Tokenize the preview for colouring/annotation. Tokens carry only a catalog
   // `key`; look help/details/url up in the already-loaded catalog.

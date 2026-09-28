@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { toast } from "$lib/toast.svelte";
+  import { droppedNote } from "$lib/util";
   import RuntimePicker from "./RuntimePicker.svelte";
   import UmuFields from "./UmuFields.svelte";
   import ProtonDbChip from "./ProtonDbChip.svelte";
@@ -26,13 +27,14 @@
 
   async function loadCurrent() {
     if (!currentOpts) return;
+    let dropped: string[];
     try {
-      await app.importCommand(currentOpts);
+      dropped = await app.importCommand(currentOpts);
     } catch (e) {
       toast.error(`Couldn't load Steam's launch options: ${e instanceof Error ? e.message : e}`);
       return;
     }
-    toast.success("Loaded current launch options", {
+    toast.success(`Loaded current launch options${droppedNote(dropped)}`, {
       action: { label: "Undo", onClick: () => app.undo() },
     });
   }

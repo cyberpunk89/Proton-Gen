@@ -327,3 +327,11 @@ export function mergeStyle(
     .map((s) => s.trim().replace(/;+$/, ""));
   return parts.length === 0 ? "" : `${parts.join("; ")};`;
 }
+
+/** Toast suffix naming what an import couldn't keep, e.g.
+ *  ` — 2 parts not imported: strangle 60`. Empty when nothing was dropped. */
+export function droppedNote(dropped: string[]): string {
+  if (!dropped.length) return "";
+  const n = dropped.length;
+  return ` — ${n} ${n === 1 ? "part" : "parts"} not imported: ${dropped.join(" ")}`;
+}

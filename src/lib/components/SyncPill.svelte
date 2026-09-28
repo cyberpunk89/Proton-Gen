@@ -3,7 +3,7 @@
   import { toast } from "$lib/toast.svelte";
   import Popover from "./Popover.svelte";
   import OpenInSteam from "./OpenInSteam.svelte";
-  import { mergeStyle } from "$lib/util";
+  import { droppedNote, mergeStyle } from "$lib/util";
   import {
     CheckCircle,
     WarningCircle,
@@ -52,13 +52,14 @@
   async function loadCurrent() {
     const current = app.currentLaunchOptions;
     if (!current) return;
+    let dropped: string[];
     try {
-      await app.importCommand(current);
+      dropped = await app.importCommand(current);
     } catch (e) {
       toast.error(`Couldn't load Steam's launch options: ${e instanceof Error ? e.message : e}`);
       return;
     }
-    toast.success("Loaded current launch options", {
+    toast.success(`Loaded current launch options${droppedNote(dropped)}`, {
       action: { label: "Undo", onClick: () => app.undo() },
     });
   }

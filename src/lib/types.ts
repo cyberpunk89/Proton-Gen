@@ -293,6 +293,13 @@ export interface Config {
   game_args: string;
 }
 
+/** Mirrors ipc::ParsedCommand. */
+export interface ParsedCommand {
+  config: Config;
+  /** Pre-target tokens with no place in a Config (foreign wrappers, flags). */
+  dropped: string[];
+}
+
 export interface Preset {
   name: string;
   game_appid: number | null;

@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { app } from "$lib/state.svelte";
   import { toast } from "$lib/toast.svelte";
+  import { droppedNote } from "$lib/util";
   import Popover from "./Popover.svelte";
   import Dialog from "./Dialog.svelte";
   import SettingsDrawer from "./SettingsDrawer.svelte";
@@ -112,8 +113,9 @@
     if (!importText.trim() || importing) return;
     importing = true;
     importError = null;
+    let dropped: string[];
     try {
-      await app.importCommand(importText);
+      dropped = await app.importCommand(importText);
     } catch (e) {
       // Kept open with the text intact, so a typo can be fixed in place.
       importError = e instanceof Error ? e.message : String(e);
@@ -121,7 +123,7 @@
     } finally {
       importing = false;
     }
-    toast.success("Imported", { action: { label: "Undo", onClick: () => app.undo() } });
+    toast.success(`Imported${droppedNote(dropped)}`, { action: { label: "Undo", onClick: () => app.undo() } });
     app.showImport = false;
     importText = "";
   }
