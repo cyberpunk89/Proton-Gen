@@ -228,6 +228,15 @@ pub(crate) fn sh_quote(s: &str) -> String {
 
 /// `KEY=value` with the value quoted as needed. An empty value stays `KEY=`,
 /// which a shell already reads as "set to empty".
+/// Whether `key` is a name the shell treats as a `KEY=value` assignment:
+/// `[A-Za-z_][A-Za-z0-9_]*`. Anything else (`A-B`, `1X`, `--fps`) makes the
+/// whole word a command, so it must never be read or emitted as env.
+pub fn is_env_key(key: &str) -> bool {
+    let mut b = key.bytes();
+    b.next().is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+        && b.all(|c| c.is_ascii_alphanumeric() || c == b'_')
+}
+
 pub(crate) fn assignment(key: &str, value: &str) -> String {
     if value.is_empty() {
         format!("{key}=")

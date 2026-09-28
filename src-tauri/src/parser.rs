@@ -206,6 +206,12 @@ fn take_wrapper(
     }
 }
 
+/// `tok` split as a shell assignment, or `None` when its key isn't a valid
+/// name — `--fps=60` is a flag, not env.
+fn as_assignment(tok: &str) -> Option<(&str, &str)> {
+    tok.split_once('=').filter(|(k, _)| crate::builder::is_env_key(k))
+}
+
 /// Parse a Steam launch-options string or a standalone `umu-run` command.
 /// `known` is the catalog's plain wrappers ([`crate::params::Catalog::plain_wrappers`]),
 /// so a user-added wrapper is recognised rather than read as unmodeled.
@@ -216,7 +222,12 @@ pub fn parse(input: &str, known: &[PlainWrapper]) -> Parsed {
     // `umu-run` can be an absolute path; `%command%` is Steam's literal
     // placeholder and never is. Deriving the split index from the same lookup
     // that decides the mode keeps the two from disagreeing.
-    let umu_at = tokens.iter().position(|t| basename(&t.text) == "umu-run");
+    // Only a program position counts: before `%command%`, and not inside an
+    // assignment's value (`X=/opt/umu-run`) or among a game's own args.
+    let target = tokens.iter().position(|t| t.text == "%command%").unwrap_or(tokens.len());
+    let umu_at = tokens[..target]
+        .iter()
+        .position(|t| as_assignment(&t.text).is_none() && basename(&t.text) == "umu-run");
     let is_umu = umu_at.is_some();
     p.umu = is_umu;
 
@@ -231,10 +242,12 @@ pub fn parse(input: &str, known: &[PlainWrapper]) -> Parsed {
 
     let mut it = pre.iter().peekable();
     while let Some(word) = it.next() {
-        if take_wrapper(input, known, word, &mut it, &mut p) {
+        let tok = &word.text;
+        // Assignments first: `FOO=/opt/tools/mangohud` is env whose value
+        // happens to end in a wrapper's name, not the mangohud wrapper.
+        if as_assignment(tok).is_none() && take_wrapper(input, known, word, &mut it, &mut p) {
             continue;
         }
-        let tok = &word.text;
         // Recorded as unmodeled *as well as* parsed below: the pair keeps an
         // import lossless, while the flag stops an old unquoted `A=x;y` from
         // comparing equal to the quoted `A="x;y"` we emit — the shell never
@@ -242,7 +255,7 @@ pub fn parse(input: &str, known: &[PlainWrapper]) -> Parsed {
         if word.operator {
             p.unknown.push(raw_span(input, word, word).to_string());
         }
-        if let Some((k, v)) = tok.split_once('=') {
+        if let Some((k, v)) = as_assignment(tok) {
             match k {
                 // The umu-specific assignments only have dedicated fields in umu
                 // mode; under Steam they're ordinary env vars (and PROTONPATH is
@@ -290,6 +303,34 @@ mod tests {
     /// Parse against the bundled catalog's plain wrappers, like the app does.
     fn parse(input: &str) -> Parsed {
         super::parse(input, &Catalog::bundled().plain_wrappers())
+    }
+
+    #[test]
+    fn an_env_value_ending_in_a_wrapper_name_stays_env() {
+        let p = parse("FOO=/opt/tools/mangohud BAR=/x/gamescope %command%");
+        assert!(!p.mangohud && p.gamescope.is_none(), "{p:?}");
+        assert_eq!(
+            p.env,
+            vec![
+                ("FOO".to_string(), "/opt/tools/mangohud".to_string()),
+                ("BAR".to_string(), "/x/gamescope".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn umu_run_only_counts_in_program_position() {
+        assert_eq!(parse("X=/p/umu-run %command%").mode(), ParsedMode::Steam);
+        let p = parse("mangohud %command% -launcher umu-run");
+        assert_eq!(p.mode(), ParsedMode::Steam);
+        assert_eq!(p.game_args, "-launcher umu-run");
+    }
+
+    #[test]
+    fn a_flag_with_equals_is_not_env() {
+        let p = parse("strangle --fps=60 %command%");
+        assert!(p.env.is_empty(), "{:?}", p.env);
+        assert_eq!(p.unknown, vec!["strangle".to_string(), "--fps=60".to_string()]);
     }
 
     #[test]

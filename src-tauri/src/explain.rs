@@ -78,15 +78,7 @@ fn split_preserving(input: &str) -> Vec<Piece> {
 /// `KEY=value` where KEY looks like an environment variable name.
 fn env_key(word: &str) -> Option<&str> {
     let (k, _) = word.split_once('=')?;
-    let mut chars = k.chars();
-    let first = chars.next()?;
-    if !(first.is_ascii_alphabetic() || first == '_') {
-        return None;
-    }
-    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return None;
-    }
-    Some(k)
+    crate::builder::is_env_key(k).then_some(k)
 }
 
 /// Tokenize an assembled launch command.
@@ -97,11 +89,17 @@ fn env_key(word: &str) -> Option<&str> {
 pub fn explain(command: &str, known: &[PlainWrapper]) -> Vec<Token> {
     let pieces = split_preserving(command);
 
-    // umu commands are recognised the same way `parser::parse` recognises them,
-    // by basename — the program can be named by path.
+    // umu commands are recognised the same way `parser::parse` recognises them:
+    // by basename (the program can be named by path), and only in program
+    // position — before `%command%`, never inside an assignment's value.
     let is_umu = pieces
         .iter()
-        .any(|p| matches!(p, Piece::Word { bare, .. } if parser::basename(bare) == "umu-run"));
+        .filter_map(|p| match p {
+            Piece::Word { bare, .. } => Some(bare.as_str()),
+            Piece::Space(_) => None,
+        })
+        .take_while(|bare| *bare != "%command%")
+        .any(|bare| env_key(bare).is_none() && parser::basename(bare) == "umu-run");
 
     let mut out = Vec::with_capacity(pieces.len());
     let mut past_target = false;
@@ -138,6 +136,10 @@ pub fn explain(command: &str, known: &[PlainWrapper]) -> Vec<Token> {
             (TokenKind::Separator, None)
         } else if in_gamescope_args {
             (TokenKind::WrapperArg, None)
+        } else if let Some(k) = env_key(bare) {
+            // Before the wrapper checks, as in the parser: `FOO=/opt/mangohud`
+            // is env whose value ends in a wrapper's name.
+            (TokenKind::Env, Some(k.to_string()))
         } else if prog == "gamescope" {
             in_gamescope_args = true;
             (TokenKind::Wrapper, Some(prog.clone()))
@@ -145,8 +147,6 @@ pub fn explain(command: &str, known: &[PlainWrapper]) -> Vec<Token> {
             (TokenKind::Wrapper, Some(prog.clone()))
         } else if let Some(w) = known.iter().find(|w| parser::basename(&w.program) == prog) {
             (TokenKind::Wrapper, Some(w.key.clone()))
-        } else if let Some(k) = env_key(bare) {
-            (TokenKind::Env, Some(k.to_string()))
         } else {
             (TokenKind::Unknown, None)
         };
@@ -178,6 +178,13 @@ mod tests {
             .filter(|t| t.kind != TokenKind::Space)
             .map(|t| t.kind)
             .collect()
+    }
+
+    #[test]
+    fn env_values_and_game_args_never_look_like_programs() {
+        use TokenKind::*;
+        assert_eq!(kinds("FOO=/opt/mangohud %command%"), vec![Env, Target]);
+        assert_eq!(kinds("X=/p/umu-run %command% umu-run"), vec![Env, Target, GameArg]);
     }
 
     fn texts(cmd: &str) -> Vec<String> {
