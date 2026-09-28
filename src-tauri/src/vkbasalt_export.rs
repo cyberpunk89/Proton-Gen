@@ -110,8 +110,11 @@ pub fn merge(existing: &str, new_config: &str) -> MergeOutcome {
     let mut cleared: Vec<String> = Vec::new();
     let mut spliced = false;
     for line in existing.lines() {
-        if let Some(k) = line_key(line).filter(|k| MANAGED_KEYS.contains(k)) {
-            if !new_keys.contains(&k) && !cleared.iter().any(|c| c == k) {
+        // The new block wins for every key it sets, managed or not: the
+        // builder seeds its passthrough from this very file and re-emits it,
+        // so keeping the old copy too would duplicate it on every Apply.
+        if let Some(k) = line_key(line).filter(|k| MANAGED_KEYS.contains(k) || new_keys.contains(k)) {
+            if MANAGED_KEYS.contains(&k) && !new_keys.contains(&k) && !cleared.iter().any(|c| c == k) {
                 cleared.push(k.to_string());
             }
             if !spliced {
@@ -248,6 +251,18 @@ reshadeTexturePath = /home/user/reshade-shaders/Textures
         assert_eq!(m.text, "effects = cas\ncasSharpness = 0.4\n");
         assert_eq!(m.changed_keys, vec!["effects", "casSharpness"]);
         assert!(m.cleared_keys.is_empty());
+    }
+
+    #[test]
+    fn passthrough_re_emitted_by_the_builder_is_not_duplicated() {
+        // The builder seeds `passthrough` from this file and re-emits it, so
+        // the new block carries `lutFile` too — it must replace, not repeat.
+        let existing = "effects = cas\nlutFile = /a.cube\nmyfx = /x.fx\n";
+        let new = "effects = cas\nlutFile = /a.cube\nmyfx = /x.fx";
+        let once = merge(existing, new).text;
+        assert_eq!(once.matches("lutFile").count(), 1, "{once}");
+        assert_eq!(once.matches("myfx").count(), 1, "{once}");
+        assert_eq!(merge(&once, new).text, once);
     }
 
     #[test]
