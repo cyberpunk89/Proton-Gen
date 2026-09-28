@@ -1039,6 +1039,7 @@ class AppStore {
   onWindowBlur() {
     for (const t of this.followUps) clearTimeout(t);
     this.followUps = [];
+    void this.flushPersist();
   }
 
   /** What the pill should say, or "hidden" when it must not appear. */
@@ -1816,11 +1817,11 @@ class AppStore {
   }
   setLlmEndpoint(v: string) {
     this.store.llm_endpoint = v;
-    this.persistStore();
+    this.persistStoreSoon();
   }
   setLlmModel(v: string) {
     this.store.llm_model = v;
-    this.persistStore();
+    this.persistStoreSoon();
   }
 
   // ------------------------------ paths -------------------------------------
@@ -1828,7 +1829,7 @@ class AppStore {
   /** Replace one of the path lists and re-scan. */
   setPathList(field: "steam_roots" | "steam_libraries" | "proton_dirs", list: string[]) {
     this.store.paths[field] = list;
-    this.persistStore();
+    this.persistStoreSoon();
     this.scheduleRescan();
   }
 
@@ -1836,7 +1837,7 @@ class AppStore {
   setBinOverride(name: string, value: string) {
     if (value.trim() === "") delete this.store.paths.bins[name];
     else this.store.paths.bins[name] = value;
-    this.persistStore();
+    this.persistStoreSoon();
     this.scheduleRescan();
   }
 
@@ -1850,7 +1851,8 @@ class AppStore {
    */
   private scheduleRescan() {
     clearTimeout(this.rescanTimer);
-    this.rescanTimer = setTimeout(() => void this.refresh(), 600);
+    // The scan reads paths off the backend's store, so the save goes first.
+    this.rescanTimer = setTimeout(() => void this.flushPersist().finally(() => this.refresh()), 600);
   }
 
   /** Path warnings only — the parse warnings belong to the TOML overrides. */
@@ -2245,7 +2247,25 @@ class AppStore {
    *  re-sent, re-serialized to TOML and re-written to disk. */
   private lastPersisted: string | null = null;
 
-  persistStore() {
+  private persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** `persistStore`, debounced — for setters wired to `oninput`, where every
+   *  keystroke would otherwise be a full `save_store` IPC plus a TOML write. */
+  persistStoreSoon() {
+    clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => void this.persistStore(), 400);
+  }
+
+  /** Write a debounced save now, if one is pending (before a rescan reads the
+   *  store, or the window closes). */
+  flushPersist(): Promise<void> {
+    return this.persistTimer === undefined ? Promise.resolve() : this.persistStore();
+  }
+
+  persistStore(): Promise<void> {
+    // Saves everything, so it supersedes any debounced save still pending.
+    clearTimeout(this.persistTimer);
+    this.persistTimer = undefined;
     const payload = $state.snapshot(this.store);
     const serialized = JSON.stringify(payload);
     // `save_store` replaces the file wholesale (#43), so an identical payload is
@@ -2253,10 +2273,10 @@ class AppStore {
     // where most ticks change nothing the store holds. Skipped only while writes
     // are working: a standing failure banner has to be able to clear, and the
     // retry is this same call.
-    if (serialized === this.lastPersisted && !this.persistError) return;
+    if (serialized === this.lastPersisted && !this.persistError) return Promise.resolve();
 
-    // Fire and forget; the store is small.
-    ipc
+    // Fire and forget for most callers; the store is small.
+    return ipc
       .saveStore(payload)
       .then(() => {
         this.lastPersisted = serialized;

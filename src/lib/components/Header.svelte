@@ -273,7 +273,7 @@
         <Square size={13} />
       </button>
       <button
-        onclick={() => win()?.close()}
+        onclick={() => void app.flushPersist().finally(() => win()?.close())}
         class="grid size-8 place-items-center rounded-lg text-muted transition hover:bg-red hover:text-white"
         aria-label="Close"
       >
