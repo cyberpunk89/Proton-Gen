@@ -150,10 +150,13 @@ fn first_digit_run(s: &str, n: usize) -> Option<String> {
 /// The installed proton-cachyos build date (`YYYYMMDD`), extracted from the
 /// proton-cachyos runtime's display name, if present.
 pub fn installed_cachyos_build(runtimes: &[Runtime]) -> Option<String> {
+    // The newest one: with several installed, readdir order decided which
+    // build the stale-catalog banner compared against.
     runtimes
         .iter()
-        .find(|r| r.display_name.to_lowercase().contains("cachyos"))
-        .and_then(|r| first_digit_run(&r.display_name, 8))
+        .filter(|r| r.display_name.to_lowercase().contains("cachyos"))
+        .filter_map(|r| first_digit_run(&r.display_name, 8))
+        .max()
 }
 
 /// Scan one `compatibilitytools.d` directory, parsing each tool's vdf.

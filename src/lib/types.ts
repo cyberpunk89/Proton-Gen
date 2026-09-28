@@ -471,7 +471,7 @@ export interface Tier {
 
 /** A user config override that couldn't be parsed and was therefore ignored. */
 /// Mirrors params::WarningKind (serde rename_all = "kebab-case").
-export type WarningKind = "parse" | "path" | "store";
+export type WarningKind = "parse" | "path" | "store" | "steam-config";
 
 export interface ConfigWarning {
   kind: WarningKind;

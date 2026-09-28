@@ -278,6 +278,9 @@ pub enum WarningKind {
     /// `state.toml` couldn't be read or parsed; it was moved aside (the
     /// warning's `path` is the backup) and the app started with defaults.
     Store,
+    /// Steam's own `localconfig.vdf` couldn't be parsed, so its launch options
+    /// (and the applied/not-pasted badges built on them) are unknown.
+    SteamConfig,
 }
 
 /// Something the user configured that protongen could not use, surfaced rather

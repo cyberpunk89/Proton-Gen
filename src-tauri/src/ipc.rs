@@ -272,7 +272,7 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
             }
             // localconfig first: `list_games_dto` reads last-played/playtime out
             // of it, so the parsed map has to exist before the games are built.
-            let app_cfgs = steamcfg::current_app_cfgs(&dir);
+            let app_cfgs = steamcfg::current_app_cfgs(&dir, &mut path_warnings);
             games = list_games_dto(
                 &dir,
                 &app_cfgs,
@@ -625,7 +625,8 @@ pub async fn steam_user_config(
     let paths = state.store.lock().unwrap().paths.clone();
     let fresh = tauri::async_runtime::spawn_blocking(move || {
         let dir = steam::locate_native(&paths.steam_roots, &mut Vec::new()).ok()?;
-        let cfgs = steamcfg::current_app_cfgs(&dir);
+        // Warnings belong to the full scan's banner; this re-read is silent.
+        let cfgs = steamcfg::current_app_cfgs(&dir, &mut Vec::new());
         Some(SteamUserConfig {
             launch_options: stringify_keys(steamcfg::launch_options(&cfgs)),
             compat_tools: stringify_keys(steamcfg::current_compat_tools(&dir)),

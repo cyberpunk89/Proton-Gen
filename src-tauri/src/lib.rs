@@ -125,7 +125,7 @@ pub fn dump() -> Result<()> {
 
     println!("\nDetected hardware: {}", hardware::detect().summary());
 
-    let app_cfgs = steamcfg::current_app_cfgs(&dir);
+    let app_cfgs = steamcfg::current_app_cfgs(&dir, &mut warnings);
     let current = steamcfg::launch_options(&app_cfgs);
     println!("Games with existing launch options set: {}", current.len());
     println!(

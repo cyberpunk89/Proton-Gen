@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use keyvalues_parser::{Obj, Value};
 use steamlocate::SteamDir;
 
+use crate::params::{ConfigWarning, WarningKind};
+
 /// Per-app settings recorded for one Steam user in `localconfig.vdf`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AppUserCfg {
@@ -62,21 +64,19 @@ fn child_num<T: std::str::FromStr>(obj: &Obj<'_>, key: &str) -> Option<T> {
 }
 
 /// Parse one `localconfig.vdf` into `appid -> AppUserCfg`.
-fn parse_localconfig(text: &str) -> HashMap<u32, AppUserCfg> {
+fn parse_localconfig(text: &str) -> Result<HashMap<u32, AppUserCfg>, String> {
     let mut out = HashMap::new();
-    let Ok(vdf) = keyvalues_parser::parse(text) else {
-        return out;
-    };
+    let vdf = keyvalues_parser::parse(text).map_err(|e| e.to_string())?;
     // Root value is the contents of "UserLocalConfigStore".
     let Some(root) = vdf.value.get_obj() else {
-        return out;
+        return Ok(out);
     };
     // Navigate Software → Valve → Steam → apps.
     let mut node = root;
     for key in ["Software", "Valve", "Steam", "apps"] {
         match child(node, key).and_then(|v| v.get_obj()) {
             Some(o) => node = o,
-            None => return out,
+            None => return Ok(out),
         }
     }
     for (appid, vals) in node.iter() {
@@ -98,17 +98,19 @@ fn parse_localconfig(text: &str) -> HashMap<u32, AppUserCfg> {
             out.insert(id, cfg);
         }
     }
-    out
+    Ok(out)
 }
 
 /// Per-app user settings merged across every Steam user on this install.
 /// See [`AppUserCfg::merge`] for how conflicting values are resolved.
-pub fn current_app_cfgs(dir: &SteamDir) -> HashMap<u32, AppUserCfg> {
-    merge_userdata(&dir.path().join("userdata"))
+/// A `localconfig.vdf` that fails to parse is reported in `warnings` rather
+/// than read as empty — otherwise every game silently shows "not pasted".
+pub fn current_app_cfgs(dir: &SteamDir, warnings: &mut Vec<ConfigWarning>) -> HashMap<u32, AppUserCfg> {
+    merge_userdata(&dir.path().join("userdata"), warnings)
 }
 
 /// Every `userdata/<user>/config/localconfig.vdf`, merged in sorted user order.
-fn merge_userdata(userdata: &std::path::Path) -> HashMap<u32, AppUserCfg> {
+fn merge_userdata(userdata: &std::path::Path, warnings: &mut Vec<ConfigWarning>) -> HashMap<u32, AppUserCfg> {
     let mut out: HashMap<u32, AppUserCfg> = HashMap::new();
     let Ok(entries) = std::fs::read_dir(userdata) else {
         return out;
@@ -116,9 +118,20 @@ fn merge_userdata(userdata: &std::path::Path) -> HashMap<u32, AppUserCfg> {
     let mut users: Vec<_> = entries.flatten().map(|e| e.path()).collect();
     users.sort();
     for user in users {
-        if let Ok(text) = std::fs::read_to_string(user.join("config/localconfig.vdf")) {
-            for (id, app) in parse_localconfig(&text) {
-                out.entry(id).or_default().merge(app);
+        let path = user.join("config/localconfig.vdf");
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            match parse_localconfig(&text) {
+                Ok(apps) => {
+                    for (id, app) in apps {
+                        out.entry(id).or_default().merge(app);
+                    }
+                }
+                Err(error) => warnings.push(ConfigWarning {
+                    kind: WarningKind::SteamConfig,
+                    file: "localconfig.vdf".to_string(),
+                    path: path.display().to_string(),
+                    error,
+                }),
             }
         }
     }
@@ -201,15 +214,28 @@ mod tests {
             std::fs::write(dir.join("localconfig.vdf"), one_app(opts)).unwrap();
         }
         for _ in 0..3 {
-            let merged = merge_userdata(&root);
+            let merged = merge_userdata(&root, &mut Vec::new());
             assert_eq!(merged[&10].launch_options, "B=1 %command%", "last user in sorted order wins");
         }
         std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
+    fn an_unparseable_localconfig_is_reported_not_read_as_empty() {
+        let root = std::env::temp_dir().join(format!("protongen-steamcfg-bad-{}", std::process::id()));
+        let dir = root.join("111").join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("localconfig.vdf"), "\"UserLocalConfigStore\" { \"Software\"").unwrap();
+        let mut warnings = Vec::new();
+        assert!(merge_userdata(&root, &mut warnings).is_empty());
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].kind, WarningKind::SteamConfig);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn extracts_launch_options() {
-        let map = parse_localconfig(VDF);
+        let map = parse_localconfig(VDF).unwrap();
         assert_eq!(
             map.get(&553850).map(|c| c.launch_options.as_str()),
             Some("PROTON_USE_NTSYNC=1 mangohud %command%")
@@ -224,7 +250,7 @@ mod tests {
 
     #[test]
     fn extracts_last_played_and_playtime() {
-        let map = parse_localconfig(VDF);
+        let map = parse_localconfig(VDF).unwrap();
         let hd2 = map.get(&553850).expect("553850 present");
         assert_eq!(hd2.last_played, Some(1_751_000_000));
         assert_eq!(hd2.playtime_minutes, Some(4210));
@@ -275,7 +301,7 @@ mod tests {
     } } } }
 }
 "#;
-        let map = parse_localconfig(vdf);
+        let map = parse_localconfig(vdf).unwrap();
         // Playtime 0 is a real value; LastPlayed 0 is Steam's "never".
         assert_eq!(map.get(&1).unwrap().last_played, None);
         assert_eq!(map.get(&1).unwrap().playtime_minutes, Some(0));
