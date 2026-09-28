@@ -36,19 +36,35 @@ CachyOS wiki, DXVK/VKD3D docs and forum threads.
 
 protongen puts all of it in one window:
 
-- **84 environment variables and 3 wrappers**, in 11 categories — each with a plain-English
+- **117 environment variables and 6 wrappers**, in 14 categories — each with a plain-English
   explanation, its default, accepted values, an example and a link to the upstream docs.
-- **17 one-click recipes** — 10 curated profiles and 7 symptom-based troubleshooter fixes.
-- **Live command preview**, pinned to the bottom of the window. One click copies it.
+- **20 one-click recipes** — 12 curated profiles and 8 symptom-based troubleshooter fixes.
+- **Live command preview**, pinned to the bottom of the window. One click copies it, and
+  **Open in Steam** jumps straight to the game's Properties so you can paste.
+- **Simple or Advanced** — a curated grid of the options most people reach for, or the full
+  categorised catalogue. Both drive the same selection, so switching never loses anything.
 - **Hardware-aware**: it detects your GPU vendor, Wayland, KDE and `/dev/ntsync`, and hides
   options that can't apply to you (always revealable with *Show all*).
+- **Steam, Heroic and umu** — Steam games and shortcuts, Heroic games (sideloaded plus
+  Epic/GOG/Amazon), or a standalone `umu-run` command.
 
 ### It never touches your Steam configuration
 
 protongen **reads** your Steam files to find games, runtimes and shortcuts. It **never writes to
 any of them**. The only output is a string of text — nothing changes until *you* paste it into
-Steam yourself. The only files it writes are its own: settings in `~/.config/protongen/` and
-downloaded cover art in `~/.cache/protongen/`.
+Steam yourself. Its own files are settings in `~/.config/protongen/` and downloaded cover art in
+`~/.cache/protongen/`.
+
+Four features do write elsewhere, and each one only runs when you click through a confirm step
+that names exactly what it will touch:
+
+- **Heroic** — writes the env vars and wrappers into that game's Heroic per-game config
+  (backed up first; keys protongen doesn't own are left alone).
+- **OptiScaler** — downloads the latest OptiScaler release from GitHub and extracts it into
+  the game's own folder (an existing `OptiScaler.ini` is kept).
+- **MangoHud / vkBasalt export** — merges the overlay or effect chain you built into your
+  system-wide `~/.config/MangoHud/MangoHud.conf` or `~/.config/vkBasalt/vkBasalt.conf`
+  (backed up first; lines protongen doesn't manage are preserved).
 
 ## Install
 
@@ -138,6 +154,8 @@ rate-limited) is silently ignored.
 If you already have launch options set, hit **Import**, paste the string, and protongen parses
 it back into toggles so you can keep building from where you are.
 
+**Ctrl+K** opens a command palette over games, parameters, recipes, presets and actions.
+
 ## A quick tour
 
 ### First run: your system, at a glance
@@ -166,8 +184,8 @@ so it's never empty.
 
 ### One-click recipes, and a troubleshooter
 
-Ten curated profiles (DLSS + Reflex, HDR on Wayland, gamescope upscaling, GameMode, frame caps…)
-and seven symptom-based fixes — *black cutscenes*, *stutter when new effects appear*, *anti-cheat
+Twelve curated profiles (DLSS + Reflex, HDR on Wayland, gamescope upscaling, GameMode, frame caps…)
+and eight symptom-based fixes — *black cutscenes*, *stutter when new effects appear*, *anti-cheat
 game won't launch*. Applying one merges onto your current selection; it never silently turns
 things off.
 
@@ -175,7 +193,7 @@ things off.
 
 ### Search the whole catalogue
 
-Search matches keys, descriptions and details across all 11 categories at once.
+Search matches keys, descriptions and details across all 14 categories at once.
 
 <img src="docs/screenshots/search.webp" alt="Search results for hdr, listing matching options from several categories">
 
@@ -192,8 +210,28 @@ the newest GE-Proton itself.
 ### Presets, per-game memory, and honest warnings
 
 Save named presets, and protongen remembers what you used for each game so switching back
-restores it. A notices strip flags conflicts before you paste — enabling gplasync in an
+restores it. A preset can be shared as a `protongen:v1:` text code that anyone can paste back
+in. A notices strip flags conflicts before you paste — enabling gplasync in an
 EAC/BattlEye title, HDR without Wayland or gamescope, two different DXVK forks at once.
+
+### Logs, and an optional AI coach
+
+The **log viewer** reads the tail of a game's `PROTON_LOG=1` log without leaving the app. If
+you point **Settings** at a local OpenAI-compatible server (LM Studio, Ollama, llama.cpp), an
+opt-in **log coach** suggests tuning from that log, and the **troubleshooter** diagnoses a
+problem you describe in your own words — both offer changes you apply with a click, never
+automatically.
+
+> [!NOTE]
+> The AI features are off by default. When enabled, the game's Proton log (or your description
+> plus error lines from it), the built launch command and your detected hardware are sent to the
+> endpoint you configured — keep it local if you don't want that data leaving your machine.
+
+### Builders for the fiddly ones
+
+MangoHud, vkBasalt and OptiScaler each get a dialog builder instead of a hand-written config
+string. The OptiScaler builder composes `OptiScaler.ini` settings into
+`PROTON_OPTISCALER_CONFIG`, and can fetch the latest OptiScaler build into the game's folder.
 
 ### Ten themes
 
@@ -203,7 +241,8 @@ Catppuccin (all four flavours), Dracula, Nord, Tokyo Night, Gruvbox, Rosé Pine 
 |---|---|
 | <img src="docs/screenshots/theme-latte.webp" alt="protongen in the light Catppuccin Latte theme"> | <img src="docs/screenshots/theme-gruvbox.webp" alt="protongen in the Gruvbox theme"> |
 
-Plus opt-in capability toggles (HDR, FSR 4) for hardware that can't be auto-detected, and a
+Plus an HDR toggle and an **AMD GPU generation** selector (RDNA3 / RDNA4, pre-filled from your
+GPU's PCI id when it can be read) that decides which FSR upgrade options and recipes are shown, and a
 **Paths** section for the cases auto-discovery misses — extra Steam roots and library
 folders, extra Proton directories, and where to find `umu-run`, `gamescope`, `gamemoderun`
 and `mangohud`. Every change re-scans immediately and tells you what it found, so a wrong

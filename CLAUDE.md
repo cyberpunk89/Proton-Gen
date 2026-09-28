@@ -19,7 +19,9 @@ TypeScript + Tailwind 4 frontend · Vite 6. UI primitives from `bits-ui`, icons 
 
 ```
 src/                     FRONTEND (Svelte 5 + TS + Tailwind)
-  App.svelte             shell: Header + two-panel (builder left / Parameters right)
+  App.svelte             shell: Header + Library view, or builder view (NavRail + MainPanel
+                         in Advanced / SimplePanel in Simple) with CommandPreview pinned below;
+                         root-mounted dialogs (CommandPalette, LogViewer, Troubleshooter, …)
   lib/state.svelte.ts    single reactive store (runes) — the source of truth
   lib/ipc.ts + mock.ts   typed Tauri invoke + browser-dev mock fallback
   lib/types.ts           TS DTOs that MIRROR the Rust serde structs in ipc.rs
@@ -29,7 +31,8 @@ src/                     FRONTEND (Svelte 5 + TS + Tailwind)
   lib/markdown.ts        LLM text → plain blocks for Markdown.svelte (never {@html})
   lib/presetCode.ts      `protongen:v1:` preset share codes (strict, untrusted decode)
   lib/mangohud.ts        pure MANGOHUD_CONFIG parse/build for the overlay builder
-  lib/components/*.svelte Hero, GamePicker, RuntimePicker, UmuFields, Parameters, …
+  lib/components/*.svelte Library, NavRail, MainPanel, SimplePanel, CommandPreview,
+                         SettingsDrawer, CommandPalette, OverlayBuilders, LogViewer, …
   app.css + lib/themes.ts design tokens + 10 themes
 src-tauri/               BACKEND (Rust / Tauri)
   src/lib.rs             wiring: run() + dump(); registers plugins & commands
@@ -40,7 +43,8 @@ src-tauri/               BACKEND (Rust / Tauri)
   src/parser.rs          command → Config (inverse of builder)
   src/lint.rs            conflict / footgun notices
   src/store.rs           state.toml persistence + Config (corrupt file → quarantined)
-  src/fsutil.rs          write_atomic(): temp file + rename, for every file we write
+  src/fsutil.rs          write_atomic() (temp + rename; writes through symlinks, keeps perms),
+                         write_backup() (collision-proof .bak), read_existing() — store/Heroic/overlay writes
   src/{steam,runtime,games,steamcfg}.rs   read-only discovery
   src/hardware.rs        GPU/session/ntsync detection + relevance
   params.toml            data-driven parameter catalog (single source of truth)

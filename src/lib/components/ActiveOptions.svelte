@@ -7,7 +7,7 @@
   import { ListChecks, X, Copy, Sparkle, Warning, ArrowRight } from "phosphor-svelte";
 
   /**
-   * "What have I actually turned on?" — with 87 parameters across 11 categories
+   * "What have I actually turned on?" — with 100+ parameters across 14 categories
    * that question previously required clicking through every category.
    *
    * Derived from the catalog plus app.env/app.wrap rather than from app.command,

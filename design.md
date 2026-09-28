@@ -48,7 +48,9 @@ protongen turns that into a GUI:
 1. **Read-only by contract.** protongen *never* writes to Steam config files. It
    reads `localconfig.vdf`, `config.vdf`, `appmanifest_*.acf`, `shortcuts.vdf`, and
    `compatibilitytool.vdf`, but its only output is a string you copy/paste yourself.
-   Its own state lives entirely under `$XDG_CONFIG_HOME/protongen/`.
+   Its own state lives entirely under `$XDG_CONFIG_HOME/protongen/`. The only
+   writes outside it are the four named, confirm-gated exceptions in §11 (Heroic
+   per-game config, OptiScaler fetch, MangoHud/vkBasalt system-wide export).
 2. **Data-driven, not hardcoded.** The parameter catalog and recipes are TOML files,
    not Rust source. They can be refreshed (via the `/update-proton-params` skill) or
    overridden by the user without recompiling.
@@ -62,8 +64,9 @@ protongen turns that into a GUI:
 
 ### 1.4 Non-goals
 
-- Not a Proton installer or version manager (it discovers, it does not download/install
-  runtimes).
+- Not a Proton installer or version manager (it discovers runtimes, it does not
+  download/install them). Its only downloads are the app's own self-update
+  (`update.rs`) and the confirm-gated OptiScaler fetch (§11).
 - Not a Steam config writer (no automation of Launch Options — the user pastes).
 - Not Flatpak-Steam aware — it deliberately targets the **native** Steam install.
 - Not cross-platform in practice — it targets Linux/CachyOS desktops (Tauri could
@@ -424,10 +427,13 @@ frontend side.
 
 | Area | Components | Role |
 | --- | --- | --- |
-| Shell | `Header`, `StaleBanner`, `Toast` | Top bar (import/save/settings), staleness banner, transient toasts. |
-| Hero builder | `Hero`, `GamePicker`, `RuntimePicker`, `ModeToggle`, `UmuFields`, `CommandPreview`, `ProtonDbChip` | The searchable game picker, Proton dropdown, Steam⇄umu toggle, live copyable preview, ProtonDB chip. "Advanced" (runtime/args/custom-env) stays collapsed until needed or auto-opened in umu mode / when populated. |
-| Discovery | `Recipes`, `Parameters`, `OptionRow`, `InfoPopover`, `Badges` | Recipe cards (profiles + troubleshooter), collapsible searchable parameter categories, per-row toggle/value with ⓘ popover and installed/missing badges. |
-| Helpers | `MangoHud`, `SettingsDrawer`, `Notices`, `Switch`, `Dialog`, `Popover` | MangoHud config builder — opened as a dialog from the `mangohud` / `MANGOHUD_CONFIG` rows via `OptionRow`'s generic `action` snippet, with its string↔struct logic in `lib/mangohud.ts` — settings drawer (theme/relevance/HDR/ProtonDB), conflict notices, primitives. |
+| Shell | `Header`, `UiModeToggle`, `PresetRow`, `NavRail`, `StaleBanner`, `UpdateBanner`, `Toast`, `ResizeGrips` | Top bar (back to library, preset picker, Simple⇄Advanced, import/save, log viewer, troubleshooter, rescan, settings, window controls), the Advanced-mode category rail, banners, transient toasts, CSD resize edges. |
+| Library | `Library`, `GameTile` | Game grid (Steam, shortcuts, Heroic) with local filters; picking a game or "Generic" enters the builder. |
+| Builder | `MainPanel` (Advanced), `SimplePanel` (Simple), `GameRuntimePanel`, `CurrentGameCard`, `RuntimePicker`, `ModeToggle`, `UmuFields`, `ProtonDbChip`, `ActiveOptions` | Advanced = full categorised catalog; Simple = curated toggle grid over the same keys (a view, not a second store). Both share the game/runtime panel (Proton dropdown, Steam⇄umu toggle, umu fields, ProtonDB chip) and the "what's on" summary. |
+| Command bar | `CommandPreview`, `CommandBody`, `LauncherAction`, `OpenInSteam`, `SyncPill` | Pinned live preview with Copy, tokenised/annotated via `explain.rs`; the one "get it into your launcher" slot (Open in Steam, or Heroic inject); Steam-sync status from `diff.rs`. |
+| Discovery | `Recipes`, `RecipePreview`, `OptionRow`, `InfoPopover`, `Badges`, `CommandPalette` | Recipe cards (profiles + troubleshooter) with an apply preview, per-row toggle/value with ⓘ popover and installed/missing badges, Ctrl+K palette over games/parameters/recipes/presets/actions. |
+| Builders & dialogs | `OverlayBuilders` (`MangoHud`, `VkBasalt`, `OptiScaler`), `HeroicConfirm`, `MangoHudSystemConfirm`, `VkBasaltSystemConfirm`, `LogViewer`, `Troubleshooter`, `Markdown`, `SettingsDrawer`, `DefaultProfilePrompt`, `IntroTour`, `ShortcutsSheet` | Root-mounted: overlay/OptiScaler builders (MangoHud's string↔struct logic in `lib/mangohud.ts`), the confirm dialogs gating every §11 write, Proton log viewer + LLM coach, AI troubleshooter, settings drawer (theme/relevance/HDR/GPU generation/paths/LLM/ProtonDB), first-run prompts. |
+| Primitives | `Notices`, `Switch`, `Dialog`, `Popover` | Conflict notices and shared primitives. |
 
 ### 5.5 Theming (`app.css` + `themes.ts`)
 
@@ -518,9 +524,13 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 
 - **Read-only against Steam.** protongen never mutates Steam config; it only reads, and
   its sole instruction to the user is "paste this string yourself."
-- **No telemetry.** The only outbound network calls are **opt-in**: ProtonDB tier
-  summaries (compatibility stats only, no commands) and Steam-CDN artwork fallback. Both
-  run off-thread and degrade silently when offline.
+- **No telemetry.** The outbound network calls are the **opt-in** ProtonDB tier
+  summaries (compatibility stats only, no commands) and Steam-CDN artwork fallback; the
+  launch-time self-update check against GitHub Releases (`update.rs`); the confirm-gated
+  OptiScaler fetch (§11); and — only once enabled in Settings — the local-LLM
+  coach/troubleshooter (`llm.rs`), which sends the Proton log or symptom text, the built
+  command and detected hardware to the user-configured endpoint. All run off-thread and
+  degrade silently when offline.
 - **Least privilege.** Minimal Tauri capabilities; no shell execution, no arbitrary FS
   plugin. `decorations: false` means the client-side titlebar owns move, minimize,
   maximize, close *and* resize (`ResizeGrips.svelte`), so the window permission set is
@@ -641,7 +651,7 @@ Proton-gui/
 │       ├── types.ts           DTOs mirroring the Rust serde structs
 │       ├── themes.ts · toast.svelte.ts · actions.ts · util.ts
 │       ├── mangohud.ts        MANGOHUD_CONFIG parse/build (pure)
-│       └── components/*.svelte hero · recipes · parameters · dialogs · …
+│       └── components/*.svelte library · builder panels · command bar · dialogs · …
 └── src-tauri/                 BACKEND (Rust / Tauri)
     ├── Cargo.toml · tauri.conf.json · build.rs
     ├── capabilities/default.json   minimal permission set
@@ -652,17 +662,25 @@ Proton-gui/
         ├── main.rs            binary entry (--list dump mode)
         ├── ipc.rs             Tauri command surface + AppState + DTOs
         ├── builder.rs         pure command assembly (Steam + umu)
+        ├── compose.rs         Config → launch string pipeline (params::to_spec + builder)
+        ├── explain.rs         byte-exact tokenizer for the annotated preview
+        ├── diff.rs            built vs Steam-set command, compared as parsed normal forms
         ├── params.rs          catalog load/override/to_spec
         ├── recipes.rs         profiles + troubleshooter
         ├── parser.rs          command → Config (inverse of builder)
         ├── lint.rs            conflict / footgun notices
         ├── store.rs           state.toml persistence + Config
+        ├── fsutil.rs          write_atomic / write_backup / read_existing (store, Heroic, exports)
         ├── steam.rs runtime.rs games.rs steamcfg.rs   read-only discovery
+        ├── heroic.rs          Heroic game discovery + confirm-gated per-game config inject
         ├── hardware.rs        GPU/session/ntsync detection + relevance
         ├── which.rs           $PATH lookup (installed/missing badges)
         ├── protondb.rs        opt-in tier summary
         ├── update.rs          self-update against GitHub Releases
         ├── optiscaler_upgrade.rs  fetch+extract latest OptiScaler into a game's folder
+        ├── mangohud_export.rs merge the MangoHud builder into the system MangoHud.conf
+        ├── vkbasalt_export.rs merge the vkBasalt builder into the system vkBasalt.conf
+        ├── llm.rs             opt-in local-LLM log coach + troubleshooter (OpenAI-compatible)
         └── art.rs             local→cache→CDN artwork as data: URLs
 ```
 

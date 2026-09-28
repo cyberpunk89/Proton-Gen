@@ -1,5 +1,5 @@
-//! Filesystem helpers shared by every write path (the store and the
-//! sanctioned MangoHud/vkBasalt exports).
+//! Filesystem helpers shared by the write paths: the store, and the sanctioned
+//! Heroic inject and MangoHud/vkBasalt exports.
 
 use std::io::Write;
 use std::path::Path;
