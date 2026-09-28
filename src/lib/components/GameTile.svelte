@@ -52,6 +52,15 @@
   } = $props();
 
   let game = $derived(entries[0]);
+
+  // `inView` fires once; the effect re-asks after a refresh forgets failed or
+  // queued art (`artEpoch`), which a one-shot observer never would.
+  let seen = $state(false);
+  $effect(() => {
+    if (!seen) return;
+    void app.artEpoch;
+    entries.forEach((e) => app.requestArt(e.app_id, e.source, "portrait"));
+  });
   let multi = $derived(entries.length > 1);
 
   /**
@@ -200,13 +209,10 @@
 >
   <!-- Art requested as the tile nears the viewport (600px rootMargin) rather
        than for a fixed first-N, so every tile gets art under any sort order.
-       requestArt de-dupes internally, so re-observing costs nothing. Every
+       requestArt de-dupes internally, so re-asking costs nothing. Every
        entry is requested, not just `game`, so a merged tile can still show a
        Heroic cover when the Steam listing has none cached. -->
-  <div
-    class="absolute inset-0"
-    use:inView={() => entries.forEach((e) => app.requestArt(e.app_id, e.source, "portrait"))}
-  >
+  <div class="absolute inset-0" use:inView={() => (seen = true)}>
     {#if art}
       <img
         src={art}

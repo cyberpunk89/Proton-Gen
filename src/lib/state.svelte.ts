@@ -216,7 +216,10 @@ class AppStore {
    *  a few thousand tiles would otherwise fan out into thousands of concurrent
    *  requests. */
   private artInFlight = 0;
-  private artQueue: Array<() => void> = [];
+  private artQueue: Array<{ key: string; run: () => void }> = [];
+  /** Bumped when `retryFailedArt` forgets requests, so visible tiles — whose
+   *  `inView` has already fired — re-ask for their art. */
+  artEpoch = $state(0);
 
   /** Last build_command failure, rendered inline in the command bar. */
   buildError = $state<string | null>(null);
@@ -1887,12 +1890,12 @@ class AppStore {
         .catch(() => (this.artCache[key] = null))
         .finally(() => {
           this.artInFlight--;
-          this.artQueue.shift()?.();
+          this.artQueue.shift()?.run();
         });
     };
 
     if (this.artInFlight < ART_CONCURRENCY) run();
-    else this.artQueue.push(run);
+    else this.artQueue.push({ key, run });
   }
 
   /**
@@ -1912,7 +1915,11 @@ class AppStore {
       }
     }
     // Anything still queued was scheduled against the pre-refresh library.
+    // Forget those too, or `requestArt` would treat them as already asked
+    // for and the tile would stay blank for the rest of the session.
+    for (const { key } of this.artQueue) this.artRequested.delete(key);
     this.artQueue.length = 0;
+    this.artEpoch++;
   }
 
   // ------------------------------- protondb ---------------------------------

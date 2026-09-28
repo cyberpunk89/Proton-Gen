@@ -13,6 +13,7 @@
   );
 
   $effect(() => {
+    void app.artEpoch; // re-ask after a refresh forgets failed art
     if (game) app.requestArt(game.app_id, game.source, "portrait");
   });
 
