@@ -5,7 +5,7 @@
 // reads every field explicitly (never spreads the parsed object), bounds every
 // size, and rebuilds the config on top of `emptyConfig()`.
 
-import { emptyConfig } from "./types";
+import { emptyConfig, withoutLaunchTarget } from "./types";
 import type { Config } from "./types";
 
 export const PRESET_CODE_PREFIX = "protongen:v1:";
@@ -30,7 +30,9 @@ export function isPresetCode(text: string): boolean {
 }
 
 export function encodePreset(p: SharedPreset): string {
-  const json = JSON.stringify({ name: p.name, config: p.config });
+  // Never the launch target: it is the sender's own exe / prefix paths
+  // (home directory and all), and meaningless on anyone else's machine.
+  const json = JSON.stringify({ name: p.name, config: withoutLaunchTarget(p.config) });
   const bytes = new TextEncoder().encode(json);
   let bin = "";
   for (const b of bytes) bin += String.fromCharCode(b);

@@ -7,7 +7,7 @@ import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { formatExtraEnv, mergeIntoExtraEnv, splitExtraEnv } from "./shell";
 import { irrelevance, isRecommended } from "./util";
-import { emptyConfig, isAdvanced } from "./types";
+import { emptyConfig, isAdvanced, withoutLaunchTarget } from "./types";
 import type {
   Catalog,
   Config,
@@ -683,7 +683,13 @@ class AppStore {
     };
   }
 
-  loadConfig(cfg: Config) {
+  /** Replace the selection with `cfg`. `keepLaunchTarget` keeps the current
+   *  game's umu mode / exe / prefix / game id — for presets and the global
+   *  profile, which are tuning to lay onto whatever game is open. */
+  loadConfig(cfg: Config, { keepLaunchTarget = false } = {}) {
+    const target = keepLaunchTarget
+      ? { umu: this.umu, umu_exe: this.umuExe, umu_wineprefix: this.umuWineprefix, umu_gameid: this.umuGameid }
+      : cfg;
     this.resetOptions();
     // Mirror of `store::options_from_lists`: an env key the catalog no longer
     // has is re-homed into the custom-env field rather than dropped. Dropping it
@@ -700,14 +706,14 @@ class AppStore {
     for (const [k, v] of cfg.wrappers) {
       if (this.wrap[k]) this.wrap[k] = { enabled: true, value: v };
     }
-    this.umu = cfg.umu;
+    this.umu = target.umu;
     // Idempotent with the backend merge: after a round-trip the key is already
     // in `cfg.extra_env`, so it produces no leftover and nothing is duplicated.
     this.extraEnv = mergeIntoExtraEnv(cfg.extra_env, leftover);
     this.gameArgs = cfg.game_args;
-    this.umuExe = cfg.umu_exe;
-    this.umuWineprefix = cfg.umu_wineprefix;
-    this.umuGameid = cfg.umu_gameid;
+    this.umuExe = target.umu_exe;
+    this.umuWineprefix = target.umu_wineprefix;
+    this.umuGameid = target.umu_gameid;
     if (cfg.runtime) {
       const r = this.runtimes.find((x) => x.internal_name === cfg.runtime);
       if (r) this.selectedRuntime = r;
@@ -1279,15 +1285,15 @@ class AppStore {
   presetModified = $derived.by((): boolean => {
     const name = this.activePresetName;
     if (!name) return false;
-    const now = JSON.stringify(this.toConfig());
+    const now = JSON.stringify(withoutLaunchTarget(this.toConfig()));
     const baseline = this.presetBaselines.get(name);
     if (baseline !== undefined) return now !== baseline;
     const p = this.store.presets.find((x) => x.name === name);
-    return !!p && now !== JSON.stringify(p.config);
+    return !!p && now !== JSON.stringify(withoutLaunchTarget(p.config));
   });
 
   savePreset(name: string) {
-    const config = this.toConfig();
+    const config = withoutLaunchTarget(this.toConfig());
     const i = this.store.presets.findIndex((p) => p.name === name);
     // Overwriting keeps the preset's original game rather than silently
     // re-homing it onto whichever game happens to be open.
@@ -1319,9 +1325,9 @@ class AppStore {
   loadPreset(name: string) {
     const p = this.store.presets.find((x) => x.name === name);
     if (!p) return;
-    this.loadConfig(p.config);
+    this.loadConfig(p.config, { keepLaunchTarget: true });
     this.activePresetName = name;
-    this.presetBaselines.set(name, JSON.stringify(this.toConfig()));
+    this.presetBaselines.set(name, JSON.stringify(withoutLaunchTarget(this.toConfig())));
     this.mark(`load preset "${name}"`);
   }
 
@@ -1364,7 +1370,7 @@ class AppStore {
 
   /** Save the current build as the reusable global profile (Settings). */
   setGlobalProfileFromCurrent() {
-    this.store.global_profile = this.toConfig();
+    this.store.global_profile = withoutLaunchTarget(this.toConfig());
     this.persistStore();
   }
 
@@ -1378,7 +1384,7 @@ class AppStore {
   applyGlobalProfile() {
     const gp = this.store.global_profile;
     if (!gp) return;
-    this.loadConfig(gp);
+    this.loadConfig(gp, { keepLaunchTarget: true });
     this.mark("apply global profile");
   }
 

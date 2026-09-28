@@ -504,6 +504,14 @@ export interface Bootstrap {
   config_warnings: ConfigWarning[];
 }
 
+/** `cfg` with its launch target — umu mode, exe, prefix, game id — reset.
+ *  Those belong to the game a config was built on, not to its tuning, so
+ *  presets, the global profile and share codes are stored without them. */
+export function withoutLaunchTarget(cfg: Config): Config {
+  const e = emptyConfig();
+  return { ...cfg, umu: e.umu, umu_exe: e.umu_exe, umu_wineprefix: e.umu_wineprefix, umu_gameid: e.umu_gameid };
+}
+
 export function emptyConfig(): Config {
   return {
     umu: false,
