@@ -5,7 +5,7 @@ import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
-import { formatExtraEnv, mergeIntoExtraEnv, splitExtraEnv } from "./shell";
+import { formatExtraEnv, mergeIntoExtraEnv, setInExtraEnv, splitExtraEnv } from "./shell";
 import { irrelevance, isRecommended } from "./util";
 import { emptyConfig, isAdvanced, withoutLaunchTarget } from "./types";
 import type {
@@ -1442,29 +1442,33 @@ class AppStore {
 
   // ------------------------------- mangohud ---------------------------------
 
-  applyMango(config: string) {
-    if (this.env["MANGOHUD_CONFIG"]) {
-      this.env["MANGOHUD_CONFIG"] = { enabled: true, value: config };
-    } else {
-      // Fall back to custom env if the catalog lacks the key.
-      this.extraEnv = `${this.extraEnv} MANGOHUD_CONFIG=${config}`.trim();
+  /** Set a catalog env row to `value` (enabled; "" turns it off), or — when
+   *  the catalog lacks the key — set it in the custom-env field instead, with
+   *  the builder's quoting and replacing any earlier assignment. */
+  private setEnvOrExtra(key: string, value: string) {
+    const s = this.env[key];
+    if (s) {
+      s.enabled = value !== "";
+      s.value = value;
+      this.disownParam(key);
+    } else if (value) {
+      this.extraEnv = setInExtraEnv(this.extraEnv, key, value);
     }
+  }
+
+  applyMango(config: string) {
+    this.setEnvOrExtra("MANGOHUD_CONFIG", config);
     // The in-app string shouldn't compete with a stale config-file path.
-    if (this.env["MANGOHUD_CONFIGFILE"]) this.env["MANGOHUD_CONFIGFILE"].enabled = false;
+    this.applyEnv("MANGOHUD_CONFIGFILE", false);
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
     this.mark("apply MangoHud preset");
   }
 
   applyMangoFile(path: string) {
-    if (this.env["MANGOHUD_CONFIGFILE"]) {
-      this.env["MANGOHUD_CONFIGFILE"] = { enabled: true, value: path };
-    } else {
-      // Fall back to custom env if the catalog lacks the key.
-      this.extraEnv = `${this.extraEnv} MANGOHUD_CONFIGFILE=${path}`.trim();
-    }
+    this.setEnvOrExtra("MANGOHUD_CONFIGFILE", path);
     // MANGOHUD_CONFIG takes priority over config files — disable it so the
     // file's settings actually take effect.
-    if (this.env["MANGOHUD_CONFIG"]) this.env["MANGOHUD_CONFIG"].enabled = false;
+    this.applyEnv("MANGOHUD_CONFIG", false);
     if (this.wrap["mangohud"]) this.wrap["mangohud"].enabled = true;
     this.mark("use MangoHud config file");
   }
@@ -1482,18 +1486,9 @@ class AppStore {
    * add a variable that changes nothing.
    */
   applyOptiScaler(config: string, proxy = "") {
-    if (this.env["PROTON_OPTISCALER_CONFIG"]) {
-      this.env["PROTON_OPTISCALER_CONFIG"] = { enabled: config !== "", value: config };
-    } else if (config) {
-      // Fall back to custom env if the catalog lacks the key.
-      this.extraEnv = `${this.extraEnv} PROTON_OPTISCALER_CONFIG='${config}'`.trim();
-    }
-    if (this.env["PROTON_OPTISCALER_NAME"]) {
-      this.env["PROTON_OPTISCALER_NAME"] = { enabled: proxy !== "", value: proxy };
-    } else if (proxy) {
-      this.extraEnv = `${this.extraEnv} PROTON_OPTISCALER_NAME=${proxy}`.trim();
-    }
-    if (this.env["PROTON_USE_OPTISCALER"]) this.env["PROTON_USE_OPTISCALER"].enabled = true;
+    this.setEnvOrExtra("PROTON_OPTISCALER_CONFIG", config);
+    this.setEnvOrExtra("PROTON_OPTISCALER_NAME", proxy);
+    this.applyEnv("PROTON_USE_OPTISCALER", true);
     this.mark("apply OptiScaler config");
   }
 

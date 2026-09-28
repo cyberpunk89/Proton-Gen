@@ -100,3 +100,20 @@ export function mergeIntoExtraEnv(extraEnv: string, pairs: [string, string][]): 
   const rendered = formatExtraEnv(fresh);
   return extraEnv.trim() === "" ? rendered : `${extraEnv.trimEnd()} ${rendered}`;
 }
+
+/**
+ * Set `key` in an extra-env string, replacing any existing assignment of it —
+ * the opposite tie-break to `mergeIntoExtraEnv`: this is the user applying a
+ * new value, so it wins. Everything else is re-rendered with the builder's
+ * quoting, so a value with spaces or `;` never lands unquoted.
+ */
+export function setInExtraEnv(extraEnv: string, key: string, value: string): string {
+  const out = tokenizeEnv(extraEnv)
+    .filter((t) => !t.includes("=") || t.slice(0, t.indexOf("=")) !== key)
+    .map((t) => {
+      const at = t.indexOf("=");
+      return at < 0 ? shQuote(t) : formatExtraEnv([[t.slice(0, at), t.slice(at + 1)]]);
+    });
+  out.push(formatExtraEnv([[key, value]]));
+  return out.join(" ");
+}
