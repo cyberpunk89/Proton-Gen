@@ -714,10 +714,13 @@ class AppStore {
     this.umuExe = target.umu_exe;
     this.umuWineprefix = target.umu_wineprefix;
     this.umuGameid = target.umu_gameid;
-    if (cfg.runtime) {
-      const r = this.runtimes.find((x) => x.internal_name === cfg.runtime);
-      if (r) this.selectedRuntime = r;
-    }
+    // A missing or no-longer-installed runtime falls back to the default, not
+    // to whatever the previous game had selected — that leaked into this
+    // game's memory and made undo see a phantom edit. Only an overlay (preset,
+    // profile) with no runtime of its own keeps the current one.
+    const r = cfg.runtime ? this.runtimes.find((x) => x.internal_name === cfg.runtime) : undefined;
+    if (r) this.selectedRuntime = r;
+    else if (!(keepLaunchTarget && cfg.runtime === null)) this.selectedRuntime = this.defaultRuntime();
   }
 
   /** Reset the command back to defaults, keeping the selected game. Just another
@@ -1091,7 +1094,7 @@ class AppStore {
       return false;
     }
     if (cfg.umu !== freshUmu) return false;
-    // A null runtime means "none chosen" — loadConfig keeps the default for it.
+    // A null runtime means "none chosen" — loadConfig falls back to the default.
     if (cfg.runtime !== null && cfg.runtime !== (this.defaultRuntime()?.internal_name ?? null)) {
       return false;
     }
