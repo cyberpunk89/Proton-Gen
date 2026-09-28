@@ -128,6 +128,9 @@
    * to open, directly if there's only one.
    */
   let groups = $derived(groupGames(games));
+  /** Tiles in the whole library, for the filter placeholder — counting raw
+   *  entries said "5 games" over 4 tiles when one title is on two stores. */
+  let tileCount = $derived(groupGames(app.games).length);
 
   /** Any status badge on screen at all — no point explaining glyphs the user
    *  cannot see, which is what a fresh install would get. */
@@ -267,7 +270,7 @@
           bind:value={query}
           onkeydown={onFilterKeydown}
           aria-label="Filter games"
-          placeholder="Filter {app.games.length} games…"
+          placeholder="Filter {tileCount} games…"
           class="w-56 rounded-xl border border-border bg-surface-2 py-2 pl-9 pr-3 text-sm text-text outline-none focus:border-accent"
         />
       </div>
