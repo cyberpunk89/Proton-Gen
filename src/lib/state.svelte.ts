@@ -456,6 +456,7 @@ class AppStore {
     }
   }
   private statusSeq = 0;
+  private applyingRecipe = false;
   /** A `refresh` arrived while one was running; run once more when it ends. */
   private rescanPending = false;
 
@@ -1502,18 +1503,29 @@ class AppStore {
   async applyRecipe(index: number): Promise<boolean> {
     const recipe = this.recipes[index];
     const name = recipe?.name ?? "recipe";
+    // A double click would merge twice against the same stale base.
+    if (this.applyingRecipe) return false;
+    this.applyingRecipe = true;
     const appId = this.selectedAppId;
+    const base = this.toConfig();
     let cfg: Config;
     try {
-      cfg = await ipc.applyRecipe(index, this.toConfig());
+      cfg = await ipc.applyRecipe(index, base);
     } catch (e) {
       console.error("applyRecipe failed", e);
       toast.error(`Couldn't apply “${name}”: ${e}`);
       return false;
+    } finally {
+      this.applyingRecipe = false;
     }
     // The result was merged onto the config of the game that was open when the
     // request went out; landing it on a game opened since would overwrite that one.
     if (this.selectedAppId !== appId) return false;
+    // Same for edits made while it was in flight: loadConfig would erase them.
+    if (JSON.stringify(this.toConfig()) !== JSON.stringify(base)) {
+      toast.info(`Didn't apply “${name}” — the build changed while it was loading. Try again.`);
+      return false;
+    }
     this.loadConfig(cfg);
     // loadConfig → resetOptions clears the map, so attribute after, not before.
     if (recipe) {
