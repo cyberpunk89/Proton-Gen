@@ -474,17 +474,7 @@ fn inject_at(
     let root: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|e| format!("Heroic config is not valid JSON ({}): {e}", path.display()))?;
 
-    let file_name = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("game.json");
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let backup = path.with_file_name(format!("{file_name}.protongen-{ts}.bak"));
-    std::fs::write(&backup, &raw)
-        .map_err(|e| format!("Could not write backup {}: {e}", backup.display()))?;
+    let backup = crate::fsutil::write_backup(&path, "protongen", raw.as_bytes())?;
 
     let patched = apply_to_config(root, app_name, env, wrappers, bins);
     let out = serde_json::to_string_pretty(&patched)

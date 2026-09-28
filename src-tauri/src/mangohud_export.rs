@@ -169,17 +169,12 @@ pub fn write_system_config(config: &str) -> Result<ExportResult, String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
     let path = dir.join("MangoHud.conf");
 
-    let existing = std::fs::read_to_string(&path).unwrap_or_default();
-
-    let backup_path = if path.exists() {
-        let ts = crate::fsutil::unix_ts();
-        let backup = path.with_file_name(format!("MangoHud.conf.protongen-{ts}.bak"));
-        std::fs::write(&backup, &existing)
-            .map_err(|e| format!("Could not write backup {}: {e}", backup.display()))?;
-        Some(backup.display().to_string())
-    } else {
-        None
+    let existing = crate::fsutil::read_existing(&path)?;
+    let backup_path = match &existing {
+        Some(text) => Some(crate::fsutil::write_backup(&path, "protongen", text.as_bytes())?.display().to_string()),
+        None => None,
     };
+    let existing = existing.unwrap_or_default();
 
     let merged = merge(&existing, config);
     crate::fsutil::write_atomic(&path, merged.text.as_bytes())?;
