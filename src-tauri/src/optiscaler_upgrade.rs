@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::update::{fetch_bytes, fetch_text};
+use crate::update::{DOWNLOAD_TIMEOUT, fetch_bytes_with, fetch_text};
 
 const REPO: &str = "optiscaler/OptiScaler";
 const USER_AGENT: &str = "protongen-optiscaler-upgrade";
@@ -115,31 +115,49 @@ pub struct OptiscalerExtractResult {
 pub fn fetch_and_extract(install_dir: &Path) -> Result<OptiscalerExtractResult, String> {
     let release = check_latest()?;
 
-    let archive_bytes = fetch_bytes(&release.asset_url, USER_AGENT)?;
+    let archive_bytes = fetch_bytes_with(&release.asset_url, USER_AGENT, DOWNLOAD_TIMEOUT)?;
     if archive_bytes.is_empty() {
         return Err("downloaded OptiScaler release was empty".to_string());
     }
 
-    let work = std::env::temp_dir().join(format!("protongen-optiscaler-{}", std::process::id()));
-    let archive_path = work.with_extension("7z");
-    std::fs::create_dir_all(&work).map_err(|e| format!("couldn't create {}: {e}", work.display()))?;
-    std::fs::write(&archive_path, &archive_bytes)
-        .map_err(|e| format!("couldn't write {}: {e}", archive_path.display()))?;
-
-    let extract_result = sevenz_rust2::decompress_file(&archive_path, &work)
-        .map_err(|e| format!("couldn't extract the OptiScaler archive: {e}"));
-
-    // Best-effort cleanup either way — a leftover temp archive/staging dir
-    // isn't worth failing the whole operation over.
-    let _ = std::fs::remove_file(&archive_path);
-    extract_result.map_err(|e| {
-        let _ = std::fs::remove_dir_all(&work);
-        e
-    })?;
-
-    let outcome = copy_extracted(&work, install_dir, &release.tag);
+    let work = fresh_work_dir()?;
+    let archive_path = work.join("OptiScaler.7z");
+    let staged = work.join("extracted");
+    let outcome = (|| {
+        std::fs::write(&archive_path, &archive_bytes)
+            .map_err(|e| format!("couldn't write {}: {e}", archive_path.display()))?;
+        sevenz_rust2::decompress_file(&archive_path, &staged)
+            .map_err(|e| format!("couldn't extract the OptiScaler archive: {e}"))?;
+        copy_extracted(&staged, install_dir, &release.tag)
+    })();
+    // Best-effort cleanup either way — a leftover staging dir isn't worth
+    // failing the whole operation over.
     let _ = std::fs::remove_dir_all(&work);
     outcome
+}
+
+/// A staging directory nobody else is using. It used to be one fixed name per
+/// process, so two fetches at once (two games) extracted into the same place
+/// and one's cleanup could delete the other's files mid-copy — and a fixed
+/// name in a shared `/tmp` can be pre-created by someone else. `create_dir`
+/// (not `_all`) fails if anything already sits at the name, symlinks included.
+fn fresh_work_dir() -> Result<PathBuf, String> {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    for _ in 0..100 {
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir()
+            .join(format!("protongen-optiscaler-{}-{nanos:x}-{n}", std::process::id()));
+        match std::fs::create_dir(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("couldn't create {}: {e}", dir.display())),
+        }
+    }
+    Err("couldn't create a staging directory for OptiScaler".to_string())
 }
 
 /// Copy every file under `staged` into `install_dir`, preserving subfolders

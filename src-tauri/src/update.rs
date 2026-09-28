@@ -93,7 +93,7 @@ pub fn download_and_swap(info: &UpdateInfo) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "cannot resolve install directory".to_string())?;
 
-    let bin = fetch_bytes(&info.download_url, USER_AGENT)?;
+    let bin = fetch_bytes_with(&info.download_url, USER_AGENT, DOWNLOAD_TIMEOUT)?;
     if bin.is_empty() {
         return Err("downloaded binary was empty".to_string());
     }
@@ -137,7 +137,21 @@ fn asset_url(assets: &[serde_json::Value], name: &str) -> String {
 /// GitHub rejects requests without a `User-Agent`; shared by every module that
 /// hits its API (`update`, `optiscaler_upgrade`).
 pub(crate) fn fetch_bytes(url: &str, user_agent: &str) -> Result<Vec<u8>, String> {
-    let mut req = ehttp::Request::get(url);
+    fetch_bytes_with(url, user_agent, ehttp::Request::DEFAULT_TIMEOUT)
+}
+
+/// How long a release-asset download may take to arrive. ehttp's timeout
+/// covers receiving the whole body, and its 30 s default fails a binary or a
+/// tens-of-MB archive partway on a slow link.
+pub(crate) const DOWNLOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// [`fetch_bytes`] with an explicit body timeout.
+pub(crate) fn fetch_bytes_with(
+    url: &str,
+    user_agent: &str,
+    timeout: std::time::Duration,
+) -> Result<Vec<u8>, String> {
+    let mut req = ehttp::Request::get(url).with_timeout(Some(timeout));
     req.headers.insert("User-Agent", user_agent);
     req.headers.insert("Accept", "application/vnd.github+json");
     let resp = ehttp::fetch_blocking(&req)?;
