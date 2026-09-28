@@ -59,6 +59,11 @@
 /* Default = Catppuccin Mocha. Each theme overrides the same token contract. */
 :root,
 [data-theme="mocha"] {
+  /* Every theme but latte is dark. Without this WebKitGTK draws native
+     controls (scrollbars, date/colour pickers, any stray <select> popup) in the
+     light GTK style, which is unreadable on a dark palette. `:root` always
+     matches <html>, so the other dark themes inherit it; latte overrides. */
+  color-scheme: dark;
   --bg: #1e1e2e;
   --mantle: #181825;
   --surface: #24243648;
@@ -122,6 +127,7 @@
 }
 
 [data-theme="latte"] {
+  color-scheme: light;
   --bg: #eff1f5;
   --mantle: #e6e9ef;
   --surface: #ffffffcc;

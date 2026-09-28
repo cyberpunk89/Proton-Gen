@@ -16,6 +16,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { untrack } from "svelte";
   import { FolderOpen } from "phosphor-svelte";
+  import SelectField from "./SelectField.svelte";
 
   let { onapply }: { onapply?: () => void } = $props();
 
@@ -295,17 +296,10 @@
         <div class="space-y-2 border-t border-border/60 pt-3">
           <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Appearance</p>
 
-          <label class="flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2">
             <span class="text-sm text-subtext">Position</span>
-            <select
-              bind:value={position}
-              class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text outline-none focus:border-accent"
-            >
-              {#each POSITIONS as p (p.value)}
-                <option value={p.value}>{p.label}</option>
-              {/each}
-            </select>
-          </label>
+            <SelectField label="Position" value={position} options={POSITIONS} onValueChange={(v) => (position = v)} />
+          </div>
 
           <label class="flex items-center justify-between gap-2">
             <span class="text-sm text-subtext">Font size</span>

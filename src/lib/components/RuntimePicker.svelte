@@ -87,7 +87,7 @@
                 <Select.Item
                   value={r.path}
                   label={r.display_name}
-                  class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left data-highlighted:bg-surface-2"
+                  class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left data-highlighted:bg-accent/15"
                 >
                   {#snippet children({ selected })}
                     {#if selected}

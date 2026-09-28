@@ -2,6 +2,7 @@
   import { app } from "$lib/state.svelte";
   import { ipc } from "$lib/ipc";
   import { toast } from "$lib/toast.svelte";
+  import SelectField from "./SelectField.svelte";
   import {
     TOGGLE_KEYS,
     SMAA_EDGE_DETECTION,
@@ -238,16 +239,8 @@
   get: () => string,
   set: (v: string) => void,
 )}
-  <label class="flex items-center justify-between gap-2">
+  <div class="flex items-center justify-between gap-2">
     <span class="text-sm text-subtext">{label}</span>
-    <select
-      value={get()}
-      onchange={(e) => set(e.currentTarget.value)}
-      class="w-44 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text outline-none focus:border-accent"
-    >
-      {#each choices as ch (ch.value)}
-        <option value={ch.value}>{ch.label}</option>
-      {/each}
-    </select>
-  </label>
+    <SelectField {label} value={get()} options={choices} onValueChange={set} width="w-44" />
+  </div>
 {/snippet}

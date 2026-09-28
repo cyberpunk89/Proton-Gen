@@ -1,5 +1,6 @@
 <script lang="ts">
   import Switch from "./Switch.svelte";
+  import SelectField from "./SelectField.svelte";
   import Badges from "./Badges.svelte";
   import InfoPopover from "./InfoPopover.svelte";
   import { app } from "$lib/state.svelte";
@@ -164,16 +165,14 @@
         oninput={(e) => onValue?.(e.currentTarget.value)}
       />
     {:else if valueField === "select"}
-      <select
-        class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs text-text outline-none focus:border-accent"
-        aria-label="{title} value"
-        {value}
-        onchange={(e) => onValue?.(e.currentTarget.value)}
-      >
-        {#each values as v (v)}
-          <option value={v}>{v}</option>
-        {/each}
-      </select>
+      <SelectField
+        label="{title} value"
+        value={value ?? ""}
+        options={values.map((v) => ({ value: v, label: v }))}
+        onValueChange={(v) => onValue?.(v)}
+        size="xs"
+        mono
+      />
     {:else if valueField === "segmented"}
       <div class="inline-flex shrink-0 overflow-hidden rounded-lg border border-border">
         {#each values as v, i (v)}

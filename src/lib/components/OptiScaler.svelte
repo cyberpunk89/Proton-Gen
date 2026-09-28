@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { toast } from "$lib/toast.svelte";
+  import SelectField from "./SelectField.svelte";
   import {
     DX12_UPSCALERS,
     DX11_UPSCALERS,
@@ -218,17 +219,10 @@
           <span class="w-8 text-right font-mono text-xs text-muted">{c.sharpness}</span>
         </label>
         {#if c.sharpenOn}
-          <label class="flex items-center justify-between gap-2 pl-6">
+          <div class="flex items-center justify-between gap-2 pl-6">
             <span class="text-sm text-subtext">Filter</span>
-            <select
-              bind:value={c.sharpenShader}
-              class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text outline-none focus:border-accent"
-            >
-              {#each SHARPEN_SHADERS as s (s.value)}
-                <option value={s.value}>{s.label}</option>
-              {/each}
-            </select>
-          </label>
+            <SelectField label="Filter" value={c.sharpenShader} options={SHARPEN_SHADERS} onValueChange={(v) => (c.sharpenShader = v)} />
+          </div>
         {/if}
       </div>
 
@@ -239,28 +233,14 @@
           <span class="text-sm text-subtext">Frame generation (OptiFG)</span>
         </label>
         {#if c.frameGenOn}
-          <label class="flex items-center justify-between gap-2 pl-6">
+          <div class="flex items-center justify-between gap-2 pl-6">
             <span class="text-sm text-subtext">Input</span>
-            <select
-              bind:value={c.fgInput}
-              class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text outline-none focus:border-accent"
-            >
-              {#each FG_INPUTS as f (f.value)}
-                <option value={f.value}>{f.label}</option>
-              {/each}
-            </select>
-          </label>
-          <label class="flex items-center justify-between gap-2 pl-6">
+            <SelectField label="Input" value={c.fgInput} options={FG_INPUTS} onValueChange={(v) => (c.fgInput = v)} />
+          </div>
+          <div class="flex items-center justify-between gap-2 pl-6">
             <span class="text-sm text-subtext">Output</span>
-            <select
-              bind:value={c.fgOutput}
-              class="w-40 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text outline-none focus:border-accent"
-            >
-              {#each FG_OUTPUTS as f (f.value)}
-                <option value={f.value}>{f.label}</option>
-              {/each}
-            </select>
-          </label>
+            <SelectField label="Output" value={c.fgOutput} options={FG_OUTPUTS} onValueChange={(v) => (c.fgOutput = v)} />
+          </div>
         {/if}
       </div>
 
@@ -441,16 +421,8 @@
   get: () => string,
   set: (v: string) => void,
 )}
-  <label class="flex items-center justify-between gap-2">
+  <div class="flex items-center justify-between gap-2">
     <span class="text-sm text-subtext">{label}</span>
-    <select
-      value={get()}
-      onchange={(e) => set(e.currentTarget.value)}
-      class="w-44 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text outline-none focus:border-accent"
-    >
-      {#each choices as ch (ch.value)}
-        <option value={ch.value}>{ch.label}</option>
-      {/each}
-    </select>
-  </label>
+    <SelectField {label} value={get()} options={choices} onValueChange={set} width="w-44" />
+  </div>
 {/snippet}
