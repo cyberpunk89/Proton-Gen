@@ -2174,7 +2174,7 @@ class AppStore {
     if (!this.update) return;
     this.updating = true;
     try {
-      await ipc.runUpdate($state.snapshot(this.update));
+      await ipc.runUpdate();
     } finally {
       this.updating = false;
     }

@@ -1057,9 +1057,13 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
 
 /// Download + verify + swap the new binary, then restart into it. On success this
 /// never returns (the process is replaced); errors bubble back to the banner.
+///
+/// Takes no arguments on purpose: the release is re-resolved here rather than
+/// trusted from the webview, which could otherwise pick both the binary and
+/// the checksum it is verified against.
 #[tauri::command]
-pub async fn run_update(app: tauri::AppHandle, info: UpdateInfo) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || update::download_and_swap(&info))
+pub async fn run_update(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| update::download_and_swap(&update::check_blocking()?))
         .await
         .map_err(|e| e.to_string())??;
     app.restart()

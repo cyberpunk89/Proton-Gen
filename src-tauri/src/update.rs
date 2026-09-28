@@ -11,7 +11,7 @@
 //! HTTP mirrors the `protondb`/`art` modules: `ehttp::fetch_blocking`, wrapped by
 //! the caller in `spawn_blocking` so it never stalls the UI.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 const REPO: &str = "cyberpunk89/Proton-Gen";
 const USER_AGENT: &str = "protongen-updater";
@@ -20,7 +20,7 @@ const BIN_ASSET: &str = "protongen";
 const SHA_ASSET: &str = "protongen.sha256";
 
 /// "Update available" banner data, and the download inputs for `run_update`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct UpdateInfo {
     pub available: bool,
     pub current: String,
@@ -68,6 +68,9 @@ pub fn check_blocking() -> Result<UpdateInfo, String> {
 /// Download the new binary, verify its checksum, and atomically replace the
 /// currently-running executable. Caller restarts the app on success.
 pub fn download_and_swap(info: &UpdateInfo) -> Result<(), String> {
+    if !info.available {
+        return Err(format!("v{} is not newer than the running v{}", info.latest, info.current));
+    }
     if info.download_url.is_empty() {
         return Err("release has no protongen binary asset".to_string());
     }
@@ -79,6 +82,11 @@ pub fn download_and_swap(info: &UpdateInfo) -> Result<(), String> {
              install it manually from {} or re-run install.sh",
             info.latest, info.html_url
         ));
+    }
+    for url in [&info.download_url, &info.sha256_url] {
+        if !is_release_asset_url(url) {
+            return Err(format!("refusing to download {url}: not a {REPO} release asset"));
+        }
     }
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let dir = current_exe
@@ -105,6 +113,12 @@ pub fn download_and_swap(info: &UpdateInfo) -> Result<(), String> {
         )
     })?;
     Ok(())
+}
+
+/// Only this repo's own release downloads are ever fetched and installed.
+fn is_release_asset_url(url: &str) -> bool {
+    url.strip_prefix(&format!("https://github.com/{REPO}/releases/download/"))
+        .is_some_and(|rest| !rest.is_empty() && !rest.contains(".."))
 }
 
 fn asset_url(assets: &[serde_json::Value], name: &str) -> String {
@@ -161,6 +175,22 @@ fn verify_checksum(bin: &[u8], sums: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_this_repos_release_assets_are_accepted() {
+        assert!(is_release_asset_url(
+            "https://github.com/cyberpunk89/Proton-Gen/releases/download/v0.21.0/protongen"
+        ));
+        for bad in [
+            "https://evil.example/protongen",
+            "http://github.com/cyberpunk89/Proton-Gen/releases/download/v1/protongen",
+            "https://github.com/someone/else/releases/download/v1/protongen",
+            "https://github.com/cyberpunk89/Proton-Gen/releases/download/../../x",
+            "https://github.com/cyberpunk89/Proton-Gen/releases/download/",
+        ] {
+            assert!(!is_release_asset_url(bad), "{bad}");
+        }
+    }
 
     // sha256("hello")
     const HELLO: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";

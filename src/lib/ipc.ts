@@ -231,8 +231,9 @@ export const ipc = {
           sha256_url: "",
         }),
 
-  runUpdate: (info: UpdateInfo) =>
-    inTauri ? invoke<void>("run_update", { info }) : Promise.resolve(),
+  // No payload: the backend re-resolves the release itself rather than
+  // trusting URLs from here.
+  runUpdate: () => (inTauri ? invoke<void>("run_update") : Promise.resolve()),
 
   // Whether `appId` already has an OptiScaler install to refresh. The mock has
   // no filesystem, so it reports "found" unconditionally — just enough to
