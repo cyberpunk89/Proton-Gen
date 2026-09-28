@@ -739,7 +739,9 @@ pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
             declared
         }
     };
-    lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen)
+    let mut notices = lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen);
+    notices.extend(lint::invalid_custom_env(&compose::invalid_extra_env(&config.extra_env)));
+    notices
 }
 
 /// The ProtonDB community page URL for a Steam app id.

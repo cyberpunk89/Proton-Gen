@@ -13,10 +13,25 @@ use crate::store::{self, Config};
 
 /// Split the "custom env" field (`K=V K=V …`) into pairs. Uses the parser's
 /// quote-aware splitter so `FOO="a b"` survives as a single pair.
+///
+/// Only tokens the shell would treat as assignments come back: emitting
+/// `A-B=x` or a bare word before the target would make it the command Steam
+/// runs. [`invalid_extra_env`] names what was skipped, for a lint notice.
 pub fn parse_extra_env(s: &str) -> Vec<(String, String)> {
     parser::tokenize(s)
         .iter()
-        .filter_map(|t| t.split_once('=').map(|(k, v)| (k.to_string(), v.to_string())))
+        .filter_map(|t| t.split_once('='))
+        .filter(|(k, _)| builder::is_env_key(k))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// The custom-env tokens [`parse_extra_env`] skips: no `=`, or a key that
+/// isn't a valid variable name.
+pub fn invalid_extra_env(s: &str) -> Vec<String> {
+    parser::tokenize(s)
+        .into_iter()
+        .filter(|t| !t.split_once('=').is_some_and(|(k, _)| builder::is_env_key(k)))
         .collect()
 }
 
@@ -118,6 +133,16 @@ pub fn assemble(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_env_keys_the_shell_would_not_assign_are_skipped_and_reported() {
+        let s = "GOOD=1 A-B=x 1X=y bare _OK=2";
+        assert_eq!(
+            parse_extra_env(s),
+            vec![("GOOD".to_string(), "1".to_string()), ("_OK".to_string(), "2".to_string())]
+        );
+        assert_eq!(invalid_extra_env(s), vec!["A-B=x", "1X=y", "bare"]);
+    }
 
     #[test]
     fn assemble_reproduces_all_combined_fixture() {

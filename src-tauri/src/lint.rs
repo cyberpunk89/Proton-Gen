@@ -393,6 +393,26 @@ const RULES: &[Rule] = &[
 ///
 /// `gpu_gen` is the user's declared AMD generation from the settings store —
 /// see [`Ctx::gpu_gen`].
+/// A notice for custom-env tokens that aren't shell assignments (see
+/// `compose::invalid_extra_env`) — they're left out of the command, and the
+/// user should know why their `A-B=x` did nothing.
+pub fn invalid_custom_env(tokens: &[String]) -> Option<Notice> {
+    if tokens.is_empty() {
+        return None;
+    }
+    Some(Notice {
+        id: "custom-env-invalid".to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "Custom env {} left out: {} — a variable name is letters, digits and _, not starting with a digit.",
+            if tokens.len() == 1 { "entry" } else { "entries" },
+            tokens.join(" ")
+        ),
+        keys: Vec::new(),
+        fix: None,
+    })
+}
+
 pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware, gpu_gen: &str) -> Vec<Notice> {
     let ctx = Ctx { catalog, options, hw, gpu_gen };
     RULES.iter().filter_map(|r| (r.check)(&ctx)).collect()
