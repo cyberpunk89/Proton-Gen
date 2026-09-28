@@ -24,20 +24,27 @@
   let loading = $state(false);
   let loadError = $state<string | null>(null);
 
+  // Only the latest read may land: switching games mid-read must not let the
+  // slower, older game's log win.
+  let readSeq = 0;
+
   async function refresh() {
     const id = app.selectedAppId;
     if (id == null) return;
+    const seq = ++readSeq;
     loading = true;
     loadError = null;
     // A fresh log means the previous analysis no longer applies.
     app.clearAnalysis();
     try {
-      log = await ipc.readProtonLog(id);
+      const next = await ipc.readProtonLog(id);
+      if (seq === readSeq) log = next;
     } catch (e) {
+      if (seq !== readSeq) return;
       loadError = String(e);
       log = null;
     } finally {
-      loading = false;
+      if (seq === readSeq) loading = false;
     }
   }
 

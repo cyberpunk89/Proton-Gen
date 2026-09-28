@@ -1163,8 +1163,11 @@ class AppStore {
       this.persistStore();
     }
 
-    // Any pending prompt belonged to the game we're leaving.
+    // Any pending prompt — or AI diagnosis, in flight or shown — belonged to
+    // the game we're leaving.
     this.pendingDefaultPrompt = false;
+    this.clearAnalysis();
+    this.clearTroubleshoot();
 
     if (!game) {
       this.selectedAppId = null;
@@ -2031,27 +2034,37 @@ class AppStore {
     error_lines: string[];
     tail: string;
   }): Promise<void> {
+    const seq = ++this.aiSeq;
     this.aiLoading = true;
     this.aiError = null;
     try {
-      this.aiResult = await ipc.llmAnalyze({
+      const result = await ipc.llmAnalyze({
         command: this.command,
         game_name: this.selectedGameName ?? "",
         error_lines: log.error_lines,
         log_tail: log.tail,
       });
+      if (seq === this.aiSeq) this.aiResult = result;
     } catch (e) {
       console.error("llmAnalyze failed", e);
+      if (seq !== this.aiSeq) return;
       this.aiError = String(e);
       this.aiResult = null;
     } finally {
-      this.aiLoading = false;
+      if (seq === this.aiSeq) this.aiLoading = false;
     }
   }
+
+  /** Bumped per request and by the clear methods: a response only lands if no
+   *  newer request or clear happened while it was in flight — otherwise a
+   *  slow answer for the game (or dialog) you left shows up afterwards. */
+  private aiSeq = 0;
+  private tsSeq = 0;
 
   /** Clear the last analysis (e.g. when the log dialog closes or the game
    *  changes) so a stale suggestion never shows against a different game. */
   clearAnalysis() {
+    this.aiSeq++;
     this.aiResult = null;
     this.aiError = null;
     this.aiLoading = false;
@@ -2064,6 +2077,7 @@ class AppStore {
    * offers the Fix recipes and catalog allow-list to constrain the answer.
    */
   async troubleshoot(symptom: string): Promise<void> {
+    const seq = ++this.tsSeq;
     this.tsLoading = true;
     this.tsError = null;
     try {
@@ -2081,24 +2095,27 @@ class AppStore {
           // symptom-only diagnosis.
         }
       }
-      this.tsResult = await ipc.llmTroubleshoot({
+      const result = await ipc.llmTroubleshoot({
         symptom,
         command: this.command,
         game_name: this.selectedGameName ?? "",
         error_lines: errorLines,
         has_log: hasLog,
       });
+      if (seq === this.tsSeq) this.tsResult = result;
     } catch (e) {
       console.error("llmTroubleshoot failed", e);
+      if (seq !== this.tsSeq) return;
       this.tsError = String(e);
       this.tsResult = null;
     } finally {
-      this.tsLoading = false;
+      if (seq === this.tsSeq) this.tsLoading = false;
     }
   }
 
   /** Reset the troubleshooter (e.g. when its dialog closes). */
   clearTroubleshoot() {
+    this.tsSeq++;
     this.tsResult = null;
     this.tsError = null;
     this.tsLoading = false;
