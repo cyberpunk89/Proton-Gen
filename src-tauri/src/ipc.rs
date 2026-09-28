@@ -522,6 +522,13 @@ pub async fn inject_heroic(
     app_name: String,
     config: Config,
 ) -> Result<heroic::InjectResult, String> {
+    // Only a game discovery actually found may be written to.
+    let known = state.discovery.lock().unwrap().as_ref().is_some_and(|d| {
+        d.games.iter().any(|g| g.heroic_id.as_deref() == Some(app_name.as_str()))
+    });
+    if !known {
+        return Err(format!("no discovered Heroic game has the id {app_name:?}"));
+    }
     let (env, wrappers) = compose::resolve_env_wrappers(&state.catalog, &config);
     let bins = state.bins();
     tauri::async_runtime::spawn_blocking(move || heroic::inject(&app_name, &env, &wrappers, &bins))

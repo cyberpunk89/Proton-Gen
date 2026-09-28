@@ -28,9 +28,23 @@ fn config_dir() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".config/heroic"))
 }
 
-/// `GamesConfig/<app_name>.json` under the Heroic config dir.
+/// `GamesConfig/<app_name>.json` under the Heroic config dir. `None` for an
+/// `app_name` that isn't a plain file stem, so it can never name a path
+/// outside `GamesConfig/`.
 fn game_config_path(app_name: &str) -> Option<PathBuf> {
+    if !is_valid_app_name(app_name) {
+        return None;
+    }
     Some(config_dir()?.join("GamesConfig").join(format!("{app_name}.json")))
+}
+
+/// Heroic app names are store ids — sideload/Legendary base62, GOG digits,
+/// Amazon `amzn1.adg.product.<uuid>` — so letters, digits, `.`, `_`, `-` and
+/// no leading dot covers them all while ruling out `/` and `..`.
+fn is_valid_app_name(app_name: &str) -> bool {
+    !app_name.is_empty()
+        && !app_name.starts_with('.')
+        && app_name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
 // ----------------------------- discovery -----------------------------
@@ -421,8 +435,24 @@ pub fn inject(
     wrappers: &[Wrapper],
     bins: &Bins,
 ) -> Result<InjectResult, String> {
+    if !is_valid_app_name(app_name) {
+        return Err(format!("not a Heroic app name: {app_name:?}"));
+    }
     let path =
         game_config_path(app_name).ok_or_else(|| "Heroic config directory not found".to_string())?;
+    inject_at(&path, app_name, env, wrappers, bins)
+}
+
+/// [`inject`] against an explicit config file path — the I/O half, split out
+/// so tests can point it at a scratch directory.
+fn inject_at(
+    path: &std::path::Path,
+    app_name: &str,
+    env: &[(String, String)],
+    wrappers: &[Wrapper],
+    bins: &Bins,
+) -> Result<InjectResult, String> {
+    let path = path.to_path_buf();
 
     // A game the user never opened in Heroic has no config yet. Creating a
     // partial one would omit `wineVersion`/`winePrefix` and could break launch,
@@ -456,12 +486,7 @@ pub fn inject(
     let out = serde_json::to_string_pretty(&patched)
         .map_err(|e| format!("Could not serialize Heroic config: {e}"))?;
 
-    // Atomic replace: temp in the same dir, then rename over the original.
-    let tmp = path.with_file_name(format!("{file_name}.protongen-tmp"));
-    std::fs::write(&tmp, out.as_bytes())
-        .map_err(|e| format!("Could not write {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path)
-        .map_err(|e| format!("Could not replace {}: {e}", path.display()))?;
+    crate::fsutil::write_atomic(&path, out.as_bytes())?;
 
     Ok(InjectResult {
         config_path: path.display().to_string(),
@@ -473,6 +498,55 @@ pub fn inject(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("protongen-heroic-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn app_names_that_could_leave_games_config_are_rejected() {
+        for ok in ["7Hm5qmyaYmaSZ45Mqo3u4s", "1207658924", "amzn1.adg.product.ab-12_c"] {
+            assert!(is_valid_app_name(ok), "{ok}");
+        }
+        for bad in ["", "../x", "a/b", "..", ".hidden", "a b", "x\0"] {
+            assert!(!is_valid_app_name(bad), "{bad:?}");
+            assert!(inject(bad, &[], &[], &Bins::default()).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn inject_backs_up_then_patches_in_place() {
+        let dir = scratch("inject");
+        let path = dir.join("7Hm5.json");
+        let original = serde_json::to_string_pretty(&base_config()).unwrap();
+        std::fs::write(&path, &original).unwrap();
+
+        let env = vec![("DXVK_HDR".to_string(), "1".to_string())];
+        let res = inject_at(&path, "7Hm5", &env, &[], &Bins::default()).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&res.backup_path).unwrap(), original);
+        let patched: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(patched["7Hm5"]["enviromentOptions"][0]["key"], "DXVK_HDR");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn inject_refuses_a_missing_or_invalid_config_without_writing() {
+        let dir = scratch("refuse");
+        let missing = dir.join("7Hm5.json");
+        assert!(inject_at(&missing, "7Hm5", &[], &[], &Bins::default()).is_err());
+        assert!(!missing.exists(), "must not create a partial config");
+
+        std::fs::write(&missing, "{ not json").unwrap();
+        assert!(inject_at(&missing, "7Hm5", &[], &[], &Bins::default()).is_err());
+        assert_eq!(std::fs::read_to_string(&missing).unwrap(), "{ not json");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "no backup for a refused write");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn comm_matches_heroics_own_process_name() {
