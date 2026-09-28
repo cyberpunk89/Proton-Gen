@@ -1,3 +1,9 @@
+<script lang="ts" module>
+  /** The staggered entrance plays once per session, not on every return from
+   *  the builder — by the tenth time it is just a delay. */
+  let entrancePlayed = false;
+</script>
+
 <script lang="ts">
   import { app, type LibrarySort } from "$lib/state.svelte";
   import { autofocus, focusByName, focusTarget } from "$lib/actions";
@@ -21,6 +27,16 @@
   /** Filters are deliberately local, not persisted: a filter you forgot you set
    *  and that survives a restart looks like a missing library. */
   let tunedOnly = $state(false);
+
+  // Cleared after the stagger finishes, so tiles that arrive later (a filter,
+  // a rescan) appear immediately rather than replaying the entrance.
+  let entering = $state(!entrancePlayed);
+  $effect(() => {
+    if (!entering) return;
+    entrancePlayed = true;
+    const t = setTimeout(() => (entering = false), 900);
+    return () => clearTimeout(t);
+  });
   let favoritesOnly = $state(false);
 
   /** Wraps both shelves: tile lookup and column measuring go through it, so
@@ -401,8 +417,13 @@
   {/if}
 
   {#if games.length === 0}
-    <div class="flex flex-col items-center gap-2 py-24 text-center">
-      <GameController size={30} class="text-muted" />
+    <div class="animate-fade-up flex flex-col items-center gap-2 py-24 text-center">
+      <span
+        class="mb-2 grid size-16 place-items-center rounded-2xl text-accent ring-1 ring-accent/25"
+        style="background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 6%, transparent))"
+      >
+        <GameController size={30} weight="duotone" />
+      </span>
       <p class="text-sm text-muted">
         {app.games.length === 0
           ? "No games or shortcuts found."
@@ -426,7 +447,13 @@
       svelte:window so it is correctly scoped and needs no typing guard.
     -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div bind:this={grid} onkeydown={onKeydown} role="group" aria-label="Game library" class="flex flex-col gap-6">
+    <div
+      bind:this={grid}
+      onkeydown={onKeydown}
+      role="group"
+      aria-label="Game library"
+      class="flex flex-col gap-6 {entering ? 'tiles-entering' : ''}"
+    >
       {#if installedGroups.length}
         <div data-grid class={GRID}>
           {#each installedGroups as grp, i (grp.key)}

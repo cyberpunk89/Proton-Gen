@@ -96,12 +96,17 @@
 
   /** First entry with art, so a Heroic sideload's cover can stand in for a
    *  Steam listing that has none cached yet (or vice-versa). */
+  let artLoaded = $state(false);
   let art = $derived.by(() => {
     for (const e of entries) {
       const a = app.artFor(e.app_id, e.source, "portrait");
       if (a) return a;
     }
     return undefined;
+  });
+  $effect(() => {
+    void art;
+    artLoaded = false;
   });
 
   let selected = $derived(entries.some((e) => app.selectedAppId === e.app_id));
@@ -208,7 +213,9 @@
 </script>
 
 <div
-  class="group/tile relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border/60 transition duration-150 hover:-translate-y-1 hover:ring-2 hover:ring-accent has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent {selected
+  data-tile-root
+  style="--i: {Math.min(index, 14)}"
+  class="group/tile relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border/60 transition duration-200 hover:-translate-y-1 hover:ring-2 hover:ring-accent hover:glow-accent has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent has-[:focus-visible]:glow-accent {selected
     ? 'ring-2 ring-accent'
     : ''}"
 >
@@ -224,15 +231,25 @@
     use:inView={() => (seen = true)}
   >
     {#if art}
-      <img
-        src={art}
-        alt=""
-        loading="lazy"
-        class="h-full w-full object-cover transition duration-300 group-hover/tile:scale-[1.04]"
-      />
+      <!-- Fades in when decoded rather than popping in line by line. Keyed on
+           src so a swapped cover fades again instead of inheriting `loaded`. -->
+      {#key art}
+        <img
+          src={art}
+          alt=""
+          loading="lazy"
+          onload={() => (artLoaded = true)}
+          class="h-full w-full object-cover transition duration-500 group-hover/tile:scale-[1.04] {artLoaded
+            ? 'opacity-100'
+            : 'opacity-0'}"
+        />
+      {/key}
     {:else}
-      <span class="grid h-full w-full place-items-center text-muted">
-        <GameController size={34} weight="fill" />
+      <span
+        class="grid h-full w-full place-items-center text-muted"
+        style="background: radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%)"
+      >
+        <GameController size={34} weight="fill" class="opacity-70 transition duration-300 group-hover/tile:scale-110 group-hover/tile:text-accent" />
       </span>
     {/if}
   </div>

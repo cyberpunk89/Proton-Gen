@@ -129,7 +129,13 @@
   }
 </script>
 
-<header data-tauri-drag-region class="flex items-center gap-2.5 px-4 py-2">
+<header data-tauri-drag-region class="relative flex items-center gap-2.5 px-4 py-2">
+  <!-- Accent hairline along the bottom edge, fading out at both ends. -->
+  <span
+    class="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+    style="background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 45%, transparent) 30%, color-mix(in srgb, var(--mauve) 45%, transparent) 70%, transparent)"
+    aria-hidden="true"
+  ></span>
   <img src="/logo.svg" alt="" class="size-7 rounded-lg" data-tauri-drag-region />
   <div data-tauri-drag-region>
     <h1 class="text-sm font-medium leading-none text-text" data-tauri-drag-region>protongen</h1>

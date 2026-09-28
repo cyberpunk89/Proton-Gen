@@ -462,6 +462,51 @@ button,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    /* A staggered entrance (below) would otherwise still hold each tile
+       invisible for its delay. */
+    animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ----------------------------------------------------------- motion flair */
+/* Library tiles rise in once, staggered by their `--i`, the first time the
+   library mounts in a session (Library.svelte sets `.tiles-entering`). */
+@keyframes tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.tiles-entering [data-tile-root] {
+  animation: tile-in 380ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility animate-fade-up {
+  animation: fade-up 420ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* Soft accent halo for a lifted surface — themed, so every palette glows in
+   its own colour. Written through Tailwind's shadow stack rather than a bare
+   box-shadow, because `ring-*` is a box-shadow too and would be replaced. */
+@utility glow-accent {
+  --tw-shadow: 0 16px 34px -14px color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow:
+    var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow),
+    var(--tw-ring-shadow), var(--tw-shadow);
 }

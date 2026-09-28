@@ -89,7 +89,10 @@
             <!-- The body scrolls, not the page: `pt-[12vh]` above means an
                  over-tall dialog would otherwise run off the bottom of the
                  viewport with no way to reach its footer. -->
-            <div class="mt-4 max-h-[70vh] overflow-y-auto">
+            <!-- overflow-x-hidden: the builders' sticky footers bleed `-mx-1`
+                 to cover content scrolling under them, which otherwise
+                 shows a 4px horizontal scrollbar. -->
+            <div class="mt-4 max-h-[70vh] overflow-x-hidden overflow-y-auto">
               {@render children()}
             </div>
           </div>

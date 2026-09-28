@@ -32,8 +32,22 @@
 <button
   onclick={() => app.backToLibrary()}
   title="Back to library"
-  class="group flex w-full items-center gap-3 rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-left transition hover:border-accent/60"
+  class="group relative isolate flex w-full items-center gap-3 overflow-hidden rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-left transition hover:border-accent/60"
 >
+  {#if game && art}
+    <!-- The cover, blown up and blurred into an ambient wash behind the card,
+         fading out to the right so the text stays on a calm surface. -->
+    <img
+      src={art}
+      alt=""
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-0 -z-10 h-full w-full scale-150 object-cover opacity-30 blur-2xl saturate-150 transition-opacity duration-500 group-hover:opacity-45"
+    />
+    <span
+      class="pointer-events-none absolute inset-0 -z-10"
+      style="background: linear-gradient(90deg, transparent, var(--surface-2) 75%)"
+    ></span>
+  {/if}
   <span
     class="h-[42px] w-[30px] shrink-0 overflow-hidden rounded-md bg-mantle ring-1 ring-border/60"
   >

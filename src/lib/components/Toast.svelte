@@ -39,11 +39,12 @@
   {#each toast.items as item (item.id)}
     {@const Icon = ICONS[item.variant]}
     <div
-      class="pointer-events-auto inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 shadow-2xl"
+      class="pointer-events-auto relative inline-flex items-center gap-2 overflow-hidden rounded-xl border py-2.5 pl-5 pr-4 shadow-2xl"
       style="border-color: color-mix(in srgb, {COLORS[item.variant]} 40%, transparent);
-             background: var(--surface-solid)"
+             background: linear-gradient(90deg, color-mix(in srgb, {COLORS[item.variant]} 10%, var(--surface-solid)), var(--surface-solid) 40%)"
       transition:fly={{ y: 16, duration: 200 }}
     >
+      <span class="absolute inset-y-0 left-0 w-1" style="background: {COLORS[item.variant]}" aria-hidden="true"></span>
       <Icon size={16} weight="fill" class="shrink-0 {TEXT[item.variant]}" />
       <span class="text-sm text-text">{item.message}</span>
       {#if item.action}
