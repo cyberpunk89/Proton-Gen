@@ -84,6 +84,20 @@ export interface OverlayConfig {
  * *constructor* for the common case, not a lossless editor, and the raw string
  * always stays visible and editable on the MANGOHUD_CONFIG row itself.
  */
+/** Split a `MANGOHUD_CONFIG` string into tokens. A value can itself hold
+ *  commas (`gpu_list=0,1`), so a bare numeric token right after a
+ *  `key=value` one continues that value — no MangoHud bare token is a number.
+ *  Same rule as `config_to_lines` in `mangohud_export.rs`. */
+function splitTokens(raw: string): string[] {
+  const out: string[] = [];
+  for (const t of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+    const prev = out.length ? out[out.length - 1] : undefined;
+    if (/^\d+$/.test(t) && prev?.includes("=")) out[out.length - 1] = `${prev},${t}`;
+    else out.push(t);
+  }
+  return out;
+}
+
 export function parseConfig(raw: string): OverlayConfig {
   const out: OverlayConfig = {
     checks: {},
@@ -101,10 +115,7 @@ export function parseConfig(raw: string): OverlayConfig {
     colorVal: { ...DEFAULT_COLORS },
     gpuList: [],
   };
-  for (const t of raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)) {
+  for (const t of splitTokens(raw)) {
     const m = METRICS.find((x) => x.token === t);
     if (m) {
       out.checks[m.key] = true;

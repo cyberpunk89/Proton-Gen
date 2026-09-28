@@ -57,6 +57,7 @@ const MANAGED_KEYS: &[&str] = &[
     "gpu_color",
     "cpu_color",
     "background_color",
+    "gpu_list",
 ];
 
 /// The key a `MangoHud.conf` line sets, or `None` for a blank line or `#` comment.
@@ -71,13 +72,24 @@ fn line_key(line: &str) -> Option<&str> {
 /// Turn a `MANGOHUD_CONFIG`-style comma-separated string (e.g.
 /// `"fps,frame_timing,font_size=14"`, the same shape `buildConfig()` in
 /// `mangohud.ts` produces) into one `MangoHud.conf` line per token.
+///
+/// A value can itself hold commas (`gpu_list=0,1`), so a bare numeric token
+/// right after a `key=value` one is a continuation of that value, not a
+/// token of its own — no MangoHud bare token is a number. Same rule as
+/// `splitTokens()` in `mangohud.ts`.
 fn config_to_lines(config: &str) -> Vec<String> {
-    config
-        .split(',')
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(str::to_string)
-        .collect()
+    let mut out: Vec<String> = Vec::new();
+    for t in config.split(',').map(str::trim).filter(|t| !t.is_empty()) {
+        let continues = t.bytes().all(|b| b.is_ascii_digit()) && out.last().is_some_and(|l| l.contains('='));
+        match out.last_mut() {
+            Some(prev) if continues => {
+                prev.push(',');
+                prev.push_str(t);
+            }
+            _ => out.push(t.to_string()),
+        }
+    }
+    out
 }
 
 /// The result of merging a new overlay config into an existing file's text.
@@ -183,6 +195,15 @@ pub fn write_system_config(config: &str) -> Result<ExportResult, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_list_stays_one_line_and_is_replaced() {
+        let out = merge("gpu_list=0,1\nfont_size=20\n", "fps,gpu_list=0,1,font_size=14").text;
+        assert_eq!(out.matches("gpu_list").count(), 1, "{out}");
+        assert!(out.contains("gpu_list=0,1\n"), "{out}");
+        assert!(!out.lines().any(|l| l.trim() == "1"), "{out}");
+        assert_eq!(merge(&out, "fps,gpu_list=0,1,font_size=14").text, out);
+    }
 
     #[test]
     fn preserves_unknown_lines() {
