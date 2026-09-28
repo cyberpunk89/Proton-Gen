@@ -1116,8 +1116,8 @@ key = "ENABLE_VKBASALT"
 category = "Overlay / Post-processing"
 default_value = "1"
 values = ["1", "0"]
-help = "Turn on vkBasalt post-processing (CAS sharpening, FXAA, SMAA, ReShade FX)."
-details = "Activates the vkBasalt Vulkan layer, which applies post-processing effects on top of the game's output — most commonly AMD FidelityFX CAS sharpening, but also FXAA, SMAA and ReShade-style .fx shaders. The effects themselves are chosen in vkBasalt.conf, not here; this variable only enables the layer. Pairs well with an upscaler (FSR/XeSS), where a little sharpening offsets the softness upscaling introduces. The in-game toggle key (HOME by default) needs raw X11 input and does nothing on a pure Wayland session — the layer itself works either way."
+help = "Turn on vkBasalt post-processing (CAS sharpening, FXAA, SMAA, or ReShade .fx shaders run through vkBasalt)."
+details = "Activates the vkBasalt Vulkan layer, which applies post-processing effects on top of the game's output — most commonly AMD FidelityFX CAS sharpening, but also FXAA, SMAA and ReShade .fx shaders. vkBasalt is not ReShade: it is a separate, Linux-native layer that can load ReShade shader files, so there is no separate ReShade option to turn on. The effects themselves are chosen in vkBasalt.conf, not here; this variable only enables the layer. Pairs well with an upscaler (FSR/XeSS), where a little sharpening offsets the softness upscaling introduces. The in-game toggle key (HOME by default) needs raw X11 input and does nothing on a pure Wayland session — the layer itself works either way."
 example = "ENABLE_VKBASALT=1 %command%"
 url = "https://github.com/DadSchoorse/vkBasalt"
 

@@ -297,7 +297,7 @@ export const mockBootstrap: Bootstrap = {
         values: ["1", "0"],
         requires: null,
         pkg: null,
-        help: "Turn on vkBasalt post-processing (CAS sharpening, FXAA, SMAA, ReShade FX).",
+        help: "Turn on vkBasalt post-processing (CAS sharpening, FXAA, SMAA, or ReShade .fx shaders run through vkBasalt).",
         details: "Activates the vkBasalt Vulkan layer for post-processing effects.",
         example: "ENABLE_VKBASALT=1 %command%",
         url: "https://github.com/DadSchoorse/vkBasalt",

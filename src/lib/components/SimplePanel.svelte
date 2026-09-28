@@ -121,7 +121,7 @@
     {
       id: "vkbasalt",
       title: "Sharpening & post-processing",
-      blurb: "vkBasalt: CAS sharpening, SMAA/FXAA or ReShade shaders on top of the game — handy with an upscaler.",
+      blurb: "vkBasalt: CAS sharpening and SMAA/FXAA on top of the game. It can also run ReShade .fx shaders, so it covers ReShade too. Handy with an upscaler.",
       icon: Drop,
       env: [["ENABLE_VKBASALT", "1"]],
       configure: "vk",
