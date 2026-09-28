@@ -3,8 +3,8 @@
   import { ipc } from "$lib/ipc";
   import { toast } from "$lib/toast.svelte";
   import SelectField from "./SelectField.svelte";
+  import KeyCapture from "./KeyCapture.svelte";
   import {
-    TOGGLE_KEYS,
     SMAA_EDGE_DETECTION,
     emptyVkBasalt,
     parseVkBasalt,
@@ -187,12 +187,17 @@
         <!-- Global -->
         <div class="space-y-2">
           <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Global</p>
-          {@render pick(
-            "In-game toggle key",
-            TOGGLE_KEYS,
-            () => c.toggleKey,
-            (v) => (c.toggleKey = v),
-          )}
+          <div class="flex items-start justify-between gap-2">
+            <span class="pt-1 text-sm text-subtext">In-game toggle key</span>
+            <!-- X11 keysym name: vkBasalt looks it up with XStringToKeysym. -->
+            <KeyCapture
+              label="In-game toggle key"
+              format="keysym"
+              defaultLabel="Home"
+              value={c.toggleKey}
+              onchange={(v) => (c.toggleKey = v)}
+            />
+          </div>
           <label class="flex items-center gap-2">
             <input type="checkbox" bind:checked={c.enableOnLaunch} class="accent-[var(--accent)]" />
             <span class="text-sm text-subtext">Enable effects on launch</span>

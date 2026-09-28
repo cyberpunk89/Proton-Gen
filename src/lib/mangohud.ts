@@ -51,6 +51,17 @@ export const COLOR_DEFS: { key: string; token: string; label: string; def: strin
   { key: "background", token: "background_color", label: "Background", def: "#000000" },
 ];
 
+/**
+ * In-game hotkeys, each keysym names joined by `+` (`Shift_R+F12`). `def` is
+ * MangoHud's own default, shown when unset — nothing is emitted for it, so an
+ * untouched builder never pins a key the user didn't choose.
+ */
+export const HOTKEY_DEFS: { key: string; token: string; label: string; def: string }[] = [
+  { key: "hud", token: "toggle_hud", label: "Show / hide overlay", def: "Shift_R+F12" },
+  { key: "fpsLimit", token: "toggle_fps_limit", label: "Cycle FPS limit", def: "Shift_L+F1" },
+  { key: "logging", token: "toggle_logging", label: "Start / stop logging", def: "Shift_L+F2" },
+];
+
 /** MangoHud's own defaults, used by the live preview when a colour is unset. */
 export const DEFAULT_COLORS: Record<string, string> = Object.fromEntries(
   COLOR_DEFS.map((c) => [c.key, c.def]),
@@ -74,6 +85,8 @@ export interface OverlayConfig {
   /** `gpu_list=<indices>` — which GPU(s) to show stats for. Empty means "let
    *  MangoHud pick" (no token emitted, its own default). */
   gpuList: number[];
+  /** `HOTKEY_DEFS` key -> combo. Missing or empty means MangoHud's default. */
+  hotkeys: Record<string, string>;
 }
 
 /**
@@ -114,6 +127,7 @@ export function parseConfig(raw: string): OverlayConfig {
     colorOn: {},
     colorVal: { ...DEFAULT_COLORS },
     gpuList: [],
+    hotkeys: {},
   };
   for (const t of splitTokens(raw)) {
     const m = METRICS.find((x) => x.token === t);
@@ -161,6 +175,11 @@ export function parseConfig(raw: string): OverlayConfig {
           .filter((n) => Number.isInteger(n) && n >= 0);
         break;
       default: {
+        const hk = HOTKEY_DEFS.find((h) => h.token === k);
+        if (hk) {
+          out.hotkeys[hk.key] = v;
+          break;
+        }
         const cd = COLOR_DEFS.find((c) => c.token === k);
         if (cd) {
           out.colorOn[cd.key] = true;
@@ -195,6 +214,11 @@ export function buildConfig(c: OverlayConfig): string {
     if (c.colorOn[cd.key]) parts.push(`${cd.token}=${c.colorVal[cd.key].replace(/^#/, "")}`);
   const n = parseInt(c.fpsLimit.trim(), 10);
   if (Number.isFinite(n) && n > 0) parts.push(`fps_limit=${n}`);
+  for (const h of HOTKEY_DEFS) {
+    // A comma would split the token; no key name contains one.
+    const v = (c.hotkeys[h.key] ?? "").trim().replace(/,/g, "");
+    if (v) parts.push(`${h.token}=${v}`);
+  }
   return parts.join(",");
 }
 

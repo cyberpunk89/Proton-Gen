@@ -2,6 +2,7 @@
   import { app } from "$lib/state.svelte";
   import { toast } from "$lib/toast.svelte";
   import SelectField from "./SelectField.svelte";
+  import KeyCapture from "./KeyCapture.svelte";
   import {
     DX12_UPSCALERS,
     DX11_UPSCALERS,
@@ -11,7 +12,6 @@
     SHARPEN_SHADERS,
     OPTI_FIXES,
     PROXY_DLLS,
-    MENU_SHORTCUT_KEYS,
     parseOptiScaler,
     buildOptiScaler,
     type OptiScalerConfig,
@@ -174,12 +174,19 @@
           Change “Inject as” if OptiScaler never loads at all — some games already own
           <span class="font-mono">dxgi.dll</span>.
         </p>
-        {@render pick(
-          "In-game menu hotkey",
-          MENU_SHORTCUT_KEYS,
-          () => c.menuShortcutKey,
-          (v) => (c.menuShortcutKey = v),
-        )}
+        <div class="flex items-start justify-between gap-2">
+          <span class="pt-1 text-sm text-subtext">In-game menu hotkey</span>
+          <!-- OptiScaler runs inside the game under Wine and reads a raw
+               Windows virtual-key code, never a name; -1 turns the hotkey off. -->
+          <KeyCapture
+            label="In-game menu hotkey"
+            format="vk"
+            defaultLabel="Insert"
+            disableValue="-1"
+            value={c.menuShortcutKey}
+            onchange={(v) => (c.menuShortcutKey = v)}
+          />
+        </div>
       </div>
 
       <!-- Output scaling -->

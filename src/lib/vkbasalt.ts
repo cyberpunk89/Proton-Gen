@@ -22,20 +22,6 @@ export interface Choice {
   label: string;
 }
 
-/** toggleKey — an X11 keysym NAME (e.g. "Home"), not a VK hex code like
- *  OptiScaler's `Menu.ShortcutKey`. */
-export const TOGGLE_KEYS: Choice[] = [
-  { value: "", label: "Default (Home)" },
-  { value: "Insert", label: "Insert" },
-  { value: "End", label: "End" },
-  { value: "Delete", label: "Delete" },
-  { value: "Pause", label: "Pause" },
-  { value: "F10", label: "F10" },
-  { value: "F11", label: "F11" },
-  { value: "F12", label: "F12" },
-  { value: "ScrollLock", label: "Scroll Lock" },
-];
-
 /** smaaEdgeDetection — vkBasalt only accepts these two; there is no `depth`. */
 export const SMAA_EDGE_DETECTION: Choice[] = [
   { value: "luma", label: "Luma (default)" },
@@ -59,7 +45,8 @@ export interface VkBasaltConfig {
   smaaMaxSearchSteps: string; // 0 - 112, default 32
   smaaMaxSearchStepsDiag: string; // 0 - 20, default 16
   smaaCornerRounding: string; // 0 - 100, default 25
-  /** Empty string leaves vkBasalt's own default (Home) in place. */
+  /** An X11 keysym NAME (`Home`, `Prior`, `F12`), not a VK code like
+   *  OptiScaler's. Empty leaves vkBasalt's own default (Home) in place. */
   toggleKey: string;
   /** vkBasalt's own default is already `true`; this only ever needs to be
    *  emitted when explicitly turned off. */

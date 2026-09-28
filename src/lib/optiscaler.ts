@@ -148,28 +148,6 @@ export const PROXY_DLLS: Choice[] = [
   { value: "dbghelp.dll", label: "dbghelp.dll" },
 ];
 
-/**
- * [Menu] ShortcutKey — the hotkey that opens OptiScaler's in-game overlay.
- *
- * OptiScaler reads this as a raw Windows virtual-key code (hex or decimal),
- * never a symbolic name — `Menu.ShortcutKey=0xBF`, not `=VK_OEM_2`. The
- * choices below are just the common ones pre-translated from Microsoft's
- * virtual-key table; anything else still reaches this field via the
- * `passthrough` bucket if a user's config already sets it to something odd.
- */
-export const MENU_SHORTCUT_KEYS: Choice[] = [
-  { value: "", label: "Default (Insert)" },
-  { value: "0xBF", label: "/ (Forward Slash)" },
-  { value: "0x6F", label: "/ (Numpad Divide)" },
-  { value: "0x2D", label: "Insert" },
-  { value: "0x24", label: "Home" },
-  { value: "0x23", label: "End" },
-  { value: "0x21", label: "Page Up" },
-  { value: "0x22", label: "Page Down" },
-  { value: "0x08", label: "Backspace" },
-  { value: "-1", label: "Disabled" },
-];
-
 /** Everything the OptiScaler builder can express, as plain data. */
 export interface OptiScalerConfig {
   dx12Upscaler: string;

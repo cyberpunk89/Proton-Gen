@@ -9,6 +9,7 @@
     GPU_INDICES,
     parseConfig,
     buildConfig,
+    HOTKEY_DEFS,
     emptyConfig,
     hexToRgba,
     type OverlayConfig,
@@ -17,6 +18,8 @@
   import { untrack } from "svelte";
   import { FolderOpen } from "phosphor-svelte";
   import SelectField from "./SelectField.svelte";
+  import KeyCapture from "./KeyCapture.svelte";
+  import { labels } from "$lib/keycapture";
 
   let { onapply }: { onapply?: () => void } = $props();
 
@@ -42,6 +45,7 @@
   let colorOn = $state<Record<string, boolean>>(seed.colorOn);
   let colorVal = $state<Record<string, string>>(seed.colorVal);
   let gpuList = $state<number[]>(seed.gpuList);
+  let hotkeys = $state<Record<string, string>>(seed.hotkeys);
 
   function reseed(s: OverlayConfig) {
     checks = s.checks;
@@ -58,6 +62,7 @@
     colorOn = s.colorOn;
     colorVal = s.colorVal;
     gpuList = s.gpuList;
+    hotkeys = s.hotkeys;
   }
 
   /** Toggle one GPU index in `gpuList` — the "clear" case is simply toggling
@@ -95,6 +100,7 @@
       colorOn,
       colorVal,
       gpuList,
+      hotkeys,
     }),
   );
 
@@ -407,6 +413,23 @@
               </label>
             {/each}
           </div>
+        </div>
+
+        <!-- Hotkeys -->
+        <div class="space-y-2 border-t border-border/60 pt-3">
+          <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Hotkeys</p>
+          {#each HOTKEY_DEFS as h (h.key)}
+            <div class="flex items-start justify-between gap-2">
+              <span class="pt-1 text-sm text-subtext">{h.label}</span>
+              <KeyCapture
+                label={h.label}
+                format="combo"
+                defaultLabel={labels(h.def, "combo").join(" + ")}
+                value={hotkeys[h.key] ?? ""}
+                onchange={(v) => (hotkeys = { ...hotkeys, [h.key]: v })}
+              />
+            </div>
+          {/each}
         </div>
 
         <!-- FPS limit -->

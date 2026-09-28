@@ -60,6 +60,12 @@ const MANAGED_KEYS: &[&str] = &[
     "gpu_list",
 ];
 
+/// Keys the builder can *set* but must never *clear*: the in-game hotkeys. A
+/// hand-written `toggle_hud=` in an existing file is the user's own keybind, so
+/// a config that doesn't mention it leaves it alone (unlike `MANAGED_KEYS`,
+/// where absence means "turned off"); one that does replaces it in place.
+const SET_ONLY_KEYS: &[&str] = &["toggle_hud", "toggle_fps_limit", "toggle_logging"];
+
 /// The key a `MangoHud.conf` line sets, or `None` for a blank line or `#` comment.
 fn line_key(line: &str) -> Option<&str> {
     let t = line.trim();
@@ -104,7 +110,8 @@ pub struct MergeOutcome {
 }
 
 /// Merge `new_config` into `existing` (the current file's text, empty if the
-/// file doesn't exist yet). Every managed line `existing` has is dropped; every
+/// file doesn't exist yet). Every managed line `existing` has is dropped, and so
+/// is a [`SET_ONLY_KEYS`] line the new config sets again; every
 /// line this module doesn't recognize (comments, blanks, a custom font/keybind/
 /// blacklist/unmanaged color) is preserved verbatim, in place. The new managed
 /// lines are spliced in at the position of the first managed line found there
@@ -125,8 +132,9 @@ pub fn merge(existing: &str, new_config: &str) -> MergeOutcome {
     let mut cleared: Vec<String> = Vec::new();
     let mut spliced = false;
     for line in existing.lines() {
-        if let Some(k) = line_key(line).filter(|k| MANAGED_KEYS.contains(k)) {
-            if !new_keys.contains(&k) && !cleared.iter().any(|c| c == k) {
+        let replaced = |k: &&str| MANAGED_KEYS.contains(k) || (SET_ONLY_KEYS.contains(k) && new_keys.contains(k));
+        if let Some(k) = line_key(line).filter(replaced) {
+            if MANAGED_KEYS.contains(&k) && !new_keys.contains(&k) && !cleared.iter().any(|c| c == k) {
                 cleared.push(k.to_string());
             }
             if !spliced {
@@ -253,6 +261,19 @@ blacklist=zenity,protonplus
         assert!(out.contains("toggle_hud=F12"));
         assert!(out.contains("fps"));
         assert!(out.contains("gpu_stats"));
+    }
+
+    #[test]
+    fn hotkeys_replace_in_place_but_are_never_cleared() {
+        let existing = "toggle_hud=F12\nfont_file=/foo.ttf\ntoggle_logging=Shift_L+F2\n";
+        let m = merge(existing, "fps,toggle_hud=Shift_R+Home");
+        assert!(m.text.contains("toggle_hud=Shift_R+Home"), "{}", m.text);
+        assert!(!m.text.contains("toggle_hud=F12"), "{}", m.text);
+        assert_eq!(m.text.matches("toggle_hud").count(), 1, "{}", m.text);
+        // Not in the new config: the user's own keybind survives, unreported.
+        assert!(m.text.contains("toggle_logging=Shift_L+F2"), "{}", m.text);
+        assert!(m.cleared_keys.is_empty());
+        assert_eq!(merge(&m.text, "fps,toggle_hud=Shift_R+Home").text, m.text);
     }
 
     #[test]
