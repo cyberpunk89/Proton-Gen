@@ -376,8 +376,15 @@ class AppStore {
    * refresh needs to know, or it toasts "Library refreshed" over a failure.
    */
   async refresh(): Promise<"ok" | "busy" | "failed"> {
-    if (this.refreshing) return "busy";
+    if (this.refreshing) {
+      // Still scan once more afterwards: this call may carry a newer input
+      // (a Settings path typed after the running scan started) that the
+      // running scan never saw.
+      this.rescanPending = true;
+      return "busy";
+    }
     this.refreshing = true;
+    this.rescanPending = false;
     try {
       const b = await ipc.rescan();
       this.loadError = b.load_error;
@@ -417,6 +424,7 @@ class AppStore {
       return "failed";
     } finally {
       this.refreshing = false;
+      if (this.rescanPending) void this.refresh();
     }
     // A refresh is the user asking for a fresh look, so give art that came back
     // empty another chance rather than leaving those tiles blank all session.
@@ -434,15 +442,22 @@ class AppStore {
    *  with status. The three call sites — startup, library refresh, and
    *  returning to the grid — are the moments the badges are about to be seen. */
   async refreshLaunchStatuses() {
+    // Fired concurrently from refresh, backToLibrary and the focus re-read;
+    // only the newest call's answer may land, or older badges overwrite newer.
+    const seq = ++this.statusSeq;
     try {
-      this.launchStatuses = await ipc.launchStatuses(
+      const statuses = await ipc.launchStatuses(
         $state.snapshot(this.store.game_memory),
         $state.snapshot(this.launchOptions),
       );
+      if (seq === this.statusSeq) this.launchStatuses = statuses;
     } catch (e) {
       console.error("launchStatuses failed", e);
     }
   }
+  private statusSeq = 0;
+  /** A `refresh` arrived while one was running; run once more when it ends. */
+  private rescanPending = false;
 
   /** Preferred default runtime: an installed proton-cachyos, else the first
    *  real (non-synthetic) runtime, else the GE-Proton-auto entry. */
@@ -779,6 +794,9 @@ class AppStore {
    *  memory — undoing a game switch would land on the memory instead of the
    *  state we recorded. */
   private applyEntry(e: Entry) {
+    // A default-profile prompt belongs to the game it was raised for; undoing
+    // away from that game must not leave "Apply default" aimed at this one.
+    this.pendingDefaultPrompt = false;
     this.selectedAppId = e.appId;
     this.selectedGameName = e.gameName;
     this.loadConfig(e.config);
