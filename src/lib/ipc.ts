@@ -10,6 +10,7 @@ import type {
   MangohudExportResult,
   Notice,
   OptiscalerExtractResult,
+  OptiscalerChannel,
   OptiscalerRelease,
   OptiscalerStatus,
   ParsedCommand,
@@ -248,20 +249,32 @@ export const ipc = {
           found: true,
         }),
 
-  optiscalerLatest: () =>
+  optiscalerLatest: (channel: OptiscalerChannel) =>
     inTauri
-      ? invoke<OptiscalerRelease>("optiscaler_latest")
-      : Promise.resolve<OptiscalerRelease>({
-          tag: "v0.9.4",
-          html_url: "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.4",
-          asset_name: "Optiscaler_0.9.4-final.mock.7z",
-        }),
+      ? invoke<OptiscalerRelease>("optiscaler_latest", { channel })
+      : Promise.resolve<OptiscalerRelease>(
+          channel === "nightly"
+            ? {
+                channel,
+                repo: "optiscaler/OptiScaler-nightly",
+                tag: "nightly-20260929",
+                html_url: "https://github.com/optiscaler/OptiScaler-nightly/releases/tag/nightly-20260929",
+                asset_name: "OptiScaler_v10.0.0-pre1_mock.7z",
+              }
+            : {
+                channel,
+                repo: "optiscaler/OptiScaler",
+                tag: "v0.9.4",
+                html_url: "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.4",
+                asset_name: "Optiscaler_0.9.4-final.mock.7z",
+              },
+        ),
 
-  optiscalerFetch: (appId: number) =>
+  optiscalerFetch: (appId: number, channel: OptiscalerChannel) =>
     inTauri
-      ? invoke<OptiscalerExtractResult>("optiscaler_fetch", { appId })
+      ? invoke<OptiscalerExtractResult>("optiscaler_fetch", { appId, channel })
       : Promise.resolve<OptiscalerExtractResult>({
-          tag: "v0.9.4",
+          tag: channel === "nightly" ? "nightly-20260929" : "v0.9.4",
           files_written: 12,
           ini_preserved: true,
         }),

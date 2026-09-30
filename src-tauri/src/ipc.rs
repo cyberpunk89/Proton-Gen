@@ -1014,31 +1014,34 @@ pub async fn optiscaler_status(
     .map_err(|e| e.to_string())
 }
 
-/// Check the latest upstream OptiScaler release (off the UI thread). Global —
-/// not per-game — so the frontend can show "latest: vX.Y.Z" without a game
-/// selected. Errors surface directly to the caller; there's no banner to keep
-/// quiet for, unlike `check_for_update`.
+/// Check the latest upstream OptiScaler release on `channel` (off the UI
+/// thread). Global — not per-game — so the frontend can show "latest: vX.Y.Z"
+/// without a game selected. Errors surface directly to the caller; there's no
+/// banner to keep quiet for, unlike `check_for_update`.
 #[tauri::command]
-pub async fn optiscaler_latest() -> Result<optiscaler_upgrade::OptiscalerRelease, String> {
-    tauri::async_runtime::spawn_blocking(optiscaler_upgrade::check_latest)
+pub async fn optiscaler_latest(
+    channel: optiscaler_upgrade::Channel,
+) -> Result<optiscaler_upgrade::OptiscalerRelease, String> {
+    tauri::async_runtime::spawn_blocking(move || optiscaler_upgrade::check_latest(channel))
         .await
         .map_err(|e| e.to_string())?
 }
 
-/// Download the latest OptiScaler release and extract it into `app_id`'s
+/// Download the latest OptiScaler release on `channel` and extract it into `app_id`'s
 /// install directory (off the UI thread). The one command in this file that
 /// writes into a game's own folder — see `optiscaler_upgrade`'s doc comment.
 #[tauri::command]
 pub async fn optiscaler_fetch(
     state: State<'_, AppState>,
     app_id: u32,
+    channel: optiscaler_upgrade::Channel,
 ) -> Result<optiscaler_upgrade::OptiscalerExtractResult, String> {
     let dir = state
         .game(app_id)
         .and_then(|g| g.install_dir)
         .ok_or_else(|| "no install directory known for this game".to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
-        optiscaler_upgrade::fetch_and_extract(std::path::Path::new(&dir))
+        optiscaler_upgrade::fetch_and_extract(std::path::Path::new(&dir), channel)
     })
     .await
     .map_err(|e| e.to_string())?

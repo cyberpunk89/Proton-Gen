@@ -18,6 +18,7 @@
   } from "$lib/optiscaler";
   import { openUrl } from "$lib/util";
   import { autofocus } from "$lib/actions";
+  import type { OptiscalerChannel } from "$lib/types";
   import { tick, untrack } from "svelte";
   import {
     ArrowSquareOut,
@@ -44,6 +45,11 @@
 
   let confirmOpen = $state(false);
   let fetchButton = $state<HTMLButtonElement | null>(null);
+
+  const CHANNELS: { value: OptiscalerChannel; label: string }[] = [
+    { value: "stable", label: "Stable" },
+    { value: "nightly", label: "Nightly" },
+  ];
 
   function openConfirm() {
     app.requestOptiscalerLatest();
@@ -149,6 +155,9 @@
             class="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/10"
           >
             <CloudArrowDown size={13} /> Fetch latest OptiScaler build…
+            {#if app.optiscalerChannel === "nightly"}
+              <span class="rounded bg-yellow/15 px-1 text-[10px] uppercase tracking-wide text-yellow">nightly</span>
+            {/if}
           </button>
         {/if}
       {/if}
@@ -361,6 +370,24 @@
     }}
     class="space-y-3 rounded-lg border border-accent/30 bg-accent/5 p-3 text-sm"
   >
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs text-muted">Build</span>
+      <div role="radiogroup" aria-label="OptiScaler build channel" class="inline-flex rounded-lg border border-border/60 p-0.5 text-xs">
+        {#each CHANNELS as ch (ch.value)}
+          <button
+            role="radio"
+            aria-checked={app.optiscalerChannel === ch.value}
+            disabled={app.optiscalerFetchBusy}
+            onclick={() => app.setOptiscalerChannel(ch.value)}
+            class="rounded-md px-2.5 py-0.5 transition disabled:opacity-40 {app.optiscalerChannel === ch.value
+              ? 'bg-accent font-medium text-on-accent'
+              : 'text-muted hover:text-text'}"
+          >
+            {ch.label}
+          </button>
+        {/each}
+      </div>
+    </div>
     {#if app.optiscalerLatestLoading}
       <p class="flex items-center gap-1.5 text-xs text-muted">
         <ArrowClockwise size={12} class="animate-spin" /> Checking the latest release…
@@ -376,7 +403,7 @@
             onclick={() => openUrl(latest.html_url)}
             class="inline-flex items-center gap-1 font-medium text-accent hover:underline"
           >
-            optiscaler/OptiScaler {latest.tag} <ArrowSquareOut size={11} />
+            {latest.repo} {latest.tag} <ArrowSquareOut size={11} />
           </button>
         </div>
         <div class="flex items-center justify-between gap-2">
@@ -396,6 +423,13 @@
         > No checksum is published for this release; integrity rests on HTTPS + fetching directly
         from the project's own GitHub Releases.
       </p>
+      {#if latest.channel === "nightly"}
+        <p class="text-xs leading-snug text-yellow">
+          Nightly is an untested daily build of OptiScaler's development branch — expect
+          regressions. Its file layout and <span class="font-mono">OptiScaler.ini</span> keys can
+          differ from stable; switch back and fetch again to return to the stable build.
+        </p>
+      {/if}
     {/if}
 
     <div class="flex justify-end gap-2">

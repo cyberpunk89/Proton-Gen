@@ -248,9 +248,14 @@ export interface OptiscalerStatus {
   found: boolean;
 }
 
+/** Mirrors optiscaler_upgrade::Channel. */
+export type OptiscalerChannel = "stable" | "nightly";
+
 /** Mirrors optiscaler_upgrade::OptiscalerRelease (the private `asset_url` is
  *  `#[serde(skip)]` on the Rust side, so it never reaches this DTO). */
 export interface OptiscalerRelease {
+  channel: OptiscalerChannel;
+  repo: string;
   tag: string;
   html_url: string;
   asset_name: string;

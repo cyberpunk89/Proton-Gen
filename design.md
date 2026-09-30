@@ -561,10 +561,13 @@ Discovery against the real filesystem and the WebView UI are validated manually 
   `themes.ts`.
 - **User overrides** of `params.toml` / `recipes.toml` let power users diverge from the
   bundled catalog without rebuilding.
-- **The OptiScaler-upgrade repo** is a hardcoded `REPO` constant in
-  `optiscaler_upgrade.rs` (`optiscaler/OptiScaler`), the same pattern as
+- **The OptiScaler-upgrade repos** are hardcoded in `optiscaler_upgrade.rs`'s
+  `Channel::repo()`: stable → `optiscaler/OptiScaler` (`/releases/latest`),
+  nightly → `optiscaler/OptiScaler-nightly` (newest entry of `/releases`, since
+  every nightly is a prerelease and `/latest` 404s). Same pattern as
   `update.rs`'s own `REPO` for protongen's self-updater. If the project moves,
-  update that constant; there's no override.
+  update those; there's no override. The channel is a session-only choice in the
+  confirm panel (starts on stable every launch), not a persisted store field.
 
 ---
 
@@ -585,7 +588,8 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 | vkBasalt system-wide export merges into a real config file outside `state.toml` | Same shape again — vkBasalt has no inline env-var carrier at all, so this is its *only* apply path, not a second one alongside a command-apply button | A fourth precedent-setting write path; the read-only invariant now rests on all four staying confirm-gated forever. |
 
 **The OptiScaler-upgrade exception.** `optiscaler_upgrade.rs` fetches the
-latest `optiscaler/OptiScaler` GitHub release and extracts it into a *game's*
+latest `optiscaler/OptiScaler` GitHub release (or, when the user picks the
+nightly channel, the newest `optiscaler/OptiScaler-nightly` build) and extracts it into a *game's*
 install directory — the only write outside `state.toml` besides
 [`heroic::inject`]. Justified: the user explicitly asked for exactly this,
 describing their own manual "grab the newest build, extract into the game

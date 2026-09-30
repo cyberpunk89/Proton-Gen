@@ -1,5 +1,5 @@
-//! Fetch the latest OptiScaler release from GitHub and extract it into a
-//! game's install directory — the manual "grab the newest OptiScaler build
+//! Fetch the latest OptiScaler release (stable, or the daily nightly build)
+//! from GitHub and extract it into a game's install directory — the manual "grab the newest OptiScaler build
 //! and drop it into the game folder" workflow, automated.
 //!
 //! **A deliberate, narrow exception to the read-only-by-contract invariant**
@@ -22,12 +22,32 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::update::{DOWNLOAD_TIMEOUT, fetch_bytes_with, fetch_text};
 
-const REPO: &str = "optiscaler/OptiScaler";
 const USER_AGENT: &str = "protongen-optiscaler-upgrade";
+
+/// Which upstream build line to fetch. Stable is the project's tagged
+/// releases; nightly is the daily build the project publishes to a separate
+/// repo (the `nightly` tag on the main repo is just a changelog pointing
+/// there, with no assets).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Channel {
+    #[default]
+    Stable,
+    Nightly,
+}
+
+impl Channel {
+    fn repo(self) -> &'static str {
+        match self {
+            Channel::Stable => "optiscaler/OptiScaler",
+            Channel::Nightly => "optiscaler/OptiScaler-nightly",
+        }
+    }
+}
 
 /// Files that mark a game folder as already having OptiScaler installed —
 /// either by hand or by CachyOS Proton's own `PROTON_USE_OPTISCALER`
@@ -56,10 +76,13 @@ pub fn detect(install_dir: Option<&Path>) -> OptiscalerStatus {
     OptiscalerStatus { install_dir: install_dir.map(|p| p.display().to_string()), found }
 }
 
-/// What's known about the latest upstream release — enough for the "current
-/// vs latest" comparison and the confirm dialog's source/version line.
+/// What's known about the latest upstream release on a channel — enough for
+/// the "current vs latest" comparison and the confirm dialog's source/version
+/// line.
 #[derive(Clone, Debug, Serialize)]
 pub struct OptiscalerRelease {
+    pub channel: Channel,
+    pub repo: String,
     pub tag: String,
     pub html_url: String,
     pub asset_name: String,
@@ -67,14 +90,38 @@ pub struct OptiscalerRelease {
     asset_url: String,
 }
 
-/// Query the latest GitHub release and locate its `.7z` asset. Any network /
-/// rate-limit / parse failure returns an error the caller surfaces directly —
-/// unlike `update::check_blocking`, there's no banner to keep quiet for.
-pub fn check_latest() -> Result<OptiscalerRelease, String> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let body = fetch_text(&url, USER_AGENT)?;
-    let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+/// Query the newest release on `channel` and locate its `.7z` asset. Any
+/// network / rate-limit / parse failure returns an error the caller surfaces
+/// directly — unlike `update::check_blocking`, there's no banner to keep
+/// quiet for.
+pub fn check_latest(channel: Channel) -> Result<OptiscalerRelease, String> {
+    let repo = channel.repo();
+    match channel {
+        Channel::Stable => {
+            let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+            let v: serde_json::Value =
+                serde_json::from_str(&fetch_text(&url, USER_AGENT)?).map_err(|e| e.to_string())?;
+            parse_release(&v, channel)
+        }
+        // Every nightly is marked prerelease, so `/releases/latest` 404s there.
+        // The list endpoint is newest-first; take the first published one that
+        // actually carries an archive (a build still uploading has none yet).
+        Channel::Nightly => {
+            let url = format!("https://api.github.com/repos/{repo}/releases?per_page=5");
+            let v: serde_json::Value =
+                serde_json::from_str(&fetch_text(&url, USER_AGENT)?).map_err(|e| e.to_string())?;
+            v.as_array()
+                .into_iter()
+                .flatten()
+                .filter(|r| !r.get("draft").and_then(|x| x.as_bool()).unwrap_or(false))
+                .find_map(|r| parse_release(r, channel).ok())
+                .ok_or_else(|| format!("no recent {repo} release has a .7z asset"))
+        }
+    }
+}
 
+/// One GitHub release object → [`OptiscalerRelease`], or why it can't be used.
+fn parse_release(v: &serde_json::Value, channel: Channel) -> Result<OptiscalerRelease, String> {
     let tag = v.get("tag_name").and_then(|x| x.as_str()).unwrap_or_default().to_string();
     let html_url = v.get("html_url").and_then(|x| x.as_str()).unwrap_or_default().to_string();
     let assets = v.get("assets").and_then(|x| x.as_array()).cloned().unwrap_or_default();
@@ -85,7 +132,7 @@ pub fn check_latest() -> Result<OptiscalerRelease, String> {
     let asset = assets
         .iter()
         .find(|a| a.get("name").and_then(|x| x.as_str()).is_some_and(|n| n.ends_with(".7z")))
-        .ok_or_else(|| "latest OptiScaler release has no .7z asset".to_string())?;
+        .ok_or_else(|| format!("OptiScaler release {tag} has no .7z asset"))?;
     let asset_name = asset.get("name").and_then(|x| x.as_str()).unwrap_or_default().to_string();
     let asset_url = asset
         .get("browser_download_url")
@@ -93,10 +140,17 @@ pub fn check_latest() -> Result<OptiscalerRelease, String> {
         .unwrap_or_default()
         .to_string();
     if asset_url.is_empty() {
-        return Err("latest OptiScaler release's asset has no download URL".to_string());
+        return Err(format!("OptiScaler release {tag}'s asset has no download URL"));
     }
 
-    Ok(OptiscalerRelease { tag, html_url, asset_name, asset_url })
+    Ok(OptiscalerRelease {
+        channel,
+        repo: channel.repo().to_string(),
+        tag,
+        html_url,
+        asset_name,
+        asset_url,
+    })
 }
 
 /// What `fetch_and_extract` did, for the confirmation toast.
@@ -108,12 +162,16 @@ pub struct OptiscalerExtractResult {
     pub ini_preserved: bool,
 }
 
-/// Download the latest release and extract it into `install_dir`, skipping
-/// `OptiScaler.ini` if one is already there. Re-checks the latest release
-/// itself rather than trusting a caller-supplied [`OptiscalerRelease`], so the
-/// version reported back always matches what was actually written.
-pub fn fetch_and_extract(install_dir: &Path) -> Result<OptiscalerExtractResult, String> {
-    let release = check_latest()?;
+/// Download the latest release on `channel` and extract it into
+/// `install_dir`, skipping `OptiScaler.ini` if one is already there. Re-checks
+/// the latest release itself rather than trusting a caller-supplied
+/// [`OptiscalerRelease`], so the version reported back always matches what was
+/// actually written.
+pub fn fetch_and_extract(
+    install_dir: &Path,
+    channel: Channel,
+) -> Result<OptiscalerExtractResult, String> {
+    let release = check_latest(channel)?;
 
     let archive_bytes = fetch_bytes_with(&release.asset_url, USER_AGENT, DOWNLOAD_TIMEOUT)?;
     if archive_bytes.is_empty() {
@@ -239,6 +297,39 @@ mod tests {
         assert!(!detect(Some(&dir)).found);
         assert!(!detect(None).found);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn parse_release_picks_the_7z_asset_and_tags_the_channel() {
+        let v = serde_json::json!({
+            "tag_name": "nightly-20260929",
+            "html_url": "https://github.com/optiscaler/OptiScaler-nightly/releases/tag/nightly-20260929",
+            "assets": [
+                { "name": "notes.txt", "browser_download_url": "https://example/notes.txt" },
+                { "name": "OptiScaler_v10.0.0-pre1_20260929.7z", "browser_download_url": "https://example/a.7z" }
+            ]
+        });
+        let r = parse_release(&v, Channel::Nightly).unwrap();
+        assert_eq!(r.tag, "nightly-20260929");
+        assert_eq!(r.asset_name, "OptiScaler_v10.0.0-pre1_20260929.7z");
+        assert_eq!(r.asset_url, "https://example/a.7z");
+        assert_eq!(r.repo, "optiscaler/OptiScaler-nightly");
+        assert_eq!(r.channel, Channel::Nightly);
+    }
+
+    #[test]
+    fn parse_release_rejects_a_release_without_an_archive() {
+        // The main repo's `nightly` tag is a changelog with no assets.
+        let v = serde_json::json!({ "tag_name": "nightly", "html_url": "", "assets": [] });
+        assert!(parse_release(&v, Channel::Stable).is_err());
+    }
+
+    #[test]
+    fn channel_deserializes_from_lowercase() {
+        let c: Channel = serde_json::from_str("\"nightly\"").unwrap();
+        assert_eq!(c, Channel::Nightly);
+        let c: Channel = serde_json::from_str("\"stable\"").unwrap();
+        assert_eq!(c, Channel::Stable);
     }
 
     #[test]

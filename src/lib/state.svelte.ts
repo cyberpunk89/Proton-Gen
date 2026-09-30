@@ -19,6 +19,7 @@ import type {
   Notice,
   LaunchDiff,
   LlmSuggestion,
+  OptiscalerChannel,
   OptiscalerExtractResult,
   OptiscalerRelease,
   OptiscalerStatus,
@@ -2017,23 +2018,45 @@ class AppStore {
       .finally(() => (this.optiscalerStatusLoading[String(appId)] = false));
   }
 
-  /** The latest upstream OptiScaler release — global, not per-game, so it's
-   *  fetched at most once per session regardless of which game is open. */
-  optiscalerLatest = $state<OptiscalerRelease | null>(null);
-  optiscalerLatestLoading = $state(false);
-  optiscalerLatestError = $state<string | null>(null);
-  private optiscalerLatestRequested = false;
+  /** Which build line the upgrade panel fetches. Session-only on purpose:
+   *  nightly is a per-fetch opt-in, so every launch starts back on stable. */
+  optiscalerChannel = $state<OptiscalerChannel>("stable");
 
+  /** The latest upstream OptiScaler release per channel — global, not
+   *  per-game, so each is fetched at most once per session regardless of which
+   *  game is open. */
+  private optiscalerLatestBy = $state<Partial<Record<OptiscalerChannel, OptiscalerRelease>>>({});
+  private optiscalerLatestLoadingBy = $state<Partial<Record<OptiscalerChannel, boolean>>>({});
+  private optiscalerLatestErrorBy = $state<Partial<Record<OptiscalerChannel, string>>>({});
+  private optiscalerLatestRequested = new Set<OptiscalerChannel>();
+
+  get optiscalerLatest(): OptiscalerRelease | null {
+    return this.optiscalerLatestBy[this.optiscalerChannel] ?? null;
+  }
+  get optiscalerLatestLoading(): boolean {
+    return this.optiscalerLatestLoadingBy[this.optiscalerChannel] === true;
+  }
+  get optiscalerLatestError(): string | null {
+    return this.optiscalerLatestErrorBy[this.optiscalerChannel] ?? null;
+  }
+
+  setOptiscalerChannel(channel: OptiscalerChannel) {
+    this.optiscalerChannel = channel;
+    this.requestOptiscalerLatest();
+  }
+
+  /** For the current channel; once per channel per session. */
   requestOptiscalerLatest() {
-    if (this.optiscalerLatestRequested) return;
-    this.optiscalerLatestRequested = true;
-    this.optiscalerLatestLoading = true;
-    this.optiscalerLatestError = null;
+    const channel = this.optiscalerChannel;
+    if (this.optiscalerLatestRequested.has(channel)) return;
+    this.optiscalerLatestRequested.add(channel);
+    this.optiscalerLatestLoadingBy[channel] = true;
+    delete this.optiscalerLatestErrorBy[channel];
     ipc
-      .optiscalerLatest()
-      .then((r) => (this.optiscalerLatest = r))
-      .catch((e) => (this.optiscalerLatestError = String(e)))
-      .finally(() => (this.optiscalerLatestLoading = false));
+      .optiscalerLatest(channel)
+      .then((r) => (this.optiscalerLatestBy[channel] = r))
+      .catch((e) => (this.optiscalerLatestErrorBy[channel] = String(e)))
+      .finally(() => (this.optiscalerLatestLoadingBy[channel] = false));
   }
 
   optiscalerFetchBusy = $state(false);
@@ -2045,7 +2068,7 @@ class AppStore {
   async fetchOptiscalerUpgrade(appId: number): Promise<OptiscalerExtractResult> {
     this.optiscalerFetchBusy = true;
     try {
-      const result = await ipc.optiscalerFetch(appId);
+      const result = await ipc.optiscalerFetch(appId, this.optiscalerChannel);
       const prev = this.optiscalerStatusCache[String(appId)];
       this.optiscalerStatusCache[String(appId)] = { install_dir: prev?.install_dir ?? null, found: true };
       return result;
