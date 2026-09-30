@@ -375,7 +375,7 @@
                 disabled={!horizontal}
                 class="accent-[var(--accent)]"
               />
-              <span class="text-sm text-subtext">Stretch to screen width</span>
+              <span class="text-sm text-subtext">Full width</span>
             </label>
             <label class="flex cursor-pointer items-center gap-2">
               <input type="checkbox" bind:checked={compact} class="accent-[var(--accent)]" />
