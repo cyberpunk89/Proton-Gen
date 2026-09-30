@@ -248,6 +248,18 @@ export interface OptiscalerStatus {
   found: boolean;
 }
 
+/** Mirrors runtime_updates::RuntimeUpdate. */
+export interface RuntimeUpdate {
+  family: "ge-proton" | "proton-cachyos";
+  installed: string;
+  latest: string;
+  /** Release tag; the dismissal key. */
+  tag: string;
+  html_url: string;
+  /** RuntimeKind label of the newest installed build ("system" = pacman). */
+  installed_kind: string;
+}
+
 /** Mirrors optiscaler_upgrade::Channel. */
 export type OptiscalerChannel = "stable" | "nightly";
 
@@ -333,6 +345,7 @@ export interface Store {
   game_memory: Record<string, Config>;
   dismissed_cachyos_build: string;
   dismissed_update_version: string;
+  dismissed_runtime_updates: string[];
   show_irrelevant: boolean;
   /** Show catalog entries tagged `tier = "advanced"`. Separate from
    *  `show_irrelevant`: that's about this machine, this is about this user. */

@@ -95,6 +95,10 @@ pub struct Store {
     /// App version for which the "update available" banner was dismissed.
     #[serde(default)]
     pub dismissed_update_version: String,
+    /// Release tags (`GE-Proton11-7`, `cachyos-11.0-20260915-slr`) whose
+    /// "newer Proton available" notice was dismissed.
+    #[serde(default)]
+    pub dismissed_runtime_updates: Vec<String>,
     /// Show recipes/options that don't apply to the detected hardware (default: hide).
     #[serde(default)]
     pub show_irrelevant: bool,

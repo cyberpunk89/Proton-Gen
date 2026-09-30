@@ -523,6 +523,7 @@ export const mockBootstrap: Bootstrap = {
     },
     dismissed_cachyos_build: "",
     dismissed_update_version: "",
+    dismissed_runtime_updates: [],
     show_irrelevant: false,
     show_advanced: false,
     hdr: false,

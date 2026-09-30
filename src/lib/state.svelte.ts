@@ -34,6 +34,7 @@ import type {
   Token,
   TroubleshootResult,
   UiMode,
+  RuntimeUpdate,
   UpdateInfo,
 } from "./types";
 
@@ -54,6 +55,7 @@ const EMPTY_STORE: Store = {
   game_memory: {},
   dismissed_cachyos_build: "",
   dismissed_update_version: "",
+  dismissed_runtime_updates: [],
   show_irrelevant: false,
   show_advanced: false,
   hdr: false,
@@ -121,6 +123,8 @@ class AppStore {
   /** User params.toml / recipes.toml overrides that failed to parse. */
   configWarnings = $state<ConfigWarning[]>([]);
   update = $state<UpdateInfo | null>(null);
+  /** Proton families with a newer upstream build than the newest installed. */
+  runtimeUpdates = $state<RuntimeUpdate[]>([]);
   updating = $state(false);
   /** True while a library re-scan (rescan IPC) is in flight. */
   refreshing = $state(false);
@@ -309,6 +313,7 @@ class AppStore {
 
     // Check for a newer release in the background; never blocks launch.
     this.checkForUpdate();
+    this.checkRuntimeUpdates();
   }
 
   /**
@@ -396,6 +401,9 @@ class AppStore {
       this.launchOptions = b.launch_options;
       this.compatTools = b.compat_tools;
       this.stale = b.stale;
+      // Cheap after the first run: the backend caches upstream releases, so
+      // this only re-compares against the freshly scanned runtimes.
+      this.checkRuntimeUpdates();
       // Both are recomputed by `rescan` and must be copied, or a corrected
       // Settings path would never clear its banner and a fixed binary override
       // would never turn its badge green.
@@ -2244,6 +2252,28 @@ class AppStore {
       this.store.dismissed_update_version = this.update.latest;
       this.persistStore();
     }
+  }
+
+  async checkRuntimeUpdates() {
+    try {
+      this.runtimeUpdates = await ipc.checkRuntimeUpdates();
+    } catch (e) {
+      console.error("runtime update check failed", e);
+    }
+  }
+
+  get visibleRuntimeUpdates(): RuntimeUpdate[] {
+    const dismissed = this.store.dismissed_runtime_updates ?? [];
+    return this.runtimeUpdates.filter((u) => !dismissed.includes(u.tag));
+  }
+
+  dismissRuntimeUpdate(tag: string) {
+    const prev = this.store.dismissed_runtime_updates ?? [];
+    if (prev.includes(tag)) return;
+    // Keep only tags still on offer, so the list can't grow forever.
+    const live = new Set(this.runtimeUpdates.map((u) => u.tag));
+    this.store.dismissed_runtime_updates = [...prev.filter((t) => live.has(t)), tag];
+    this.persistStore();
   }
 
   /** Download, verify and swap the new binary. On success the backend restarts

@@ -21,6 +21,7 @@ use crate::lint;
 use crate::llm::{self, LlmRequest, LlmSuggestion, RecipeRef, TroubleshootRequest, TroubleshootResult};
 use crate::mangohud_export;
 use crate::optiscaler_upgrade;
+use crate::runtime_updates;
 use crate::params::{Catalog, ConfigWarning};
 use crate::parser;
 use crate::protondb::{self, Tier};
@@ -1090,6 +1091,32 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
     tauri::async_runtime::spawn_blocking(update::check_blocking)
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Check whether a newer GE-Proton / proton-cachyos build than the newest one
+/// installed has been released (off the UI thread). Uses the runtimes from the
+/// last discovery pass, so it must run after `bootstrap`. Read-only: it only
+/// reports, the user installs. Never errors; a failed fetch just reports less.
+#[tauri::command]
+pub async fn check_runtime_updates(
+    state: State<'_, AppState>,
+) -> Result<Vec<runtime_updates::RuntimeUpdate>, String> {
+    let runtimes: Vec<RuntimeDto> = state
+        .discovery
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|d| d.runtimes.clone())
+        .unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        let installed: Vec<runtime_updates::Installed> = runtimes
+            .iter()
+            .map(|r| runtime_updates::Installed { name: &r.display_name, kind: &r.kind })
+            .collect();
+        runtime_updates::check_blocking(&installed)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Download + verify + swap the new binary, then restart into it. On success this

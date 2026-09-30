@@ -12,6 +12,7 @@
   import Notices from "$lib/components/Notices.svelte";
   import StaleBanner from "$lib/components/StaleBanner.svelte";
   import UpdateBanner from "$lib/components/UpdateBanner.svelte";
+  import RuntimeUpdateBanner from "$lib/components/RuntimeUpdateBanner.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import ShortcutsSheet from "$lib/components/ShortcutsSheet.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
@@ -177,10 +178,11 @@
 
     {#if app.view === "library"}
       <div class="min-h-0 flex-1 overflow-y-auto" in:fade={{ duration: 120 }}>
-        {#if app.loadError || app.runtimeWarning || app.persistError || app.configWarnings.length || app.staleVisible || app.updateVisible}
+        {#if app.loadError || app.runtimeWarning || app.persistError || app.configWarnings.length || app.staleVisible || app.updateVisible || app.visibleRuntimeUpdates.length}
           <div class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 pt-4">
             {@render loadErrorBanner()}
             <UpdateBanner />
+            <RuntimeUpdateBanner />
             <StaleBanner />
           </div>
         {/if}

@@ -66,7 +66,10 @@ protongen turns that into a GUI:
 
 - Not a Proton installer or version manager (it discovers runtimes, it does not
   download/install them). Its only downloads are the app's own self-update
-  (`update.rs`) and the confirm-gated OptiScaler fetch (§11).
+  (`update.rs`) and the confirm-gated OptiScaler fetch (§11). `runtime_updates.rs`
+  only *tells* you a newer GE-Proton / proton-cachyos than the newest one installed
+  is out (a dismissible banner, one GitHub query per used family per session);
+  installing it stays yours.
 - Not a Steam config writer (no automation of Launch Options — the user pastes).
 - Not Flatpak-Steam aware — it deliberately targets the **native** Steam install.
 - Not cross-platform in practice — it targets Linux/CachyOS desktops (Tauri could

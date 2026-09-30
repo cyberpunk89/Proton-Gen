@@ -11,6 +11,7 @@ import type {
   Notice,
   OptiscalerExtractResult,
   OptiscalerChannel,
+  RuntimeUpdate,
   OptiscalerRelease,
   OptiscalerStatus,
   ParsedCommand,
@@ -233,6 +234,22 @@ export const ipc = {
           download_url: "",
           sha256_url: "",
         }),
+
+  // Newer GE-Proton / proton-cachyos than installed. The mock reports one so
+  // the banner can be seen under `pnpm dev`.
+  checkRuntimeUpdates: () =>
+    inTauri
+      ? invoke<RuntimeUpdate[]>("check_runtime_updates")
+      : Promise.resolve<RuntimeUpdate[]>([
+          {
+            family: "ge-proton",
+            installed: "GE-Proton11-5",
+            latest: "GE-Proton11-7",
+            tag: "GE-Proton11-7",
+            html_url: "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-7",
+            installed_kind: "user",
+          },
+        ]),
 
   // No payload: the backend re-resolves the release itself rather than
   // trusting URLs from here.

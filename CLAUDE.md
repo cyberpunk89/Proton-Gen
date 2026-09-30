@@ -46,6 +46,7 @@ src-tauri/               BACKEND (Rust / Tauri)
   src/fsutil.rs          write_atomic() (temp + rename; writes through symlinks, keeps perms),
                          write_backup() (collision-proof .bak), read_existing() — store/Heroic/overlay writes
   src/{steam,runtime,games,steamcfg}.rs   read-only discovery
+  src/runtime_updates.rs "newer GE-Proton / proton-cachyos out" notice (report only)
   src/hardware.rs        GPU/session/ntsync detection + relevance
   params.toml            data-driven parameter catalog (single source of truth)
   recipes.toml           profiles + troubleshooter recipes

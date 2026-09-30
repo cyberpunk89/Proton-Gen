@@ -44,6 +44,7 @@ mod parser;
 mod protondb;
 mod recipes;
 mod runtime;
+mod runtime_updates;
 mod steam;
 mod steamcfg;
 mod store;
@@ -84,6 +85,7 @@ pub fn run() {
             ipc::save_store,
             ipc::check_for_update,
             ipc::run_update,
+            ipc::check_runtime_updates,
             ipc::optiscaler_status,
             ipc::optiscaler_latest,
             ipc::optiscaler_fetch,
