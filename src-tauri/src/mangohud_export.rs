@@ -46,6 +46,7 @@ const MANAGED_KEYS: &[&str] = &[
     "vram",
     "gpu_name",
     "horizontal",
+    "horizontal_stretch",
     "hud_compact",
     "position",
     "font_size",

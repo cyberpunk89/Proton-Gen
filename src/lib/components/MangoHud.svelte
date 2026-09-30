@@ -37,6 +37,7 @@
   let fontSize = $state(seed.fontSize);
   let roundCorners = $state(seed.roundCorners);
   let horizontal = $state(seed.horizontal);
+  let stretch = $state(seed.stretch);
   let compact = $state(seed.compact);
   let bgAlphaOn = $state(seed.bgAlphaOn);
   let bgAlpha = $state(seed.bgAlpha);
@@ -54,6 +55,7 @@
     fontSize = s.fontSize;
     roundCorners = s.roundCorners;
     horizontal = s.horizontal;
+    stretch = s.stretch;
     compact = s.compact;
     bgAlphaOn = s.bgAlphaOn;
     bgAlpha = s.bgAlpha;
@@ -92,6 +94,7 @@
       fontSize,
       roundCorners,
       horizontal,
+      stretch,
       compact,
       bgAlphaOn,
       bgAlpha,
@@ -362,6 +365,18 @@
               <input type="checkbox" bind:checked={horizontal} class="accent-[var(--accent)]" />
               <span class="text-sm text-subtext">Horizontal</span>
             </label>
+            <label
+              class="flex items-center gap-2 {horizontal ? 'cursor-pointer' : 'opacity-40'}"
+              title="Off: the bar is only as wide as its contents. On: MangoHud's default, the background spans the whole screen."
+            >
+              <input
+                type="checkbox"
+                bind:checked={stretch}
+                disabled={!horizontal}
+                class="accent-[var(--accent)]"
+              />
+              <span class="text-sm text-subtext">Stretch to screen width</span>
+            </label>
             <label class="flex cursor-pointer items-center gap-2">
               <input type="checkbox" bind:checked={compact} class="accent-[var(--accent)]" />
               <span class="text-sm text-subtext">Compact</span>
@@ -466,6 +481,7 @@
                   padding: {compact ? '0.15em 0.5em' : '0.4em 0.7em'};
                   display: flex;
                   flex-direction: {horizontal ? 'row' : 'column'};
+                  {horizontal && stretch ? 'flex: 1;' : ''}
                   gap: {horizontal ? '0.9em' : compact ? '0' : '0.15em'};
                 "
               >

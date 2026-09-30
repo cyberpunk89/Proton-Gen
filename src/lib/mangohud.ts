@@ -75,6 +75,10 @@ export interface OverlayConfig {
   fontSize: string;
   roundCorners: string;
   horizontal: boolean;
+  /** Horizontal mode only: span the whole screen width. MangoHud's own default
+   *  is *on*; the builder defaults it off (hug the content), so a horizontal
+   *  config always carries an explicit `horizontal_stretch=0|1`. */
+  stretch: boolean;
   compact: boolean;
   bgAlphaOn: boolean;
   bgAlpha: string;
@@ -119,6 +123,7 @@ export function parseConfig(raw: string): OverlayConfig {
     fontSize: "",
     roundCorners: "",
     horizontal: false,
+    stretch: false,
     compact: false,
     bgAlphaOn: false,
     bgAlpha: "0.4",
@@ -137,6 +142,10 @@ export function parseConfig(raw: string): OverlayConfig {
     }
     if (t === "horizontal") {
       out.horizontal = true;
+      continue;
+    }
+    if (t === "horizontal_stretch") {
+      out.stretch = true;
       continue;
     }
     if (t === "hud_compact") {
@@ -159,6 +168,9 @@ export function parseConfig(raw: string): OverlayConfig {
         break;
       case "round_corners":
         out.roundCorners = v;
+        break;
+      case "horizontal_stretch":
+        out.stretch = v.trim() !== "0";
         break;
       case "background_alpha":
         out.bgAlphaOn = true;
@@ -204,7 +216,7 @@ export function buildConfig(c: OverlayConfig): string {
   if (c.position) parts.push(`position=${c.position}`);
   if (c.fontSize.trim()) parts.push(`font_size=${c.fontSize.trim()}`);
   if (c.roundCorners.trim()) parts.push(`round_corners=${c.roundCorners.trim()}`);
-  if (c.horizontal) parts.push("horizontal");
+  if (c.horizontal) parts.push("horizontal", `horizontal_stretch=${c.stretch ? 1 : 0}`);
   if (c.compact) parts.push("hud_compact");
   if (c.bgAlphaOn) parts.push(`background_alpha=${c.bgAlpha}`);
   if (c.alphaOn) parts.push(`alpha=${c.alpha}`);
