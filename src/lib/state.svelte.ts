@@ -301,6 +301,13 @@ class AppStore {
       this.resetOptions();
     }
 
+    // Opened as `protongen --game <id>` (Nexus's "Tune in protongen"): start on
+    // that game instead of the restored one.
+    if (b.initial_game_appid != null) {
+      const g = this.games.find((x) => x.app_id === b.initial_game_appid);
+      if (g) this.selectGame(g);
+    }
+
     // Seed the undo baseline with the state the user is actually looking at, so
     // restoring a session isn't itself the first undo entry.
     history.reset(this.snapshot());

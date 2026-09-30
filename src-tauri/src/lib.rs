@@ -56,11 +56,16 @@ use anyhow::Result;
 
 /// Launch the Tauri application.
 pub fn run() {
+    run_with(None)
+}
+
+/// Launch the Tauri application, optionally opening on one game (`--game`).
+pub fn run_with(initial_game: Option<u32>) {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(ipc::AppState::new())
+        .manage(ipc::AppState::new().with_initial_game(initial_game))
         .invoke_handler(tauri::generate_handler![
             ipc::bootstrap,
             ipc::rescan,

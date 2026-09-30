@@ -527,6 +527,8 @@ export interface Bootstrap {
   requires_status: Record<string, boolean>;
   stale: StaleInfo | null;
   config_warnings: ConfigWarning[];
+  /** Set by `protongen --game <appid>` (e.g. from Nexus): open on that game. */
+  initial_game_appid?: number | null;
 }
 
 /** `cfg` with its launch target — umu mode, exe, prefix, game id — reset.

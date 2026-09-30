@@ -128,6 +128,9 @@ pub struct Bootstrap {
     pub stale: Option<StaleInfo>,
     /// User config overrides that failed to parse and were ignored.
     pub config_warnings: Vec<ConfigWarning>,
+    /// The game to open on, from `protongen --game <appid>`. Only the first
+    /// bootstrap carries it; a rescan never re-selects.
+    pub initial_game_appid: Option<u32>,
 }
 
 /// Shared application state: the cheap, always-available bits (catalog,
@@ -148,6 +151,8 @@ pub struct AppState {
     /// blocking thread, so without this two debounced saves could land out of
     /// order and leave the older store on disk.
     save_lock: Arc<Mutex<()>>,
+    /// `--game <appid>` from the command line, taken by the first bootstrap.
+    initial_game: Arc<Mutex<Option<u32>>>,
     /// Filesystem discovery: `None` until the first `bootstrap` fills it,
     /// replaced wholesale by `rescan`.
     ///
@@ -216,6 +221,7 @@ impl AppState {
                 .cloned()
                 .chain(d.path_warnings.iter().cloned())
                 .collect(),
+            initial_game_appid: None,
         }
     }
 }
@@ -331,8 +337,15 @@ impl AppState {
             config_warnings,
             store: Arc::new(Mutex::new(store)),
             save_lock: Arc::new(Mutex::new(())),
+            initial_game: Arc::new(Mutex::new(None)),
             discovery: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Open on this game once the UI boots (see `Bootstrap::initial_game_appid`).
+    pub fn with_initial_game(self, appid: Option<u32>) -> Self {
+        *self.initial_game.lock().unwrap() = appid;
+        self
     }
 }
 
@@ -467,7 +480,9 @@ pub async fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap, String> 
         }
     };
 
-    Ok(state.bootstrap_from(&d, store))
+    let mut b = state.bootstrap_from(&d, store);
+    b.initial_game_appid = state.initial_game.lock().unwrap().take();
+    Ok(b)
 }
 
 /// Re-scan Steam / runtimes / games and return a fresh `Bootstrap` so the UI can
