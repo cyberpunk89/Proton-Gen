@@ -121,8 +121,10 @@ export const ipc = {
       ? invoke<RecipeChange[]>("preview_recipe", { index, config })
       : Promise.resolve(mockPreviewRecipe(index, config)),
 
-  lint: (config: Config) =>
-    inTauri ? invoke<Notice[]>("lint", { config }) : Promise.resolve(mockNotices),
+  // `appId` lets the backend check that game's folder for a manual OptiScaler
+  // install stacked under the injected one; null for no game selected.
+  lint: (config: Config, appId: number | null) =>
+    inTauri ? invoke<Notice[]>("lint", { config, appId }) : Promise.resolve(mockNotices),
 
   protondbUrl: (appid: number) =>
     inTauri

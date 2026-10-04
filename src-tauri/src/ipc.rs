@@ -737,9 +737,29 @@ pub fn preview_recipe(
     recipes::diff(recipe, catalog, &options, &extra_env)
 }
 
-/// Conflict / footgun notices for the current config.
+/// Conflict / footgun notices for the current config. `app_id` is the selected
+/// game, whose folder is checked for a manual OptiScaler install that would
+/// stack under Proton's injected one — a few `read_dir`s, off the UI thread,
+/// and only while injection is on.
 #[tauri::command]
-pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
+pub async fn lint(
+    state: State<'_, AppState>,
+    config: Config,
+    app_id: Option<u32>,
+) -> Result<Vec<lint::Notice>, String> {
+    let value = |key: &str| config.env.iter().find(|(k, _)| k == key).map(|(_, v)| v.trim());
+    let injected = value("PROTON_USE_OPTISCALER").is_some_and(|v| v != "0");
+    let dir = app_id.filter(|_| injected).and_then(|id| state.game(id)).and_then(|g| g.install_dir);
+    let proxy = value("PROTON_OPTISCALER_NAME").filter(|v| !v.is_empty()).unwrap_or("dxgi.dll").to_string();
+    let game_files = match dir {
+        Some(dir) => tauri::async_runtime::spawn_blocking(move || {
+            optiscaler_upgrade::manual_install_files(std::path::Path::new(&dir), &proxy)
+        })
+        .await
+        .map_err(|e| e.to_string())?,
+        None => Vec::new(),
+    };
+
     // Leftovers are discarded here on purpose: a rule is written against catalog
     // keys, so a key with no catalog entry has no rule that could name it.
     let (options, _) = compose::options_from_config(&state.catalog, &config);
@@ -754,9 +774,10 @@ pub fn lint(state: State<'_, AppState>, config: Config) -> Vec<lint::Notice> {
         state.hardware.gpu_gen_detected.as_deref(),
         state.hardware.amd,
     );
-    let mut notices = lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen);
+    let mut notices =
+        lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen, &game_files);
     notices.extend(lint::invalid_custom_env(&compose::invalid_extra_env(&config.extra_env)));
-    notices
+    Ok(notices)
 }
 
 /// The ProtonDB community page URL for a Steam app id.

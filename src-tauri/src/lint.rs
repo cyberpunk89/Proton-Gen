@@ -59,9 +59,24 @@ pub struct Ctx<'a> {
     /// FSR4 rules can only state both generations' caveats at once, which is
     /// half noise for anyone who has actually picked one.
     gpu_gen: &'a str,
+    /// Manual-OptiScaler leftovers in the selected game's folder (see
+    /// `optiscaler_upgrade::manual_install_files`). The one rule input read off
+    /// the disk rather than the selection — `ipc::lint` scans, rules stay pure.
+    game_files: &'a [String],
 }
 
 impl Ctx<'_> {
+    /// Enabled *and* not set to `0`. The 1/0 switches are often kept in the
+    /// command at `=0` to toggle quickly; [`Self::env_on`] would count those.
+    fn flag_on(&self, key: &str) -> bool {
+        self.env_value(key).is_some_and(|v| v.trim() != "0")
+    }
+
+    /// [`Self::flag_on`] over `keys`, in the given order.
+    fn flags_on(&self, keys: &[&str]) -> Vec<String> {
+        keys.iter().filter(|k| self.flag_on(k)).map(|k| k.to_string()).collect()
+    }
+
     fn env_on(&self, key: &str) -> bool {
         self.catalog
             .envs
@@ -176,6 +191,13 @@ const LSFG_ENV_ONLY_KEYS_AND_ENV: &[&str] = &[
     "LSFGVK_ENV",
 ];
 
+/// Implicit Vulkan layers that pace the CPU against the GPU to cut latency.
+const LATENCY_LAYERS: &[&str] = &["ENABLE_LAYER_MESA_ANTI_LAG", "LOW_LATENCY_LAYER"];
+
+/// [`LATENCY_LAYERS`] plus the injection its OptiScaler rule reports.
+const LATENCY_LAYERS_AND_OPTISCALER: &[&str] =
+    &["ENABLE_LAYER_MESA_ANTI_LAG", "LOW_LATENCY_LAYER", "PROTON_USE_OPTISCALER"];
+
 /// The `Section.Key=Value` entries of a `PROTON_OPTISCALER_CONFIG` string —
 /// the same `;`-separated shape `src/lib/optiscaler.ts` parses.
 fn optiscaler_entries(cfg: &str) -> impl Iterator<Item = (&str, &str)> {
@@ -260,14 +282,18 @@ const RULES: &[Rule] = &[
     // RDNA3 + MLFG without the WMMA workaround. Auto-fixable now that the
     // generation is a known quantity — the note this replaced could only
     // describe the remedy in prose.
+    //
+    // Silent under OptiScaler: MLFG is a no-op there (`mlfg-ignored-with-optiscaler`),
+    // and a workaround for a no-op is advice to stack one more dead variable.
     Rule {
         id: "rdna3-mlfg-workaround",
-        keys: &["PROTON_MLFG_UPGRADE", "DXIL_SPIRV_CONFIG"],
+        keys: &["PROTON_MLFG_UPGRADE", "DXIL_SPIRV_CONFIG", "PROTON_USE_OPTISCALER"],
         prefixes: &[],
         check: |c| {
             if c.gpu_gen != "rdna3"
                 || !c.env_on("PROTON_MLFG_UPGRADE")
                 || c.env_on("DXIL_SPIRV_CONFIG")
+                || c.flag_on("PROTON_USE_OPTISCALER")
             {
                 return None;
             }
@@ -344,6 +370,116 @@ const RULES: &[Rule] = &[
                     disable: Vec::new(),
                     enable: vec![("PROTON_USE_OPTISCALER".to_string(), "1".to_string())],
                 }),
+            })
+        },
+    },
+    // proton-cachyos' `setup_upscalers` clears its upgrade set once OptiScaler is
+    // injected, so MLFG_UPGRADE never reaches amdxc64 — frame generation is
+    // whatever OptiScaler's FrameGen settings say. (PROTON_FSR4_UPGRADE still
+    // matters there: it picks the FSR runtime version OptiScaler is given.)
+    Rule {
+        id: "mlfg-ignored-with-optiscaler",
+        keys: &["PROTON_MLFG_UPGRADE", "PROTON_USE_OPTISCALER"],
+        prefixes: &[],
+        check: |c| {
+            if !(c.flag_on("PROTON_MLFG_UPGRADE") && c.flag_on("PROTON_USE_OPTISCALER")) {
+                return None;
+            }
+            Some(Notice {
+                id: "mlfg-ignored-with-optiscaler".to_string(),
+                severity: Severity::Warning,
+                message: "PROTON_MLFG_UPGRADE does nothing while OptiScaler is injected — Proton hands FSR over to OptiScaler and skips its own frame-gen upgrade. Choose frame generation in OptiScaler's settings instead."
+                    .to_string(),
+                keys: vec!["PROTON_MLFG_UPGRADE".to_string(), "PROTON_USE_OPTISCALER".to_string()],
+                fix: Some(Fix {
+                    label: "Remove PROTON_MLFG_UPGRADE".to_string(),
+                    disable: vec!["PROTON_MLFG_UPGRADE".to_string()],
+                    enable: Vec::new(),
+                }),
+            })
+        },
+    },
+    // Two CPU-pacing layers. The catalog's own Anti-Lag entry already says "try
+    // one at a time"; this says it where it's acted on. No fix: either is fine.
+    Rule {
+        id: "latency-layers-stacked",
+        keys: LATENCY_LAYERS,
+        prefixes: &[],
+        check: |c| {
+            let on = c.flags_on(LATENCY_LAYERS);
+            if on.len() < 2 {
+                return None;
+            }
+            Some(Notice {
+                id: "latency-layers-stacked".to_string(),
+                severity: Severity::Warning,
+                message: "Mesa Anti-Lag and LOW_LATENCY_LAYER both pace the CPU against the GPU — stacked, they fight over frame timing. Keep one."
+                    .to_string(),
+                keys: on,
+                fix: None,
+            })
+        },
+    },
+    // A Vulkan latency layer underneath OptiScaler. The injected OptiScaler
+    // ships fakenvapi, which already turns the game's Reflex into AMD/Intel
+    // latency reduction, and paces its generated frames — the layer is a
+    // second limiter on the same frames. Seen in the wild as launches dying
+    // within seconds that came back the moment Anti-Lag was dropped.
+    Rule {
+        id: "latency-layer-with-optiscaler",
+        keys: LATENCY_LAYERS_AND_OPTISCALER,
+        prefixes: &[],
+        check: |c| {
+            if !c.flag_on("PROTON_USE_OPTISCALER") {
+                return None;
+            }
+            let on = c.flags_on(LATENCY_LAYERS);
+            if on.is_empty() {
+                return None;
+            }
+            Some(Notice {
+                id: "latency-layer-with-optiscaler".to_string(),
+                severity: Severity::Warning,
+                message: "OptiScaler brings its own latency reduction (fakenvapi) and frame pacing, so a Vulkan latency layer underneath it is a second limiter. If the game crashes at launch or stutters, turn the layer off first."
+                    .to_string(),
+                keys: on.iter().cloned().chain(["PROTON_USE_OPTISCALER".to_string()]).collect(),
+                fix: Some(Fix {
+                    label: if on.len() == 1 {
+                        format!("Turn off {}", on[0])
+                    } else {
+                        "Turn off the latency layers".to_string()
+                    },
+                    disable: on,
+                    enable: Vec::new(),
+                }),
+            })
+        },
+    },
+    // A hand-installed OptiScaler in the game folder *and* Proton's injected
+    // one: two builds, two sets of FSR/XeSS runtimes, mixed in one process.
+    // No fix — removing files is the user's job (then a Steam file verify), and
+    // dropping the injection is only right if they prefer the manual copy.
+    Rule {
+        id: "optiscaler-double-install",
+        keys: &["PROTON_USE_OPTISCALER"],
+        prefixes: &[],
+        check: |c| {
+            if !c.flag_on("PROTON_USE_OPTISCALER") || c.game_files.is_empty() {
+                return None;
+            }
+            const SHOWN: usize = 4;
+            let mut files = c.game_files.iter().take(SHOWN).cloned().collect::<Vec<_>>().join(", ");
+            if c.game_files.len() > SHOWN {
+                files.push_str(&format!(" +{} more", c.game_files.len() - SHOWN));
+            }
+            Some(Notice {
+                id: "optiscaler-double-install".to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "This game's folder has a manual OptiScaler install ({files}), and PROTON_USE_OPTISCALER injects a second copy — their DLL versions get mixed in one process. Remove the manual files and verify the game in Steam, or turn PROTON_USE_OPTISCALER off."
+                ),
+                keys: vec!["PROTON_USE_OPTISCALER".to_string()],
+                fix: None,
             })
         },
     },
@@ -624,8 +760,16 @@ pub fn invalid_custom_env(tokens: &[String]) -> Option<Notice> {
     })
 }
 
-pub fn warnings(catalog: &Catalog, options: &Options, hw: &Hardware, gpu_gen: &str) -> Vec<Notice> {
-    let ctx = Ctx { catalog, options, hw, gpu_gen };
+/// `game_files` are the selected game's manual-OptiScaler leftovers, empty when
+/// no game is selected or the folder wasn't scanned.
+pub fn warnings(
+    catalog: &Catalog,
+    options: &Options,
+    hw: &Hardware,
+    gpu_gen: &str,
+    game_files: &[String],
+) -> Vec<Notice> {
+    let ctx = Ctx { catalog, options, hw, gpu_gen, game_files };
     RULES.iter().filter_map(|r| (r.check)(&ctx)).collect()
 }
 
@@ -669,7 +813,7 @@ mod tests {
         for k in keys {
             enable(&cat, &mut opts, k, "1");
         }
-        warnings(&cat, &opts, &hw, gpu_gen)
+        warnings(&cat, &opts, &hw, gpu_gen, &[])
     }
 
     fn find<'a>(notices: &'a [Notice], id: &str) -> Option<&'a Notice> {
@@ -801,6 +945,96 @@ mod tests {
         assert!(find(&bare, "optiscaler-not-injected").is_none());
     }
 
+    /// Lint with explicit `(key, value)` pairs and a game folder's leftovers.
+    fn lint_vals(gpu_gen: &str, vals: &[(&str, &str)], game_files: &[String]) -> Vec<Notice> {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        for (k, v) in vals {
+            enable(&cat, &mut opts, k, v);
+        }
+        let amd = Hardware { amd: true, ..Default::default() };
+        warnings(&cat, &opts, &amd, gpu_gen, game_files)
+    }
+
+    #[test]
+    fn flags_mlfg_as_a_noop_under_optiscaler() {
+        let both = [("PROTON_MLFG_UPGRADE", "1"), ("PROTON_USE_OPTISCALER", "1")];
+        let n = lint_vals("rdna3", &both, &[]);
+        let notice = find(&n, "mlfg-ignored-with-optiscaler").expect("rule fires");
+        assert_eq!(notice.severity, Severity::Warning);
+        assert_eq!(
+            notice.fix.as_ref().map(|f| f.disable.clone()),
+            Some(vec!["PROTON_MLFG_UPGRADE".to_string()])
+        );
+        // No RDNA3 workaround advice for a variable that does nothing.
+        assert!(find(&n, "rdna3-mlfg-workaround").is_none());
+
+        // `=0` is off — the shape a real launch line toggles it with.
+        let zero = lint_vals("", &[("PROTON_MLFG_UPGRADE", "0"), ("PROTON_USE_OPTISCALER", "1")], &[]);
+        assert!(find(&zero, "mlfg-ignored-with-optiscaler").is_none());
+        // Without OptiScaler, MLFG is Proton's to apply.
+        let alone = lint_vals("", &[("PROTON_MLFG_UPGRADE", "1")], &[]);
+        assert!(find(&alone, "mlfg-ignored-with-optiscaler").is_none());
+    }
+
+    #[test]
+    fn flags_stacked_latency_layers() {
+        let one = lint_vals("", &[("ENABLE_LAYER_MESA_ANTI_LAG", "1")], &[]);
+        assert!(find(&one, "latency-layers-stacked").is_none());
+
+        let two = lint_vals("", &[("ENABLE_LAYER_MESA_ANTI_LAG", "1"), ("LOW_LATENCY_LAYER", "1")], &[]);
+        let notice = find(&two, "latency-layers-stacked").expect("rule fires");
+        assert_eq!(notice.keys, vec!["ENABLE_LAYER_MESA_ANTI_LAG", "LOW_LATENCY_LAYER"]);
+        assert!(notice.fix.is_none(), "which one to keep is the user's call");
+
+        let off = lint_vals("", &[("ENABLE_LAYER_MESA_ANTI_LAG", "1"), ("LOW_LATENCY_LAYER", "0")], &[]);
+        assert!(find(&off, "latency-layers-stacked").is_none());
+    }
+
+    #[test]
+    fn flags_a_latency_layer_under_optiscaler() {
+        let n = lint_vals(
+            "",
+            &[("ENABLE_LAYER_MESA_ANTI_LAG", "1"), ("PROTON_USE_OPTISCALER", "1")],
+            &[],
+        );
+        let notice = find(&n, "latency-layer-with-optiscaler").expect("rule fires");
+        assert_eq!(notice.severity, Severity::Warning);
+        let fix = notice.fix.as_ref().expect("has a fix");
+        assert_eq!(fix.label, "Turn off ENABLE_LAYER_MESA_ANTI_LAG");
+        assert_eq!(fix.disable, vec!["ENABLE_LAYER_MESA_ANTI_LAG"]);
+
+        // Either half alone is fine.
+        let layer = lint_vals("", &[("ENABLE_LAYER_MESA_ANTI_LAG", "1")], &[]);
+        assert!(find(&layer, "latency-layer-with-optiscaler").is_none());
+        let opti = lint_vals("", &[("PROTON_USE_OPTISCALER", "1")], &[]);
+        assert!(find(&opti, "latency-layer-with-optiscaler").is_none());
+    }
+
+    #[test]
+    fn flags_a_manual_optiscaler_beside_the_injected_one() {
+        let files: Vec<String> = ["dxgi.dll", "OptiScaler.ini", "OptiScaler", "fakenvapi.dll", "OptiScaler.log"]
+            .map(String::from)
+            .to_vec();
+        let n = lint_vals("", &[("PROTON_USE_OPTISCALER", "1")], &files);
+        let notice = find(&n, "optiscaler-double-install").expect("rule fires");
+        assert_eq!(notice.severity, Severity::Warning);
+        assert!(notice.message.contains("dxgi.dll, OptiScaler.ini, OptiScaler, fakenvapi.dll +1 more"));
+        assert!(notice.fix.is_none());
+
+        // A manual install on its own is a legitimate setup.
+        assert!(find(&lint_vals("", &[], &files), "optiscaler-double-install").is_none());
+        assert!(
+            find(&lint_vals("", &[("PROTON_USE_OPTISCALER", "0")], &files), "optiscaler-double-install")
+                .is_none()
+        );
+        // And a clean folder has nothing to report.
+        assert!(
+            find(&lint_vals("", &[("PROTON_USE_OPTISCALER", "1")], &[]), "optiscaler-double-install")
+                .is_none()
+        );
+    }
+
     #[test]
     fn lsfg_settings_need_env_mode() {
         let n = lint_with(Hardware::default(), &["LSFGVK_MULTIPLIER", "LSFGVK_FLOW_SCALE"]);
@@ -839,7 +1073,7 @@ mod tests {
             "PROTON_OPTISCALER_CONFIG",
             "Upscalers.Dx12Upscaler=ffx;FrameGen.Enabled=true;FrameGen.FGInput=fsrfg",
         );
-        let n = warnings(&cat, &opts, &Hardware::default(), "");
+        let n = warnings(&cat, &opts, &Hardware::default(), "", &[]);
         let notice = find(&n, "lsfg-double-framegen").expect("rule fires");
         let fix = notice.fix.as_ref().expect("has a fix");
         assert_eq!(
@@ -852,7 +1086,7 @@ mod tests {
 
         // Upscaling-only OptiScaler is the intended pairing.
         enable(&cat, &mut opts, "PROTON_OPTISCALER_CONFIG", "Upscalers.Dx12Upscaler=ffx");
-        assert!(find(&warnings(&cat, &opts, &Hardware::default(), ""), "lsfg-double-framegen").is_none());
+        assert!(find(&warnings(&cat, &opts, &Hardware::default(), "", &[]), "lsfg-double-framegen").is_none());
 
         // And the fix's own output doesn't re-trigger the rule.
         assert!(!optifg_enabled(&without_optifg("FrameGen.Enabled=true")));
@@ -983,6 +1217,8 @@ mod tests {
         for e in opts.envs.iter_mut() {
             e.enabled = true;
         }
+        // And a dirty game folder, or the folder-gated rule never fires here.
+        let game_files = vec!["OptiScaler.dll".to_string()];
         for w in opts.wrappers.iter_mut() {
             w.enabled = true;
         }
@@ -1000,7 +1236,7 @@ mod tests {
         ];
         for hw in hws {
             for gpu_gen in ["", "rdna3", "rdna4"] {
-                let ctx = Ctx { catalog: &cat, options: &opts, hw: &hw, gpu_gen };
+                let ctx = Ctx { catalog: &cat, options: &opts, hw: &hw, gpu_gen, game_files: &game_files };
                 for rule in RULES {
                     let Some(notice) = (rule.check)(&ctx) else { continue };
                     assert_eq!(notice.id, rule.id, "rule {} emits a mismatched id", rule.id);

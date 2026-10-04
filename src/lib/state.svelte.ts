@@ -876,7 +876,7 @@ class AppStore {
       }
 
       try {
-        const notices = await ipc.lint(cfg);
+        const notices = await ipc.lint(cfg, this.selectedAppId);
         if (seq === this.recomputeSeq) this.notices = notices;
       } catch (e) {
         console.error("lint failed", e);

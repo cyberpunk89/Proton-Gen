@@ -76,6 +76,59 @@ pub fn detect(install_dir: Option<&Path>) -> OptiscalerStatus {
     OptiscalerStatus { install_dir: install_dir.map(|p| p.display().to_string()), found }
 }
 
+/// What a *manual* OptiScaler install leaves in a game folder (compared
+/// case-insensitively). CachyOS Proton's own `PROTON_USE_OPTISCALER` injection
+/// lives in the prefix (`system32/umu`) and never writes here — so with it on,
+/// any of these means a second OptiScaler with its own FSR/XeSS runtimes, and
+/// the two builds end up mixed in one process.
+const MANUAL_INSTALL_MARKERS: &[&str] = &[
+    "OptiScaler.dll",
+    "OptiScaler.ini",
+    "OptiScaler.log",
+    // Newer archives keep their runtimes in an `OptiScaler/` subfolder.
+    "OptiScaler",
+    "fakenvapi.dll",
+    "dlssg_to_fsr3_amd_is_better.dll",
+];
+
+/// Leftovers of a manual OptiScaler install in `install_dir` that would collide
+/// with Proton's injected copy, as paths relative to `install_dir`.
+///
+/// `proxy` is the DLL name Proton injects OptiScaler under
+/// (`PROTON_OPTISCALER_NAME`, default `dxgi.dll`): a game-folder file of that
+/// name is the manual install's live entry point. It's only reported alongside
+/// a marker — a lone `dxgi.dll` is as likely ReShade as OptiScaler.
+///
+/// Checks the root and, for Unreal games, each `<Project>/Binaries/Win64` —
+/// where the game exe, and therefore any hand-installed proxy, actually sits.
+pub fn manual_install_files(install_dir: &Path, proxy: &str) -> Vec<String> {
+    let mut dirs = vec![PathBuf::new()];
+    if let Ok(entries) = std::fs::read_dir(install_dir) {
+        for entry in entries.flatten() {
+            let ue = PathBuf::from(entry.file_name()).join("Binaries").join("Win64");
+            if install_dir.join(&ue).is_dir() {
+                dirs.push(ue);
+            }
+        }
+    }
+
+    let mut found = Vec::new();
+    for rel in dirs {
+        let Ok(entries) = std::fs::read_dir(install_dir.join(&rel)) else { continue };
+        let names: Vec<String> =
+            entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        let hit = |want: &str| names.iter().find(|n| n.eq_ignore_ascii_case(want));
+        let markers: Vec<&String> = MANUAL_INSTALL_MARKERS.iter().filter_map(|m| hit(m)).collect();
+        if markers.is_empty() {
+            continue;
+        }
+        let path = |name: &String| rel.join(name).display().to_string();
+        found.extend(hit(proxy).map(path));
+        found.extend(markers.into_iter().map(path));
+    }
+    found
+}
+
 /// What's known about the latest upstream release on a channel — enough for
 /// the "current vs latest" comparison and the confirm dialog's source/version
 /// line.
@@ -296,6 +349,45 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         assert!(!detect(Some(&dir)).found);
         assert!(!detect(None).found);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn manual_install_files_lists_a_hand_install_with_its_proxy() {
+        let dir = std::env::temp_dir().join("protongen-test-optiscaler-manual");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("OptiScaler")).unwrap();
+        for f in ["dxgi.dll", "optiscaler.log", "fakenvapi.dll", "Game.exe"] {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+
+        assert_eq!(
+            manual_install_files(&dir, "dxgi.dll"),
+            vec!["dxgi.dll", "optiscaler.log", "OptiScaler", "fakenvapi.dll"]
+        );
+        // The proxy name follows PROTON_OPTISCALER_NAME.
+        assert!(!manual_install_files(&dir, "winmm.dll").contains(&"dxgi.dll".to_string()));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn manual_install_files_ignores_a_lone_proxy_and_finds_unreal_layouts() {
+        let dir = std::env::temp_dir().join("protongen-test-optiscaler-manual-ue");
+        let _ = std::fs::remove_dir_all(&dir);
+        let bin = dir.join("Project").join("Binaries").join("Win64");
+        std::fs::create_dir_all(&bin).unwrap();
+        // A root dxgi.dll with no OptiScaler beside it — ReShade, say.
+        std::fs::write(dir.join("dxgi.dll"), b"").unwrap();
+        assert!(manual_install_files(&dir, "dxgi.dll").is_empty());
+
+        std::fs::write(bin.join("OptiScaler.ini"), b"").unwrap();
+        assert_eq!(
+            manual_install_files(&dir, "dxgi.dll"),
+            vec!["Project/Binaries/Win64/OptiScaler.ini"]
+        );
+        assert!(manual_install_files(&dir.join("missing"), "dxgi.dll").is_empty());
+
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
