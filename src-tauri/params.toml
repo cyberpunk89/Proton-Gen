@@ -1152,6 +1152,158 @@ details = "Redirects vkBasalt's output to the given path. Worth setting when deb
 example = "ENABLE_VKBASALT=1 VKBASALT_LOG_LEVEL=debug VKBASALT_LOG_FILE=/tmp/vkbasalt.log %command%"
 url = "https://github.com/DadSchoorse/vkBasalt"
 
+# ================ Frame generation (Lossless Scaling) =============
+# lsfg-vk 2.x — Lossless Scaling's frame generation as an implicit Vulkan layer
+# (https://lsfg-vk.dev). Like vkBasalt there is no binary on PATH to badge; the
+# "Configure frame generation…" builder reports the layer, Lossless.dll and the
+# profiles in conf.toml instead. The per-game settings (multiplier, flow scale…)
+# are only read with LSFGVK_ENV=1 — without it lsfg-vk uses conf.toml and
+# ignores them, which `lint.rs` flags.
+
+[[env]]
+key = "LSFGVK_PROFILE"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "default"
+help = "Turn on Lossless Scaling frame generation for this game using a profile from lsfg-vk's conf.toml."
+details = "Selects one [[profile]] from ~/.config/lsfg-vk/conf.toml by its name, overriding lsfg-vk's automatic matching (a profile's active_in list). This is the simplest way to switch frame generation on for one game: keep your multiplier/flow-scale presets in lsfg-vk-ui and pick one here. Profile names often contain spaces or slashes — protongen quotes the value for you. Works on Vulkan rendering, which covers almost every Proton game (DXVK and vkd3d-proton translate D3D9–12 to Vulkan); OpenGL and WineD3D games are not affected. Needs the lsfg-vk layer (pacman -S lsfg-vk) and Lossless Scaling owned on Steam."
+example = "LSFGVK_PROFILE=\"2x FG / 100%\" %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
+[[env]]
+key = "DISABLE_LSFGVK"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "1"
+values = ["1"]
+help = "Keep Lossless Scaling frame generation off for this game, even if a profile would match it."
+details = "Disables the lsfg-vk layer entirely for this launch. Use it when a profile's active_in pattern catches a game you don't want frame generation in, or to rule lsfg-vk out while troubleshooting. Overrides every other LSFGVK_* setting."
+example = "DISABLE_LSFGVK=1 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
+[[env]]
+key = "LSFGVK_ENV"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "1"
+values = ["1"]
+help = "Configure lsfg-vk from these variables instead of conf.toml (per-game settings mode)."
+details = "Makes lsfg-vk ignore its configuration file and read LSFGVK_MULTIPLIER, LSFGVK_FLOW_SCALE, LSFGVK_PERFORMANCE_MODE and the other LSFGVK_* settings from the environment instead, so one launch string carries the whole setup. Without it those variables are ignored. Because conf.toml isn't read, its dll path isn't either: when Lossless Scaling lives in a non-default Steam library, also set LSFGVK_DLL_PATH (the builder does this for you). LSFGVK_PROFILE has no effect in this mode."
+example = "LSFGVK_ENV=1 LSFGVK_MULTIPLIER=2 LSFGVK_FLOW_SCALE=0.8 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
+[[env]]
+key = "LSFGVK_MULTIPLIER"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "2"
+values = ["2", "3", "4"]
+help = "Frame generation multiplier: 2 doubles the frame rate, 3 triples it… (needs LSFGVK_ENV=1)."
+details = "How many frames are presented per real frame. 2× is the sweet spot for image quality and latency; 3× and 4× suit a high-refresh display when the base frame rate is already decent (aim for 50–60 fps real). Must be greater than 1. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_MULTIPLIER=3 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/configuration-options/"
+
+[[env]]
+key = "LSFGVK_FLOW_SCALE"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "1.0"
+values = ["1.0", "0.85", "0.75", "0.5"]
+help = "Motion-estimation resolution, 0.25–1.0: lower is faster but less accurate (needs LSFGVK_ENV=1)."
+details = "Scales the resolution at which lsfg-vk estimates motion between frames. 1.0 is the most accurate; at 1440p/4K, 0.5–0.75 cuts the frame-generation cost noticeably with little visible loss. Must be between 0.25 and 1.0. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_FLOW_SCALE=0.75 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/configuration-options/"
+
+[[env]]
+key = "LSFGVK_PERFORMANCE_MODE"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "1"
+values = ["1", "0"]
+help = "Use Lossless Scaling's lighter frame-generation model (needs LSFGVK_ENV=1)."
+details = "Switches to the lighter LSFG model: noticeably cheaper on the GPU at a small cost in quality. Worth it on handhelds, iGPUs, or when the GPU is already near full load. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_PERFORMANCE_MODE=1 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/configuration-options/"
+
+[[env]]
+key = "LSFGVK_DLL_PATH"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = ""
+help = "Path to Lossless Scaling's Lossless.dll, when it isn't in a default Steam library (needs LSFGVK_ENV=1)."
+details = "lsfg-vk only searches the standard Steam locations (~/.steam/steam, ~/.local/share/Steam, Flatpak and Snap Steam) for steamapps/common/Lossless Scaling. If Lossless Scaling is installed in another library folder, per-game mode needs this path. Note the Steam runtime can hide other drives from the game, so a library on a separate partition may need to be added to Steam first. Absolute paths only — '~' is not expanded in Steam launch options."
+example = "LSFGVK_ENV=1 LSFGVK_DLL_PATH=\"/mnt/games/SteamLibrary/steamapps/common/Lossless Scaling/Lossless.dll\" %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
+[[env]]
+key = "LSFGVK_PACING_MODE"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "vsync"
+values = ["vsync"]
+help = "Frame pacing mode — 'vsync' is currently the only one (needs LSFGVK_ENV=1)."
+details = "How generated frames are paced. lsfg-vk currently implements only 'vsync': frames are presented as soon as they are ready, with vsync forced on (see LSFGVK_OVERRIDE_PRESENT_MODE) so the display takes one per refresh. It works best when the multiplied frame rate matches the monitor's refresh rate, and can misbehave with VRR. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_PACING_MODE=vsync %command%"
+url = "https://lsfg-vk.dev/docs/configuration/pacing-modes/"
+
+[[env]]
+key = "LSFGVK_OVERRIDE_PRESENT_MODE"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "0"
+values = ["0", "1"]
+help = "Set 0 to stop lsfg-vk forcing vsync (FIFO) on the swapchain (needs LSFGVK_ENV=1)."
+details = "By default lsfg-vk forces the FIFO (vsync) present mode, which its vsync pacing relies on to avoid skipped frames. Turning the override off lets the game's own present mode through — try it only if a game misbehaves with forced vsync. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_OVERRIDE_PRESENT_MODE=0 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
+[[env]]
+key = "LSFGVK_PRESERVE_SWAPCHAIN_IMAGE_COUNT"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "1"
+values = ["1", "0"]
+help = "Leave the game's swapchain image count unchanged — fixes crashes in some Vulkan games (needs LSFGVK_ENV=1)."
+details = "lsfg-vk normally adds swapchain images to hold the generated frames. A few native-Vulkan games crash when the count changes; this keeps it as the game asked. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_PRESERVE_SWAPCHAIN_IMAGE_COUNT=1 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/configuration-options/"
+
+[[env]]
+key = "LSFGVK_NO_FP16"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "1"
+values = ["1"]
+help = "Disable half-precision (FP16) shaders — for GPUs where FP16 is slow or buggy (needs LSFGVK_ENV=1)."
+details = "lsfg-vk runs its shaders at half precision where the GPU supports it, which is faster on most AMD and recent NVIDIA cards. On GPUs where FP16 is emulated or misbehaves (some older NVIDIA and Intel parts), disabling it can be faster or fix artifacts. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_NO_FP16=1 %command%"
+url = "https://lsfg-vk.dev/docs/configuration/configuration-options/"
+
+[[env]]
+key = "LSFGVK_CONFIG"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = ""
+help = "Use a different lsfg-vk conf.toml for this game."
+details = "Points lsfg-vk at an alternative configuration file instead of ~/.config/lsfg-vk/conf.toml. Handy to keep a separate set of profiles (or a different dll path) for one game. Absolute paths only — '~' is not expanded in Steam launch options."
+example = "LSFGVK_CONFIG=/home/user/.config/lsfg-vk/handheld.toml %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
+[[env]]
+key = "LSFGVK_LOG_LEVEL"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = "debug"
+values = ["debug", "info", "warning", "error"]
+help = "lsfg-vk log verbosity — raise it when frame generation silently doesn't kick in (needs LSFGVK_ENV=1)."
+details = "Controls how much the lsfg-vk layer reports. At 'debug' it says which profile and dll it loaded and why it skipped a swapchain, which usually explains a game where nothing happens. Only read with LSFGVK_ENV=1; in config-file mode set log_level in conf.toml."
+example = "LSFGVK_ENV=1 LSFGVK_LOG_LEVEL=debug LSFGVK_LOG_FILE=/tmp/lsfg-vk.log %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
+[[env]]
+key = "LSFGVK_LOG_FILE"
+tier = "advanced"
+category = "Frame Generation (Lossless Scaling)"
+default_value = ""
+help = "Write lsfg-vk's log to a file instead of stderr (needs LSFGVK_ENV=1)."
+details = "Redirects the layer's log output to the given path — useful under Steam, where stderr lands in the Steam console. Absolute paths only. Only read with LSFGVK_ENV=1."
+example = "LSFGVK_ENV=1 LSFGVK_LOG_LEVEL=debug LSFGVK_LOG_FILE=/tmp/lsfg-vk.log %command%"
+url = "https://lsfg-vk.dev/docs/configuration/environment-variables/"
+
 # ============================= Logging ===========================
 
 [[env]]

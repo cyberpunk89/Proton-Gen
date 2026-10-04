@@ -36,6 +36,7 @@ mod hardware;
 mod heroic;
 mod ipc;
 mod lint;
+mod lsfg;
 mod llm;
 mod mangohud_export;
 mod optiscaler_upgrade;
@@ -91,6 +92,7 @@ pub fn run_with(initial_game: Option<u32>) {
             ipc::check_for_update,
             ipc::run_update,
             ipc::check_runtime_updates,
+            ipc::lsfg_status,
             ipc::optiscaler_status,
             ipc::optiscaler_latest,
             ipc::optiscaler_fetch,
@@ -151,6 +153,35 @@ pub fn dump() -> Result<()> {
             g.source.label(),
             state
         );
+    }
+
+    let lossless = games
+        .iter()
+        .find(|g| g.app_id == lsfg::LOSSLESS_SCALING_APPID)
+        .and_then(|g| g.install_dir.as_deref());
+    let ls = lsfg::detect(lossless);
+    println!("\nLossless Scaling frame generation (lsfg-vk):");
+    match &ls.layer {
+        Some(l) if l.legacy => println!("  layer: 1.x at {} — update to 2.x for LSFGVK_*", l.manifest),
+        Some(l) => println!("  layer: v{} at {}", l.version, l.manifest),
+        None => println!("  layer: not installed"),
+    }
+    println!(
+        "  dll:   {}",
+        match (&ls.dll, &ls.dll_source) {
+            (Some(d), Some(src)) => format!("{d} (from {src})"),
+            _ => "not found — install Lossless Scaling from Steam".to_string(),
+        }
+    );
+    match (&ls.config_found, &ls.config_error) {
+        (false, _) => println!("  config: none at {}", ls.config_path),
+        (true, Some(e)) => println!("  config: {} failed to parse: {e}", ls.config_path),
+        (true, None) => {
+            println!("  config: {} ({} profiles)", ls.config_path, ls.profiles.len());
+            for p in &ls.profiles {
+                println!("    - {}", p.name);
+            }
+        }
     }
 
     if !warnings.is_empty() {

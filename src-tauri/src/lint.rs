@@ -86,6 +86,23 @@ impl Ctx<'_> {
             .collect()
     }
 
+    /// An enabled env row's value; `None` when the row is off.
+    fn env_value(&self, key: &str) -> Option<&str> {
+        self.catalog
+            .envs
+            .iter()
+            .zip(&self.options.envs)
+            .find(|(d, s)| s.enabled && d.key == key)
+            .map(|(_, s)| s.value.as_str())
+    }
+
+    /// Lossless Scaling frame generation is switched on for this launch: a
+    /// profile picked, or per-game settings mode, and not vetoed. (A profile
+    /// can also auto-match the game from conf.toml — invisible from here.)
+    fn lsfg_on(&self) -> bool {
+        !self.env_on("DISABLE_LSFGVK") && (self.env_on("LSFGVK_PROFILE") || self.env_on("LSFGVK_ENV"))
+    }
+
     /// Enabled env keys starting with `prefix` — for rules that implicate a
     /// family rather than a fixed list.
     fn envs_on_prefixed(&self, prefix: &str) -> Vec<String> {
@@ -129,6 +146,65 @@ const NVAPI_KEYS: &[&str] = &[
     "DXVK_NVAPI_VKREFLEX",
     "PROTON_NVIDIA_LIBS",
 ];
+
+/// lsfg-vk settings that are only read in environment mode (`LSFGVK_ENV=1`).
+const LSFG_ENV_ONLY_KEYS: &[&str] = &[
+    "LSFGVK_MULTIPLIER",
+    "LSFGVK_FLOW_SCALE",
+    "LSFGVK_PERFORMANCE_MODE",
+    "LSFGVK_DLL_PATH",
+    "LSFGVK_PACING_MODE",
+    "LSFGVK_OVERRIDE_PRESENT_MODE",
+    "LSFGVK_PRESERVE_SWAPCHAIN_IMAGE_COUNT",
+    "LSFGVK_NO_FP16",
+    "LSFGVK_LOG_LEVEL",
+    "LSFGVK_LOG_FILE",
+];
+
+/// [`LSFG_ENV_ONLY_KEYS`] plus the switch its rule's fix turns on.
+const LSFG_ENV_ONLY_KEYS_AND_ENV: &[&str] = &[
+    "LSFGVK_MULTIPLIER",
+    "LSFGVK_FLOW_SCALE",
+    "LSFGVK_PERFORMANCE_MODE",
+    "LSFGVK_DLL_PATH",
+    "LSFGVK_PACING_MODE",
+    "LSFGVK_OVERRIDE_PRESENT_MODE",
+    "LSFGVK_PRESERVE_SWAPCHAIN_IMAGE_COUNT",
+    "LSFGVK_NO_FP16",
+    "LSFGVK_LOG_LEVEL",
+    "LSFGVK_LOG_FILE",
+    "LSFGVK_ENV",
+];
+
+/// The `Section.Key=Value` entries of a `PROTON_OPTISCALER_CONFIG` string —
+/// the same `;`-separated shape `src/lib/optiscaler.ts` parses.
+fn optiscaler_entries(cfg: &str) -> impl Iterator<Item = (&str, &str)> {
+    cfg.split(';').filter_map(|e| {
+        let (k, v) = e.split_once('=')?;
+        Some((k.trim(), v.trim()))
+    })
+}
+
+/// Whether an OptiScaler config turns OptiFG on (`FrameGen.Enabled=true`).
+fn optifg_enabled(cfg: &str) -> bool {
+    optiscaler_entries(cfg)
+        .any(|(k, v)| k.eq_ignore_ascii_case("FrameGen.Enabled") && v.eq_ignore_ascii_case("true"))
+}
+
+/// `cfg` with every `FrameGen.*` entry replaced by an explicit
+/// `FrameGen.Enabled=false`. Explicit rather than just dropped: an empty value
+/// can't be expressed as a lint fix (a blank value means "leave it alone").
+fn without_optifg(cfg: &str) -> String {
+    cfg.split(';')
+        .filter(|e| !e.trim().is_empty())
+        .filter(|e| {
+            let key = e.split_once('=').map_or(*e, |(k, _)| k).trim();
+            !key.to_ascii_lowercase().starts_with("framegen.")
+        })
+        .chain(std::iter::once("FrameGen.Enabled=false"))
+        .collect::<Vec<_>>()
+        .join(";")
+}
 
 const RULES: &[Rule] = &[
     // NVAPI / DLSS without an NVIDIA GPU.
@@ -268,6 +344,129 @@ const RULES: &[Rule] = &[
                     disable: Vec::new(),
                     enable: vec![("PROTON_USE_OPTISCALER".to_string(), "1".to_string())],
                 }),
+            })
+        },
+    },
+    // lsfg-vk reads its per-game variables only in environment mode; without
+    // LSFGVK_ENV=1 it uses conf.toml and these do nothing at all.
+    Rule {
+        id: "lsfg-needs-env-mode",
+        keys: LSFG_ENV_ONLY_KEYS_AND_ENV,
+        prefixes: &[],
+        check: |c| {
+            if c.env_on("LSFGVK_ENV") || c.env_on("DISABLE_LSFGVK") {
+                return None;
+            }
+            let on = c.envs_on(LSFG_ENV_ONLY_KEYS);
+            if on.is_empty() {
+                return None;
+            }
+            Some(Notice {
+                id: "lsfg-needs-env-mode".to_string(),
+                severity: Severity::Warning,
+                message: "lsfg-vk ignores these settings and reads conf.toml instead — set LSFGVK_ENV=1 to configure frame generation from the launch options."
+                    .to_string(),
+                keys: on,
+                fix: Some(Fix {
+                    label: "Enable LSFGVK_ENV".to_string(),
+                    disable: Vec::new(),
+                    enable: vec![("LSFGVK_ENV".to_string(), "1".to_string())],
+                }),
+            })
+        },
+    },
+    // Environment mode doesn't read conf.toml, so there is no profile to pick.
+    Rule {
+        id: "lsfg-profile-in-env-mode",
+        keys: &["LSFGVK_PROFILE", "LSFGVK_ENV"],
+        prefixes: &[],
+        check: |c| {
+            if !(c.env_on("LSFGVK_PROFILE") && c.env_on("LSFGVK_ENV")) {
+                return None;
+            }
+            Some(Notice {
+                id: "lsfg-profile-in-env-mode".to_string(),
+                severity: Severity::Warning,
+                message: "LSFGVK_ENV=1 makes lsfg-vk skip conf.toml, so LSFGVK_PROFILE is ignored — use a profile or per-game settings, not both."
+                    .to_string(),
+                keys: vec!["LSFGVK_PROFILE".to_string(), "LSFGVK_ENV".to_string()],
+                fix: None,
+            })
+        },
+    },
+    // DISABLE_LSFGVK vetoes the layer, so anything else in the family is dead.
+    Rule {
+        id: "lsfg-disabled",
+        keys: &["DISABLE_LSFGVK"],
+        prefixes: &["LSFGVK_"],
+        check: |c| {
+            if !c.env_on("DISABLE_LSFGVK") {
+                return None;
+            }
+            let on = c.envs_on_prefixed("LSFGVK_");
+            if on.is_empty() {
+                return None;
+            }
+            Some(Notice {
+                id: "lsfg-disabled".to_string(),
+                severity: Severity::Info,
+                message: "DISABLE_LSFGVK turns Lossless Scaling frame generation off, so the other LSFGVK_* settings have no effect."
+                    .to_string(),
+                keys: std::iter::once("DISABLE_LSFGVK".to_string()).chain(on).collect(),
+                fix: None,
+            })
+        },
+    },
+    // Two frame generators in one chain: OptiScaler's OptiFG generates frames
+    // inside the game, then lsfg-vk generates more from those — artifacts and
+    // latency compound. OptiScaler for *upscaling* plus lsfg-vk is the pairing.
+    Rule {
+        id: "lsfg-double-framegen",
+        keys: &["LSFGVK_PROFILE", "LSFGVK_ENV", "PROTON_USE_OPTISCALER", "PROTON_OPTISCALER_CONFIG"],
+        prefixes: &[],
+        check: |c| {
+            if !c.lsfg_on() || !c.env_on("PROTON_USE_OPTISCALER") {
+                return None;
+            }
+            let cfg = c.env_value("PROTON_OPTISCALER_CONFIG")?;
+            if !optifg_enabled(cfg) {
+                return None;
+            }
+            Some(Notice {
+                id: "lsfg-double-framegen".to_string(),
+                severity: Severity::Warning,
+                message: "OptiScaler frame generation and Lossless Scaling are both on — frames get generated twice. Keep OptiScaler for upscaling and let Lossless Scaling do the frame generation."
+                    .to_string(),
+                keys: std::iter::once("PROTON_OPTISCALER_CONFIG".to_string())
+                    .chain(c.envs_on(&["LSFGVK_PROFILE", "LSFGVK_ENV"]))
+                    .collect(),
+                fix: Some(Fix {
+                    label: "Turn off OptiScaler frame generation".to_string(),
+                    disable: Vec::new(),
+                    enable: vec![("PROTON_OPTISCALER_CONFIG".to_string(), without_optifg(cfg))],
+                }),
+            })
+        },
+    },
+    // proton-cachyos' ML frame-gen upgrade only acts when the game's own FSR
+    // frame generation is on — which would stack under lsfg-vk.
+    Rule {
+        id: "lsfg-with-game-framegen",
+        keys: &["LSFGVK_PROFILE", "LSFGVK_ENV", "PROTON_MLFG_UPGRADE"],
+        prefixes: &[],
+        check: |c| {
+            if !c.lsfg_on() || !c.env_on("PROTON_MLFG_UPGRADE") {
+                return None;
+            }
+            Some(Notice {
+                id: "lsfg-with-game-framegen".to_string(),
+                severity: Severity::Info,
+                message: "PROTON_MLFG_UPGRADE upgrades the game's own FSR frame generation. If that is on in-game while Lossless Scaling is too, frames are generated twice — use one or the other."
+                    .to_string(),
+                keys: std::iter::once("PROTON_MLFG_UPGRADE".to_string())
+                    .chain(c.envs_on(&["LSFGVK_PROFILE", "LSFGVK_ENV"]))
+                    .collect(),
+                fix: None,
             })
         },
     },
@@ -600,6 +799,64 @@ mod tests {
         // Injection alone is a valid, complete setup.
         let bare = lint_with(Hardware::default(), &["PROTON_USE_OPTISCALER"]);
         assert!(find(&bare, "optiscaler-not-injected").is_none());
+    }
+
+    #[test]
+    fn lsfg_settings_need_env_mode() {
+        let n = lint_with(Hardware::default(), &["LSFGVK_MULTIPLIER", "LSFGVK_FLOW_SCALE"]);
+        let notice = find(&n, "lsfg-needs-env-mode").expect("rule fires");
+        assert_eq!(notice.keys, vec!["LSFGVK_MULTIPLIER", "LSFGVK_FLOW_SCALE"]);
+        assert_eq!(
+            notice.fix.as_ref().map(|f| f.enable.clone()),
+            Some(vec![("LSFGVK_ENV".to_string(), "1".to_string())])
+        );
+        let env = lint_with(Hardware::default(), &["LSFGVK_MULTIPLIER", "LSFGVK_ENV"]);
+        assert!(find(&env, "lsfg-needs-env-mode").is_none());
+        // A profile alone is config-file mode, which is fine.
+        assert!(find(&lint_with(Hardware::default(), &["LSFGVK_PROFILE"]), "lsfg-needs-env-mode").is_none());
+    }
+
+    #[test]
+    fn lsfg_profile_conflicts_with_env_mode_and_disable_wins() {
+        let n = lint_with(Hardware::default(), &["LSFGVK_PROFILE", "LSFGVK_ENV"]);
+        assert!(find(&n, "lsfg-profile-in-env-mode").is_some());
+
+        let n = lint_with(Hardware::default(), &["DISABLE_LSFGVK", "LSFGVK_PROFILE"]);
+        let notice = find(&n, "lsfg-disabled").expect("rule fires");
+        assert_eq!(notice.keys, vec!["DISABLE_LSFGVK", "LSFGVK_PROFILE"]);
+        assert!(find(&lint_with(Hardware::default(), &["DISABLE_LSFGVK"]), "lsfg-disabled").is_none());
+    }
+
+    #[test]
+    fn flags_optifg_stacked_under_lsfg_and_fixes_only_the_framegen_entries() {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        enable(&cat, &mut opts, "LSFGVK_PROFILE", "2x FG / 100%");
+        enable(&cat, &mut opts, "PROTON_USE_OPTISCALER", "1");
+        enable(
+            &cat,
+            &mut opts,
+            "PROTON_OPTISCALER_CONFIG",
+            "Upscalers.Dx12Upscaler=ffx;FrameGen.Enabled=true;FrameGen.FGInput=fsrfg",
+        );
+        let n = warnings(&cat, &opts, &Hardware::default(), "");
+        let notice = find(&n, "lsfg-double-framegen").expect("rule fires");
+        let fix = notice.fix.as_ref().expect("has a fix");
+        assert_eq!(
+            fix.enable,
+            vec![(
+                "PROTON_OPTISCALER_CONFIG".to_string(),
+                "Upscalers.Dx12Upscaler=ffx;FrameGen.Enabled=false".to_string()
+            )]
+        );
+
+        // Upscaling-only OptiScaler is the intended pairing.
+        enable(&cat, &mut opts, "PROTON_OPTISCALER_CONFIG", "Upscalers.Dx12Upscaler=ffx");
+        assert!(find(&warnings(&cat, &opts, &Hardware::default(), ""), "lsfg-double-framegen").is_none());
+
+        // And the fix's own output doesn't re-trigger the rule.
+        assert!(!optifg_enabled(&without_optifg("FrameGen.Enabled=true")));
+        assert_eq!(without_optifg("FrameGen.Enabled=true"), "FrameGen.Enabled=false");
     }
 
     #[test]

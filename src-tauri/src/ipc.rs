@@ -18,6 +18,7 @@ use crate::games::{self, GameSource};
 use crate::hardware::{self, Hardware};
 use crate::heroic;
 use crate::lint;
+use crate::lsfg;
 use crate::llm::{self, LlmRequest, LlmSuggestion, RecipeRef, TroubleshootRequest, TroubleshootResult};
 use crate::mangohud_export;
 use crate::optiscaler_upgrade;
@@ -1025,6 +1026,19 @@ pub async fn optiscaler_status(
     let dir = state.game(app_id).and_then(|g| g.install_dir);
     tauri::async_runtime::spawn_blocking(move || {
         optiscaler_upgrade::detect(dir.as_deref().map(std::path::Path::new))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// lsfg-vk (Lossless Scaling frame generation) on this machine: layer, profiles
+/// and `Lossless.dll` — read fresh on every call, because the user edits
+/// profiles in `lsfg-vk-ui` while protongen is open. Read-only.
+#[tauri::command]
+pub async fn lsfg_status(state: State<'_, AppState>) -> Result<lsfg::LsfgStatus, String> {
+    let install = state.game(lsfg::LOSSLESS_SCALING_APPID).and_then(|g| g.install_dir);
+    tauri::async_runtime::spawn_blocking(move || {
+        lsfg::detect(install.as_deref().map(std::path::Path::new))
     })
     .await
     .map_err(|e| e.to_string())
