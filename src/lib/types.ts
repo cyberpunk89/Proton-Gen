@@ -248,6 +248,39 @@ export interface OptiscalerStatus {
   found: boolean;
 }
 
+/** Mirrors lsfg::LsfgLayer. */
+export interface LsfgLayer {
+  manifest: string;
+  version: string;
+  /** The 1.x layer, configured with `LSFG_*` rather than `LSFGVK_*`. */
+  legacy: boolean;
+}
+
+/** Mirrors lsfg::LsfgProfile — every setting optional (lsfg-vk default). */
+export interface LsfgProfile {
+  name: string;
+  active_in: string[];
+  multiplier: number | null;
+  flow_scale: number | null;
+  performance_mode: boolean | null;
+  pacing: string | null;
+}
+
+/** Mirrors lsfg::LsfgStatus. */
+export interface LsfgStatus {
+  layer: LsfgLayer | null;
+  config_path: string;
+  config_found: boolean;
+  config_error: string | null;
+  profiles: LsfgProfile[];
+  dll: string | null;
+  dll_source: "config" | "steam" | null;
+  /** `dll` is outside lsfg-vk's own search roots → per-game mode needs LSFGVK_DLL_PATH. */
+  dll_needs_path: boolean;
+  steam_install: string | null;
+  ui_installed: boolean;
+}
+
 /** Mirrors runtime_updates::RuntimeUpdate. */
 export interface RuntimeUpdate {
   family: "ge-proton" | "proton-cachyos";

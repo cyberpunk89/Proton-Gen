@@ -8,6 +8,8 @@ import { applyTheme, DEFAULT_THEME } from "./themes";
 import { formatExtraEnv, mergeIntoExtraEnv, setInExtraEnv, splitExtraEnv } from "./shell";
 import { irrelevance, isRecommended } from "./util";
 import { isAdvanced, withoutLaunchTarget } from "./types";
+import { LSFG_BUILDER_KEYS } from "./lsfg";
+import { buildOptiScaler, parseOptiScaler } from "./optiscaler";
 import type {
   Catalog,
   Config,
@@ -19,6 +21,7 @@ import type {
   Notice,
   LaunchDiff,
   LlmSuggestion,
+  LsfgStatus,
   OptiscalerChannel,
   OptiscalerExtractResult,
   OptiscalerRelease,
@@ -321,6 +324,8 @@ class AppStore {
     // Check for a newer release in the background; never blocks launch.
     this.checkForUpdate();
     this.checkRuntimeUpdates();
+    // Lossless Scaling profile names for the LSFGVK_PROFILE row; cheap, local.
+    void this.refreshLsfgStatus();
   }
 
   /**
@@ -411,6 +416,8 @@ class AppStore {
       // Cheap after the first run: the backend caches upstream releases, so
       // this only re-compares against the freshly scanned runtimes.
       this.checkRuntimeUpdates();
+      // A rescan is how a freshly installed Lossless Scaling's DLL is found.
+      void this.refreshLsfgStatus();
       // Both are recomputed by `rescan` and must be copied, or a corrected
       // Settings path would never clear its banner and a fixed binary override
       // would never turn its badge green.
@@ -1043,6 +1050,8 @@ class AppStore {
    *  its Properties dialog closes. */
   onWindowFocus() {
     void this.refreshSteamConfig();
+    // Back from lsfg-vk-ui with an edited profile list — pick it up.
+    if (this.lsfgBuilderOpen) void this.refreshLsfgStatus();
     this.onWindowBlur();
     if (Date.now() < this.awaitingPasteUntil && this.syncState !== "in-sync") {
       this.followUps = [3_000, 10_000].map((ms) =>
@@ -1508,6 +1517,87 @@ class AppStore {
     this.mark("apply OptiScaler config");
   }
 
+  // --------------------------- lossless scaling -----------------------------
+
+  /** lsfg-vk on this machine (layer, conf.toml profiles, Lossless.dll); `null`
+   *  until the first read lands. */
+  lsfgStatus = $state<LsfgStatus | null>(null);
+  lsfgStatusLoading = $state(false);
+
+  /** (Re-)read lsfg-vk's state. Cheap and read-only, so it runs on every open
+   *  of the builder and on window focus while it's open — profiles are edited
+   *  in lsfg-vk-ui, and a stale list would offer a name that no longer exists. */
+  async refreshLsfgStatus() {
+    if (this.lsfgStatusLoading) return;
+    this.lsfgStatusLoading = true;
+    try {
+      this.lsfgStatus = await ipc.lsfgStatus();
+    } catch (e) {
+      console.error("lsfgStatus failed", e);
+    } finally {
+      this.lsfgStatusLoading = false;
+    }
+  }
+
+  /** Lossless Scaling frame generation is switched on in this launch string
+   *  (a profile, or per-game settings, and not vetoed). */
+  get lsfgActive(): boolean {
+    const on = (k: string) => this.env[k]?.enabled === true;
+    return !on("DISABLE_LSFGVK") && (on("LSFGVK_PROFILE") || on("LSFGVK_ENV"));
+  }
+
+  /**
+   * Apply the Lossless Scaling builder as one undo step: every builder-owned
+   * variable off, then exactly `pairs` on — so switching between a profile and
+   * per-game settings never leaves the other mode's variables behind.
+   */
+  applyLsfg(pairs: [string, string][], label = "apply Lossless Scaling") {
+    const keep = new Set(pairs.map(([k]) => k));
+    for (const key of LSFG_BUILDER_KEYS) if (!keep.has(key)) this.applyEnv(key, false);
+    for (const [key, value] of pairs) this.setEnvOrExtra(key, value);
+    this.mark(label);
+  }
+
+  /** OptiScaler's own frame generation (OptiFG) is on in its inline config. */
+  get optiFgOn(): boolean {
+    const row = this.env["PROTON_OPTISCALER_CONFIG"];
+    return !!row?.enabled && parseOptiScaler(row.value).frameGenOn;
+  }
+
+  /**
+   * Keep OptiScaler for upscaling but turn its frame generation off — the
+   * pairing with Lossless Scaling. Same result as `lint.rs`'s
+   * `lsfg-double-framegen` fix: an explicit `FrameGen.Enabled=false`.
+   */
+  disableOptiFg() {
+    const row = this.env["PROTON_OPTISCALER_CONFIG"];
+    if (!row) return;
+    const c = parseOptiScaler(row.value);
+    c.frameGenOn = false;
+    const rest = buildOptiScaler(c);
+    this.setEnvOrExtra("PROTON_OPTISCALER_CONFIG", [rest, "FrameGen.Enabled=false"].filter(Boolean).join(";"));
+    this.mark("turn off OptiScaler frame generation");
+  }
+
+  /** Inject OptiScaler (upscaling) alongside Lossless Scaling. */
+  enableOptiScaler() {
+    this.applyEnv("PROTON_USE_OPTISCALER", true);
+    this.mark("enable OptiScaler");
+  }
+
+  /** Swap the Lossless Scaling builder for the OptiScaler one. Sequential, never
+   *  stacked: the second modal opens once the first has finished closing (#63). */
+  openOptiFromLsfg() {
+    this.lsfgBuilderOpen = false;
+    setTimeout(() => (this.optiBuilderOpen = true), 250);
+  }
+
+  /** The reverse hop, from the OptiScaler builder's frame-generation section. */
+  openLsfgFromOpti() {
+    this.optiBuilderOpen = false;
+    setTimeout(() => (this.lsfgBuilderOpen = true), 250);
+  }
+
   // ------------------------------- recipes ----------------------------------
 
   /** Apply a recipe as one undoable step. Owns its feedback (success toast with
@@ -1638,6 +1728,7 @@ class AppStore {
   mangoBuilderOpen = $state(false);
   optiBuilderOpen = $state(false);
   vkBuilderOpen = $state(false);
+  lsfgBuilderOpen = $state(false);
 
   /**
    * The row `revealParam` last asked for. `OptionRow` watches this and scrolls,

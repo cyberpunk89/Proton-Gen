@@ -8,6 +8,7 @@ import type {
   DiffStatus,
   HeroicInjectResult,
   LaunchDiff,
+  LsfgStatus,
   MangohudExportResult,
   Notice,
   RecipeChange,
@@ -16,6 +17,45 @@ import type {
   VkBasaltExportResult,
 } from "./types";
 import { formatExtraEnv, shQuote, splitExtraEnv } from "./shell";
+
+/** [key, default, values, help, tier] for the mock's lsfg-vk rows. */
+const LSFG_MOCK: [string, string, string[], string, string][] = [
+  ["LSFGVK_PROFILE", "default", [], "Turn on Lossless Scaling frame generation using a conf.toml profile.", ""],
+  ["DISABLE_LSFGVK", "1", ["1"], "Keep Lossless Scaling frame generation off for this game.", ""],
+  ["LSFGVK_ENV", "1", ["1"], "Configure lsfg-vk from these variables instead of conf.toml.", ""],
+  ["LSFGVK_MULTIPLIER", "2", ["2", "3", "4"], "Frame generation multiplier (needs LSFGVK_ENV=1).", ""],
+  ["LSFGVK_FLOW_SCALE", "1.0", ["1.0", "0.85", "0.75", "0.5"], "Motion-estimation resolution, 0.25–1.0.", ""],
+  ["LSFGVK_PERFORMANCE_MODE", "1", ["1", "0"], "Use the lighter frame-generation model.", ""],
+  ["LSFGVK_DLL_PATH", "", [], "Path to Lossless.dll outside the default Steam library.", "advanced"],
+  ["LSFGVK_OVERRIDE_PRESENT_MODE", "0", ["0", "1"], "Set 0 to stop forcing vsync.", "advanced"],
+  ["LSFGVK_PRESERVE_SWAPCHAIN_IMAGE_COUNT", "1", ["1", "0"], "Keep the swapchain image count.", "advanced"],
+  ["LSFGVK_NO_FP16", "1", ["1"], "Disable half-precision shaders.", "advanced"],
+];
+
+/** What `lsfg_status` reports on a machine set up like the real one this was
+ *  built against: layer installed, a custom Steam library, three profiles. */
+export function mockLsfgStatus(): LsfgStatus {
+  return {
+    layer: {
+      manifest: "/home/you/.local/share/vulkan/implicit_layer.d/VkLayer_LSFGVK_frame_generation.json",
+      version: "2",
+      legacy: false,
+    },
+    config_path: "/home/you/.config/lsfg-vk/conf.toml",
+    config_found: true,
+    config_error: null,
+    profiles: [
+      { name: "2x FG / 100%", active_in: ["GenshinImpact.exe"], multiplier: 2, flow_scale: 1, performance_mode: false, pacing: "vsync" },
+      { name: "4x FG / 85% [Performance]", active_in: ["vkcube"], multiplier: 4, flow_scale: 0.85, performance_mode: true, pacing: "vsync" },
+      { name: "default", active_in: [], multiplier: 2, flow_scale: 1, performance_mode: false, pacing: "vsync" },
+    ],
+    dll: "/home/you/Games/SteamLibrary/steamapps/common/Lossless Scaling/Lossless.dll",
+    dll_source: "steam",
+    dll_needs_path: true,
+    steam_install: "/home/you/Games/SteamLibrary/steamapps/common/Lossless Scaling",
+    ui_installed: true,
+  };
+}
 
 /** A blank Config, for seeding mock per-game memory. Local rather than
  *  `types.emptyConfig()` to keep mock.ts free of runtime imports. */
@@ -322,6 +362,24 @@ export const mockBootstrap: Bootstrap = {
         tier: "advanced",
         recommended_for: [],
       },
+      // Every key the Lossless Scaling builder writes, so it lands on catalog
+      // rows under `pnpm dev` instead of falling through to custom env.
+      ...LSFG_MOCK.map(([key, default_value, values, help, tier]) => ({
+        key,
+        category: "Frame Generation (Lossless Scaling)",
+        default_value,
+        values,
+        requires: null,
+        pkg: null,
+        help,
+        details: null,
+        example: null,
+        url: "https://lsfg-vk.dev/docs/configuration/environment-variables/",
+        gpu: null,
+        needs: [],
+        tier,
+        recommended_for: [],
+      })),
     ],
   },
   // Must list every `category` used above, or those entries get no nav row and
@@ -334,6 +392,7 @@ export const mockBootstrap: Bootstrap = {
     "Display / HDR",
     "Logging / Debug",
     "Overlay / Post-processing",
+    "Frame Generation (Lossless Scaling)",
   ],
   recipes: [
     {

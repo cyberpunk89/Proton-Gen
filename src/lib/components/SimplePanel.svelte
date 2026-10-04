@@ -20,7 +20,9 @@
     SlidersHorizontal,
     CubeTransparent,
     Drop,
+    FilmStrip,
   } from "phosphor-svelte";
+  import { buildLsfg, defaultLsfg, envDllPath } from "$lib/lsfg";
   import type { Component } from "svelte";
 
   /**
@@ -54,7 +56,10 @@
      */
     gameArg?: string;
     /** Opens one of the builder dialogs in addition to the toggle. */
-    configure?: "mango" | "opti" | "vk";
+    configure?: "mango" | "opti" | "vk" | "lsfg";
+    /** For a card whose on-state isn't "these keys are all set" — overrides
+     *  the env/wrap/gameArg bundle for both reading and toggling. */
+    custom?: { isOn: () => boolean; set: (on: boolean) => void };
   }
 
   /** Each builder dialog's open flag. They mount once at the app root. */
@@ -62,7 +67,31 @@
     mango: () => (app.mangoBuilderOpen = true),
     opti: () => (app.optiBuilderOpen = true),
     vk: () => (app.vkBuilderOpen = true),
+    lsfg: () => (app.lsfgBuilderOpen = true),
   } as const;
+
+  /**
+   * Lossless Scaling's switch. On picks the least-surprising setup: the user's
+   * own first lsfg-vk profile when they have one (they already tuned it in
+   * lsfg-vk-ui), else 2× per-game settings. Off clears every lsfg-vk variable
+   * the builder owns. "Configure…" is where the real choice is made.
+   */
+  function setLsfg(on: boolean) {
+    if (!on) {
+      app.applyLsfg([], "disable Lossless Scaling");
+      return;
+    }
+    const st = app.lsfgStatus;
+    const s = defaultLsfg();
+    const first = st?.profiles[0]?.name;
+    if (first) {
+      s.mode = "profile";
+      s.profile = first;
+    } else {
+      s.mode = "custom";
+    }
+    app.applyLsfg(buildLsfg(s, envDllPath(st)), "enable Lossless Scaling");
+  }
 
   // Prefer CachyOS's game-performance when it's installed, else Feral GameMode.
   const perfWrap = $derived(
@@ -127,6 +156,15 @@
       configure: "vk",
     },
     {
+      id: "lsfg",
+      title: "Lossless Scaling frame gen",
+      blurb:
+        "2×–4× frame generation from your Steam copy of Lossless Scaling (lsfg-vk), for any Vulkan/DXVK game. Pairs with OptiScaler upscaling.",
+      icon: FilmStrip,
+      configure: "lsfg",
+      custom: { isOn: () => app.lsfgActive, set: setLsfg },
+    },
+    {
       id: "hdr",
       title: "HDR output",
       blurb: "Native Wayland driver + DXVK HDR. Needs an HDR display on a Wayland session.",
@@ -153,6 +191,7 @@
 
   /** A card is "on" when every key (and game-arg token) it owns is present. */
   function isActive(c: Card): boolean {
+    if (c.custom) return c.custom.isOn();
     const envOn = (c.env ?? []).every(([k]) => app.env[k]?.enabled);
     const wrapOn = (c.wrap ?? []).every(([k]) => app.wrap[k]?.enabled);
     const argOn = !c.gameArg || app.hasGameArg(c.gameArg);
@@ -167,6 +206,10 @@
    */
   function toggle(c: Card) {
     const on = !isActive(c);
+    if (c.custom) {
+      c.custom.set(on);
+      return;
+    }
     app.applyBundle(`${on ? "enable" : "disable"} ${c.title}`, on, {
       env: c.env,
       wrappers: c.wrap,

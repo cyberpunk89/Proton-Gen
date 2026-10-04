@@ -4,9 +4,10 @@
   import MangoHud from "./MangoHud.svelte";
   import OptiScaler from "./OptiScaler.svelte";
   import VkBasalt from "./VkBasalt.svelte";
+  import LosslessScaling from "./LosslessScaling.svelte";
 
   /**
-   * The MangoHud, OptiScaler and vkBasalt overlay builders, mounted once at
+   * The MangoHud, OptiScaler, vkBasalt and Lossless Scaling builders, mounted once at
    * the app root.
    *
    * Both used to be defined twice — once inside SimplePanel, once inside
@@ -46,4 +47,13 @@
   width="46rem"
 >
   <VkBasalt onapply={() => (app.vkBuilderOpen = false)} />
+</Dialog>
+
+<Dialog
+  bind:open={app.lsfgBuilderOpen}
+  title="Lossless Scaling frame generation"
+  subtitle="Set up lsfg-vk for this game, then apply it to the launch command."
+  width="46rem"
+>
+  <LosslessScaling onapply={() => (app.lsfgBuilderOpen = false)} />
 </Dialog>

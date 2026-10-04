@@ -301,6 +301,7 @@ In `ipc::parse_command`, parsed env is split: catalog-known keys enable their to
 | `runtime.rs` | `compatibilitytool.vdf` in system (`/usr/share/steam/compatibilitytools.d`) + user dirs, and Valve-bundled `steamapps/common/Proton*` | A sorted `Vec<Runtime>` (internal name, display name, `System`/`User`/`Bundled` kind, install path). |
 | `games.rs` | App manifests across libraries + `shortcuts.vdf` (via steamlocate) | Sorted, de-duplicated games + non-Steam shortcuts, with runtime/redistributable apps filtered out (`HIDDEN_APP_IDS` + name heuristics). |
 | `steamcfg.rs` | `userdata/*/config/localconfig.vdf` + the compat-tool mapping | `appid → current LaunchOptions` and `appid → mapped compat tool`. |
+| `lsfg.rs` | Vulkan `implicit_layer.d` manifests, `~/.config/lsfg-vk/conf.toml` (or `/etc/lsfg-vk/conf.toml`), Lossless Scaling's install folder (appid 993090, from `games.rs`) | `LsfgStatus`: whether the lsfg-vk 2.x layer is installed, the conf.toml profiles (for the `LSFGVK_PROFILE` pick list), and a `Lossless.dll` plus whether it's outside lsfg-vk's default search roots — per-game (`LSFGVK_ENV=1`) mode then needs `LSFGVK_DLL_PATH`. Read fresh on every `lsfg_status` call; profiles are edited in lsfg-vk's own `lsfg-vk-ui`, never here. |
 
 Notable details:
 - Runtime VDF parsing is **comment-tolerant** (GE-Proton's template vdf contains `//`
@@ -435,7 +436,7 @@ frontend side.
 | Builder | `MainPanel` (Advanced), `SimplePanel` (Simple), `GameRuntimePanel`, `CurrentGameCard`, `RuntimePicker`, `ModeToggle`, `UmuFields`, `ProtonDbChip`, `ActiveOptions` | Advanced = full categorised catalog; Simple = curated toggle grid over the same keys (a view, not a second store). Both share the game/runtime panel (Proton dropdown, Steam⇄umu toggle, umu fields, ProtonDB chip) and the "what's on" summary. |
 | Command bar | `CommandPreview`, `CommandBody`, `LauncherAction`, `OpenInSteam`, `SyncPill` | Pinned live preview with Copy, tokenised/annotated via `explain.rs`; the one "get it into your launcher" slot (Open in Steam, or Heroic inject); Steam-sync status from `diff.rs`. |
 | Discovery | `Recipes`, `RecipePreview`, `OptionRow`, `InfoPopover`, `Badges`, `CommandPalette` | Recipe cards (profiles + troubleshooter) with an apply preview, per-row toggle/value with ⓘ popover and installed/missing badges, Ctrl+K palette over games/parameters/recipes/presets/actions. |
-| Builders & dialogs | `OverlayBuilders` (`MangoHud`, `VkBasalt`, `OptiScaler`), `HeroicConfirm`, `MangoHudSystemConfirm`, `VkBasaltSystemConfirm`, `LogViewer`, `Troubleshooter`, `Markdown`, `SettingsDrawer`, `DefaultProfilePrompt`, `IntroTour`, `ShortcutsSheet` | Root-mounted: overlay/OptiScaler builders (MangoHud's string↔struct logic in `lib/mangohud.ts`), the confirm dialogs gating every §11 write, Proton log viewer + LLM coach, AI troubleshooter, settings drawer (theme/relevance/HDR/GPU generation/paths/LLM/ProtonDB), first-run prompts. |
+| Builders & dialogs | `OverlayBuilders` (`MangoHud`, `VkBasalt`, `OptiScaler`, `LosslessScaling`), `HeroicConfirm`, `MangoHudSystemConfirm`, `VkBasaltSystemConfirm`, `LogViewer`, `Troubleshooter`, `Markdown`, `SettingsDrawer`, `DefaultProfilePrompt`, `IntroTour`, `ShortcutsSheet` | Root-mounted: overlay/OptiScaler/Lossless Scaling builders (MangoHud's string↔struct logic in `lib/mangohud.ts`; lsfg-vk's four modes — auto / profile / per-game / off — in `lib/lsfg.ts`, with an OptiScaler pairing panel that keeps OptiScaler to upscaling so frames aren't generated twice), the confirm dialogs gating every §11 write, Proton log viewer + LLM coach, AI troubleshooter, settings drawer (theme/relevance/HDR/GPU generation/paths/LLM/ProtonDB), first-run prompts. |
 | Primitives | `Notices`, `Switch`, `Dialog`, `Popover` | Conflict notices and shared primitives. |
 
 ### 5.5 Theming (`app.css` + `themes.ts`)
@@ -658,6 +659,7 @@ Proton-gui/
 │       ├── types.ts           DTOs mirroring the Rust serde structs
 │       ├── themes.ts · toast.svelte.ts · actions.ts · util.ts
 │       ├── mangohud.ts        MANGOHUD_CONFIG parse/build (pure)
+│       ├── lsfg.ts            LSFGVK_* env ↔ Lossless Scaling builder state (pure)
 │       └── components/*.svelte library · builder panels · command bar · dialogs · …
 └── src-tauri/                 BACKEND (Rust / Tauri)
     ├── Cargo.toml · tauri.conf.json · build.rs
@@ -680,6 +682,7 @@ Proton-gui/
         ├── fsutil.rs          write_atomic / write_backup / read_existing (store, Heroic, exports)
         ├── steam.rs runtime.rs games.rs steamcfg.rs   read-only discovery
         ├── heroic.rs          Heroic game discovery + confirm-gated per-game config inject
+        ├── lsfg.rs            lsfg-vk (Lossless Scaling FG) layer / profiles / DLL discovery
         ├── hardware.rs        GPU/session/ntsync detection + relevance
         ├── which.rs           $PATH lookup (installed/missing badges)
         ├── protondb.rs        opt-in tier summary

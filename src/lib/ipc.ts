@@ -7,6 +7,7 @@ import type {
   LaunchDiff,
   LlmRequest,
   LlmSuggestion,
+  LsfgStatus,
   MangohudExportResult,
   Notice,
   OptiscalerExtractResult,
@@ -35,6 +36,7 @@ import {
   mockInjectHeroic,
   mockLaunchDiff,
   mockLaunchStatuses,
+  mockLsfgStatus,
   mockNotices,
   mockPreviewRecipe,
   mockSteam,
@@ -254,6 +256,11 @@ export const ipc = {
   // No payload: the backend re-resolves the release itself rather than
   // trusting URLs from here.
   runUpdate: () => (inTauri ? invoke<void>("run_update") : Promise.resolve()),
+
+  // lsfg-vk (Lossless Scaling frame generation): layer, conf.toml profiles and
+  // Lossless.dll. Read-only and cheap; re-read whenever the builder opens.
+  lsfgStatus: () =>
+    inTauri ? invoke<LsfgStatus>("lsfg_status") : Promise.resolve(mockLsfgStatus()),
 
   // Whether `appId` already has an OptiScaler install to refresh. The mock has
   // no filesystem, so it reports "found" unconditionally — just enough to

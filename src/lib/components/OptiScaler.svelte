@@ -248,6 +248,25 @@
           <input type="checkbox" bind:checked={c.frameGenOn} class="accent-[var(--accent)]" />
           <span class="text-sm text-subtext">Frame generation (OptiFG)</span>
         </label>
+        {#if app.lsfgActive}
+          <!-- Two frame generators in one chain compound artifacts and latency;
+               lint.rs's lsfg-double-framegen flags the same thing after Apply. -->
+          <p class="pl-6 text-[11px] leading-snug {c.frameGenOn ? 'text-yellow' : 'text-muted'}">
+            Lossless Scaling is generating frames for this game{c.frameGenOn
+              ? " — turn this off, or frames get generated twice"
+              : ", so leave this off and use OptiScaler for upscaling"}.
+            <button class="text-accent hover:underline" onclick={() => app.openLsfgFromOpti()}
+              >Lossless Scaling settings…</button
+            >
+          </p>
+        {:else}
+          <p class="pl-6 text-[11px] leading-snug text-muted">
+            Or leave this off and pair OptiScaler's upscaling with
+            <button class="text-accent hover:underline" onclick={() => app.openLsfgFromOpti()}
+              >Lossless Scaling frame generation…</button
+            >
+          </p>
+        {/if}
         {#if c.frameGenOn}
           <div class="flex items-center justify-between gap-2 pl-6">
             <span class="text-sm text-subtext">Input</span>

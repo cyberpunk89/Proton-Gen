@@ -9,7 +9,7 @@
   import Recipes from "./Recipes.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
   import ActiveOptions from "./ActiveOptions.svelte";
-  import { MagnifyingGlass, Faders, Gauge, Sparkle } from "phosphor-svelte";
+  import { MagnifyingGlass, Faders, FilmStrip, Gauge, Sparkle } from "phosphor-svelte";
   import type { EnvDef, WrapperDef } from "$lib/types";
 
   let showAll = $derived(app.store.show_irrelevant);
@@ -29,6 +29,26 @@
     if (n === 1) return "none";
     if (n === 2) return "segmented";
     return "select";
+  }
+
+  /** The rows that pick lsfg-vk's mode, each with a "Configure…" button. */
+  const LSFG_MODE_KEYS = new Set(["LSFGVK_PROFILE", "LSFGVK_ENV", "DISABLE_LSFGVK"]);
+
+  /** A row's suggested values. LSFGVK_PROFILE offers the profile names from
+   *  the user's own conf.toml instead of the catalog's placeholder. */
+  function envValues(e: EnvDef): string[] {
+    if (e.key === "LSFGVK_PROFILE") {
+      const names = app.lsfgStatus?.profiles.map((p) => p.name) ?? [];
+      if (names.length) return names;
+    }
+    return e.values;
+  }
+
+  /** Profile names are a pick list however many there are — one profile still
+   *  needs a field, which `envValueField(1)` would drop. */
+  function envField(e: EnvDef): "none" | "text" | "segmented" | "select" {
+    const n = envValues(e).length;
+    return e.key === "LSFGVK_PROFILE" && n > 0 ? "select" : envValueField(n);
   }
 
   /** One entry per catalog item that survives the current view's filter. */
@@ -411,6 +431,18 @@
   </button>
 {/snippet}
 
+<!-- Wired to the rows that pick a mode (profile / per-game / off): the
+     builder owns all three and keeps them from contradicting each other. -->
+{#snippet configureLsfg()}
+  <button
+    type="button"
+    onclick={() => (app.lsfgBuilderOpen = true)}
+    class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+  >
+    <FilmStrip size={13} /> Configure lsfg-vk…
+  </button>
+{/snippet}
+
 {#snippet recipeRow(index: number, r: Recipe)}
   <div class="flex items-center gap-3 rounded-lg px-3 py-2 transition hover:bg-surface-2/50">
     <span class="min-w-0 flex-1">
@@ -473,8 +505,8 @@
       example={e.example}
       url={e.url}
       defaultValue={e.default_value}
-      values={e.values}
-      valueField={envValueField(e.values.length)}
+      values={envValues(e)}
+      valueField={envField(e)}
       value={app.env[e.key]?.value ?? ""}
       placeholder={e.default_value || "value"}
       requires={e.requires}
@@ -491,7 +523,9 @@
           ? configureOptiScaler
           : e.key === "ENABLE_VKBASALT" || e.key === "VKBASALT_CONFIG_FILE"
             ? configureVkBasalt
-            : null}
+            : LSFG_MODE_KEYS.has(e.key)
+              ? configureLsfg
+              : null}
       onToggle={() => app.toggleEnv(e.key)}
       onValue={(v) => app.setEnvValue(e.key, v)}
     />
