@@ -1558,6 +1558,13 @@ class AppStore {
     this.mark(label);
   }
 
+  /** CachyOS Proton injects its own OptiScaler (from the prefix) at launch:
+   *  `PROTON_USE_OPTISCALER` on and not `0` — `ipc::lint`'s same test. */
+  get optiInjected(): boolean {
+    const row = this.env["PROTON_USE_OPTISCALER"];
+    return !!row?.enabled && row.value.trim() !== "0";
+  }
+
   /** OptiScaler's own frame generation (OptiFG) is on in its inline config. */
   get optiFgOn(): boolean {
     const row = this.env["PROTON_OPTISCALER_CONFIG"];
@@ -2119,7 +2126,12 @@ class AppStore {
       .then((s) => (this.optiscalerStatusCache[String(appId)] = s))
       .catch((e) => {
         console.error("optiscalerStatus failed", appId, e);
-        this.optiscalerStatusCache[String(appId)] = { install_dir: null, found: false };
+        this.optiscalerStatusCache[String(appId)] = {
+          install_dir: null,
+          found: false,
+          proxies: [],
+          stray_dll: false,
+        };
       })
       .finally(() => (this.optiscalerStatusLoading[String(appId)] = false));
   }
@@ -2176,7 +2188,12 @@ class AppStore {
     try {
       const result = await ipc.optiscalerFetch(appId, this.optiscalerChannel);
       const prev = this.optiscalerStatusCache[String(appId)];
-      this.optiscalerStatusCache[String(appId)] = { install_dir: prev?.install_dir ?? null, found: true };
+      this.optiscalerStatusCache[String(appId)] = {
+        install_dir: prev?.install_dir ?? null,
+        found: true,
+        proxies: prev?.proxies ?? [],
+        stray_dll: prev?.stray_dll ?? false,
+      };
       return result;
     } finally {
       this.optiscalerFetchBusy = false;

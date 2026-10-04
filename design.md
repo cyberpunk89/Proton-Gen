@@ -602,7 +602,11 @@ the app's own binary; it only ever places files, never executes anything; and
 every fetch is gated behind an explicit confirm dialog naming the exact
 source, version and destination first. An existing `OptiScaler.ini` is never
 overwritten (it may carry tuning applied through this app's own OptiScaler
-builder). No checksum is published for OptiScaler's releases, unlike
+builder), and the new `OptiScaler.dll` is written over the install's live
+proxy (`dxgi.dll`, `winmm.dll`, … — verified to be OptiScaler by its strings)
+rather than beside it, where nothing would load it. It only refreshes a
+*manual* install: Proton's `PROTON_USE_OPTISCALER` injects from the prefix and
+never writes the game folder, so the confirm step refuses while that is on. No checksum is published for OptiScaler's releases, unlike
 protongen's own — integrity here rests on HTTPS plus fetching straight from
 the project's own Releases API.
 

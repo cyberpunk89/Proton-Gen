@@ -25,6 +25,7 @@
     ArrowClockwise,
     CloudArrowDown,
     CheckCircle,
+    WarningCircle,
   } from "phosphor-svelte";
 
   let { onapply }: { onapply?: () => void } = $props();
@@ -35,13 +36,21 @@
   // own directory rather than just building a command string (see
   // optiscaler_upgrade.rs's doc comment for the full rationale). Only offered
   // when the folder already shows signs of an OptiScaler install: this is a
-  // refresh, never an injection into a game that isn't using it.
+  // refresh, never an injection into a game that isn't using it. And only of a
+  // *manual* install — PROTON_USE_OPTISCALER injects its own copy from the
+  // prefix and never writes the game folder, so with it on, a fetch here just
+  // stacks a second build (lint.rs's optiscaler-double-install).
   let appId = $derived(app.selectedAppId);
   $effect(() => {
     if (appId != null) app.requestOptiscalerStatus(appId);
   });
   let status = $derived(appId == null ? undefined : app.optiscalerStatusFor(appId));
   let statusLoading = $derived(appId != null && app.optiscalerStatusLoading[String(appId)] === true);
+
+  /** Why the fetch can't run as things stand, or null. */
+  let blocked = $derived(
+    app.optiInjected ? "injected" : (status?.proxies.length ?? 0) > 1 ? "stacked" : null,
+  );
 
   let confirmOpen = $state(false);
   let fetchButton = $state<HTMLButtonElement | null>(null);
@@ -69,7 +78,9 @@
       const result = await app.fetchOptiscalerUpgrade(appId);
       confirmOpen = false;
       const kept = result.ini_preserved ? " — kept your existing OptiScaler.ini" : "";
-      toast.success(`Installed OptiScaler ${result.tag}: ${result.files_written} files written${kept}`);
+      toast.success(
+        `Installed OptiScaler ${result.tag} as ${result.dll_name}: ${result.files_written} files written${kept}`,
+      );
     } catch (e) {
       toast.error(`Couldn't fetch OptiScaler: ${e}`, { ms: 6000 });
     }
@@ -139,15 +150,17 @@
         </p>
       {:else if !status.found}
         <p class="text-xs text-muted">
-          No OptiScaler install detected in <span class="font-mono">{status.install_dir}</span> yet —
-          nothing to upgrade. Enable OptiScaler above and launch the game once first.
+          No manual OptiScaler install detected in <span class="font-mono">{status.install_dir}</span> —
+          nothing to upgrade. Proton's own <span class="font-mono">PROTON_USE_OPTISCALER</span> injects
+          the build bundled with the runtime from the prefix and needs nothing here.
         </p>
       {:else}
         <p class="text-xs text-subtext">
-          Detected in <span class="font-mono">{status.install_dir}</span>.
+          Detected in <span class="font-mono">{status.install_dir}</span>{#if status.proxies.length === 1}, loading as
+            <span class="font-mono">{status.proxies[0]}</span>{/if}.
         </p>
         {#if confirmOpen}
-          {@render confirmPanel(status.install_dir)}
+          {@render confirmPanel(status.install_dir, status.proxies, status.stray_dll)}
         {:else}
           <button
             bind:this={fetchButton}
@@ -374,7 +387,7 @@
   </div>
 </div>
 
-{#snippet confirmPanel(installDir: string)}
+{#snippet confirmPanel(installDir: string, proxies: string[], strayDll: boolean)}
   <!-- Inline, not a second <Dialog>: this panel already lives inside the
        overlay-builder dialog, and a dialog stacked on a dialog is the #63
        click-dead pattern. Escape cancels this step, not the whole builder. -->
@@ -407,7 +420,36 @@
         {/each}
       </div>
     </div>
-    {#if app.optiscalerLatestLoading}
+    {#if blocked === "injected"}
+      <div class="space-y-2 rounded-lg border border-yellow/40 bg-yellow/5 p-3 text-xs leading-snug text-yellow">
+        <p class="flex items-start gap-1.5">
+          <WarningCircle size={14} class="mt-px shrink-0" />
+          <span>
+            <span class="font-mono">PROTON_USE_OPTISCALER</span> is on, so Proton already injects its own
+            OptiScaler from the prefix. Upgrading the copy in the game folder would leave two builds
+            loading in one process. Turn injection off to keep using this manual install (the
+            builder's <span class="font-mono">PROTON_OPTISCALER_CONFIG</span> then has no effect), or
+            remove the manual install to use Proton's.
+          </span>
+        </p>
+        <button
+          onclick={() => app.toggleEnv("PROTON_USE_OPTISCALER")}
+          class="rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 font-medium text-accent transition hover:bg-accent/10"
+        >
+          Turn off PROTON_USE_OPTISCALER
+        </button>
+      </div>
+    {:else if blocked === "stacked"}
+      <p class="flex items-start gap-1.5 rounded-lg border border-red/40 bg-red/5 p-3 text-xs leading-snug text-red">
+        <WarningCircle size={14} class="mt-px shrink-0" />
+        <span>
+          {#each proxies as p, i (p)}{i ? (i === proxies.length - 1 ? " and " : ", ") : ""}<span
+              class="font-mono">{p}</span
+            >{/each} are each an OptiScaler build, so two copies load at once. Remove all but one, then fetch
+          again — upgrading one would leave the other on the old build.
+        </span>
+      </p>
+    {:else if app.optiscalerLatestLoading}
       <p class="flex items-center gap-1.5 text-xs text-muted">
         <ArrowClockwise size={12} class="animate-spin" /> Checking the latest release…
       </p>
@@ -433,15 +475,30 @@
           <span class="text-muted">Destination</span>
           <span class="truncate font-mono text-subtext">{installDir}</span>
         </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-muted">OptiScaler.dll as</span>
+          <span class="truncate font-mono text-subtext">{proxies[0] ?? "OptiScaler.dll"}</span>
+        </div>
       </div>
       <p class="text-xs leading-snug text-muted">
         Downloads that archive and extracts every file it contains into the folder above,
         overwriting anything with the same name — <span class="font-medium text-subtext"
           >except an existing <span class="font-mono">OptiScaler.ini</span>, which is left
           untouched.</span
-        > No checksum is published for this release; integrity rests on HTTPS + fetching directly
+        >
+        {#if proxies.length === 1}
+          The new <span class="font-mono">OptiScaler.dll</span> replaces
+          <span class="font-mono">{proxies[0]}</span>, the copy the game actually loads.
+        {/if}
+        No checksum is published for this release; integrity rests on HTTPS + fetching directly
         from the project's own GitHub Releases.
       </p>
+      {#if strayDll}
+        <p class="text-xs leading-snug text-muted">
+          The <span class="font-mono">OptiScaler.dll</span> already in this folder isn't loaded by
+          anything — likely left by an earlier fetch. It's left alone; delete it if you like.
+        </p>
+      {/if}
       {#if latest.channel === "nightly"}
         <p class="text-xs leading-snug text-yellow">
           Nightly is an untested daily build of OptiScaler's development branch — expect
@@ -462,7 +519,7 @@
       </button>
       <button
         onclick={doFetch}
-        disabled={!app.optiscalerLatest || app.optiscalerFetchBusy}
+        disabled={!app.optiscalerLatest || app.optiscalerFetchBusy || blocked != null}
         class="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition hover:opacity-90 disabled:opacity-40"
       >
         {#if app.optiscalerFetchBusy}

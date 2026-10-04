@@ -10,8 +10,8 @@
 //!   launch string, so applying tweaks means writing them into its config
 //!   (backing up first, preserving every key it doesn't own).
 //! - [`optiscaler_upgrade::fetch_and_extract`]: fetches the latest OptiScaler
-//!   release and extracts it into a *game's* install directory, at the user's
-//!   explicit per-click request. Never automatic, never executes anything —
+//!   release and extracts it over a *game's* existing manual install (onto
+//!   its live proxy DLL), at the user's explicit per-click request. Never automatic, never executes anything —
 //!   see that module's doc comment for the full rationale.
 //! - [`mangohud_export::write_system_config`]: writes the overlay built in
 //!   protongen's MangoHud builder into the real, system-wide `MangoHud.conf`

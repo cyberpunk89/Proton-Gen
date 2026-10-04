@@ -246,6 +246,11 @@ export interface UpdateInfo {
 export interface OptiscalerStatus {
   install_dir: string | null;
   found: boolean;
+  /** Proxy-named DLLs (dxgi.dll, winmm.dll, …) that are OptiScaler — the live
+   *  entry point the fetch writes over. More than one: the fetch refuses. */
+  proxies: string[];
+  /** An OptiScaler.dll beside a proxy, which nothing loads. */
+  stray_dll: boolean;
 }
 
 /** Mirrors lsfg::LsfgLayer. */
@@ -311,6 +316,8 @@ export interface OptiscalerExtractResult {
   tag: string;
   files_written: number;
   ini_preserved: boolean;
+  /** What the new OptiScaler.dll was written as (the live proxy's name). */
+  dll_name: string;
 }
 
 /** Mirrors mangohud_export::ExportResult, for the system-wide export confirm

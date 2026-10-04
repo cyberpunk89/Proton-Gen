@@ -273,6 +273,8 @@ export const ipc = {
       : Promise.resolve<OptiscalerStatus>({
           install_dir: "/home/you/.local/share/Steam/steamapps/common/mock-game",
           found: true,
+          proxies: ["dxgi.dll"],
+          stray_dll: false,
         }),
 
   optiscalerLatest: (channel: OptiscalerChannel) =>
@@ -303,6 +305,7 @@ export const ipc = {
           tag: channel === "nightly" ? "nightly-20260929" : "v0.9.4",
           files_written: 12,
           ini_preserved: true,
+          dll_name: "dxgi.dll",
         }),
 
   // Merge `config` into the real, system-wide ~/.config/MangoHud/MangoHud.conf.

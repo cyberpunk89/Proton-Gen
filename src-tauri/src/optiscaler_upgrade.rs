@@ -49,12 +49,36 @@ impl Channel {
     }
 }
 
-/// Files that mark a game folder as already having OptiScaler installed —
-/// either by hand or by CachyOS Proton's own `PROTON_USE_OPTISCALER`
-/// auto-injection. Only a folder with one of these present is offered the
-/// fetch action: the point is to refresh an existing install with a newer
-/// upstream build, never to inject OptiScaler into a game that isn't using it.
+/// Files that mark a game folder as already having a manual OptiScaler install.
+/// Only a folder with one of these (or an OptiScaler proxy, see
+/// [`PROXY_NAMES`]) present is offered the fetch action: the point is to
+/// refresh an existing install with a newer upstream build, never to inject
+/// OptiScaler into a game that isn't using it.
+///
+/// CachyOS Proton's own `PROTON_USE_OPTISCALER` never leaves these here: it
+/// injects from the prefix (`pfx/drive_c/windows/system32/umu/`, see
+/// proton-cachyos `protonfixes/upscalers.py`) and doesn't touch the game
+/// folder. So a hit here is always a hand install — and fetching into it with
+/// injection on stacks a second OptiScaler (`lint.rs`'s
+/// `optiscaler-double-install`).
 const MARKER_FILES: &[&str] = &["OptiScaler.dll", "OptiScaler.ini"];
+
+/// The DLL as it ships in the release archive.
+const DLL_FILE: &str = "OptiScaler.dll";
+
+/// The names OptiScaler's install guide has you rename [`DLL_FILE`] to, so
+/// the game loads it as a proxy. A hand install that did so has no
+/// `OptiScaler.dll` at all — extracting the archive verbatim would put the
+/// new build *beside* the live one, where nothing loads it.
+const PROXY_NAMES: &[&str] = &[
+    "dxgi.dll",
+    "winmm.dll",
+    "version.dll",
+    "dbghelp.dll",
+    "d3d12.dll",
+    "wininet.dll",
+    "winhttp.dll",
+];
 
 /// The one file the extractor treats specially: never overwritten if the
 /// destination already has one, since it may carry tuning applied through
@@ -67,13 +91,79 @@ const INI_FILE: &str = "OptiScaler.ini";
 pub struct OptiscalerStatus {
     pub install_dir: Option<String>,
     pub found: bool,
+    /// Proxy-named DLLs ([`PROXY_NAMES`], on-disk spelling) that are OptiScaler
+    /// builds: the live entry point the fetch writes the new DLL over. More
+    /// than one is an already-stacked install, which the fetch refuses.
+    pub proxies: Vec<String>,
+    /// An `OptiScaler.dll` sits beside a proxy — nothing loads it; typically
+    /// left by a fetch from before this was proxy-aware.
+    pub stray_dll: bool,
 }
 
-/// Detect an existing install. `install_dir` is `None` when nothing could be
-/// resolved for this game (see `games::Game::install_dir`).
+/// Detect an existing manual install in the folder's root. `install_dir` is
+/// `None` when nothing could be resolved for this game (see
+/// `games::Game::install_dir`).
 pub fn detect(install_dir: Option<&Path>) -> OptiscalerStatus {
-    let found = install_dir.is_some_and(|dir| MARKER_FILES.iter().any(|f| dir.join(f).exists()));
-    OptiscalerStatus { install_dir: install_dir.map(|p| p.display().to_string()), found }
+    let Some(dir) = install_dir else {
+        return OptiscalerStatus { install_dir: None, found: false, proxies: Vec::new(), stray_dll: false };
+    };
+    let names = dir_names(dir);
+    let has = |want: &str| names.iter().any(|n| n.eq_ignore_ascii_case(want));
+    let proxies = optiscaler_proxies(dir, &names);
+    OptiscalerStatus {
+        install_dir: Some(dir.display().to_string()),
+        found: !proxies.is_empty() || MARKER_FILES.iter().any(|f| has(f)),
+        stray_dll: !proxies.is_empty() && has(DLL_FILE),
+        proxies,
+    }
+}
+
+/// File names directly in `dir`; empty when it can't be read.
+fn dir_names(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The entries of `names` that carry a proxy name *and* are OptiScaler — a
+/// `dxgi.dll` alone is as likely ReShade or DXVK, and `dbghelp.dll` is often
+/// the game's own, so the name is never enough to overwrite one.
+fn optiscaler_proxies(dir: &Path, names: &[String]) -> Vec<String> {
+    PROXY_NAMES
+        .iter()
+        .filter_map(|p| names.iter().find(|n| n.eq_ignore_ascii_case(p)))
+        .filter(|n| is_optiscaler_dll(&dir.join(n)))
+        .cloned()
+        .collect()
+}
+
+/// Whether the DLL at `path` names OptiScaler in its strings (its ini/log file
+/// names and `D3D12_OptiScaler` path), as ASCII or UTF-16LE. Unreadable
+/// counts as no.
+fn is_optiscaler_dll(path: &Path) -> bool {
+    const NEEDLE: &[u8] = b"optiscaler";
+    let Ok(bytes) = std::fs::read(path) else { return false };
+    bytes.windows(NEEDLE.len()).any(|w| w.eq_ignore_ascii_case(NEEDLE))
+        || bytes.windows(NEEDLE.len() * 2).any(|w| {
+            w.chunks_exact(2).zip(NEEDLE).all(|(c, n)| c[1] == 0 && c[0].eq_ignore_ascii_case(n))
+        })
+}
+
+/// What the new `OptiScaler.dll` must be written as in `install_dir`: the live
+/// proxy's on-disk name, or `None` for the archive's own name when the install
+/// isn't renamed. Refuses a folder with two OptiScaler proxies — upgrading one
+/// would leave the other loading the old build.
+fn entry_point(install_dir: &Path) -> Result<Option<String>, String> {
+    let mut proxies = optiscaler_proxies(install_dir, &dir_names(install_dir));
+    if proxies.len() > 1 {
+        return Err(format!(
+            "{} are all OptiScaler — two copies load at once. Remove all but one before upgrading.",
+            proxies.join(", ")
+        ));
+    }
+    Ok(proxies.pop())
 }
 
 /// What a *manual* OptiScaler install leaves in a game folder (compared
@@ -213,10 +303,15 @@ pub struct OptiscalerExtractResult {
     pub files_written: usize,
     /// True when an existing `OptiScaler.ini` was left untouched.
     pub ini_preserved: bool,
+    /// The name the new `OptiScaler.dll` was written as — the live proxy's
+    /// (e.g. `dxgi.dll`) when the install is renamed.
+    pub dll_name: String,
 }
 
 /// Download the latest release on `channel` and extract it into
-/// `install_dir`, skipping `OptiScaler.ini` if one is already there. Re-checks
+/// `install_dir`, skipping `OptiScaler.ini` if one is already there and
+/// writing `OptiScaler.dll` over the install's live proxy (see
+/// [`entry_point`]) rather than beside it. Re-checks
 /// the latest release itself rather than trusting a caller-supplied
 /// [`OptiscalerRelease`], so the version reported back always matches what was
 /// actually written.
@@ -224,6 +319,8 @@ pub fn fetch_and_extract(
     install_dir: &Path,
     channel: Channel,
 ) -> Result<OptiscalerExtractResult, String> {
+    // Before the download: a stacked install is refused without fetching.
+    let dll_name = entry_point(install_dir)?;
     let release = check_latest(channel)?;
 
     let archive_bytes = fetch_bytes_with(&release.asset_url, USER_AGENT, DOWNLOAD_TIMEOUT)?;
@@ -239,7 +336,7 @@ pub fn fetch_and_extract(
             .map_err(|e| format!("couldn't write {}: {e}", archive_path.display()))?;
         sevenz_rust2::decompress_file(&archive_path, &staged)
             .map_err(|e| format!("couldn't extract the OptiScaler archive: {e}"))?;
-        copy_extracted(&staged, install_dir, &release.tag)
+        copy_extracted(&staged, install_dir, &release.tag, dll_name.as_deref())
     })();
     // Best-effort cleanup either way — a leftover staging dir isn't worth
     // failing the whole operation over.
@@ -273,11 +370,19 @@ fn fresh_work_dir() -> Result<PathBuf, String> {
 
 /// Copy every file under `staged` into `install_dir`, preserving subfolders
 /// (the archive ships `D3D12_Optiscaler/D3D12Core.dll`), skipping
-/// [`INI_FILE`] when the destination already has one.
+/// [`INI_FILE`] when the destination already has one. The root
+/// `OptiScaler.dll` is written as `dll_name` when given — the live proxy it
+/// replaces.
+///
+/// Paths resolve against what's already there case-insensitively, as Wine
+/// does: releases have shipped both `D3D12_OptiScaler` and
+/// `D3D12_Optiscaler`, and on a case-sensitive filesystem a verbatim copy
+/// leaves the old one beside the new one.
 fn copy_extracted(
     staged: &Path,
     install_dir: &Path,
     tag: &str,
+    dll_name: Option<&str>,
 ) -> Result<OptiscalerExtractResult, String> {
     let mut files_written = 0usize;
     let mut ini_preserved = false;
@@ -286,13 +391,16 @@ fn copy_extracted(
         let rel = entry
             .strip_prefix(staged)
             .map_err(|e| format!("internal path error: {e}"))?;
+        let at_root = |name: &str| rel.to_str().is_some_and(|r| r.eq_ignore_ascii_case(name));
 
-        if rel == Path::new(INI_FILE) && install_dir.join(INI_FILE).exists() {
+        if at_root(INI_FILE) && resolve_existing(install_dir, Path::new(INI_FILE)).exists() {
             ini_preserved = true;
             continue;
         }
-
-        let dest = install_dir.join(rel);
+        let dest = match dll_name.filter(|_| at_root(DLL_FILE)) {
+            Some(name) => install_dir.join(name),
+            None => resolve_existing(install_dir, rel),
+        };
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("couldn't create {}: {e}", parent.display()))?;
@@ -302,7 +410,32 @@ fn copy_extracted(
         files_written += 1;
     }
 
-    Ok(OptiscalerExtractResult { tag: tag.to_string(), files_written, ini_preserved })
+    Ok(OptiscalerExtractResult {
+        tag: tag.to_string(),
+        files_written,
+        ini_preserved,
+        dll_name: dll_name.unwrap_or(DLL_FILE).to_string(),
+    })
+}
+
+/// `root.join(rel)`, with each component swapped for an existing entry that
+/// differs only in case. Components with no such entry are kept as given.
+fn resolve_existing(root: &Path, rel: &Path) -> PathBuf {
+    let mut out = root.to_path_buf();
+    for part in rel.components() {
+        let want = part.as_os_str();
+        let existing = if out.join(want).exists() {
+            None
+        } else {
+            let want = want.to_string_lossy();
+            dir_names(&out).into_iter().find(|n| n.eq_ignore_ascii_case(&want))
+        };
+        match existing {
+            Some(name) => out.push(name),
+            None => out.push(want),
+        }
+    }
+    out
 }
 
 /// Every regular file under `root`, recursively. No symlink handling —
@@ -436,7 +569,7 @@ mod tests {
         std::fs::write(staged.join("D3D12_Optiscaler").join("D3D12Core.dll"), b"nested dll").unwrap();
         std::fs::write(dest.join("OptiScaler.ini"), b"my tuned config").unwrap();
 
-        let result = copy_extracted(&staged, &dest, "v0.9.4").unwrap();
+        let result = copy_extracted(&staged, &dest, "v0.9.4", None).unwrap();
 
         assert!(result.ini_preserved);
         assert_eq!(result.files_written, 2); // dll + nested dll, not the ini
@@ -458,7 +591,7 @@ mod tests {
         std::fs::create_dir_all(&dest).unwrap();
         std::fs::write(staged.join("OptiScaler.ini"), b"fresh from the release").unwrap();
 
-        let result = copy_extracted(&staged, &dest, "v0.9.4").unwrap();
+        let result = copy_extracted(&staged, &dest, "v0.9.4", None).unwrap();
 
         assert!(!result.ini_preserved);
         assert_eq!(result.files_written, 1);
@@ -466,6 +599,126 @@ mod tests {
             std::fs::read_to_string(dest.join("OptiScaler.ini")).unwrap(),
             "fresh from the release"
         );
+
+        std::fs::remove_dir_all(&staged).unwrap();
+        std::fs::remove_dir_all(&dest).unwrap();
+    }
+
+    /// What a proxy-renamed OptiScaler build looks like to [`is_optiscaler_dll`]:
+    /// a binary carrying its own ini name among its strings.
+    const OPTI_DLL: &[u8] = b"MZ\0\0...OptiScaler.ini\0...";
+
+    #[test]
+    fn detect_finds_the_renamed_proxy_and_a_stray_dll_beside_it() {
+        let dir = std::env::temp_dir().join("protongen-test-optiscaler-proxy");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("OptiScaler.ini"), b"").unwrap();
+        std::fs::write(dir.join("DXGI.dll"), OPTI_DLL).unwrap();
+        // The game's own dbghelp.dll: right name, not OptiScaler.
+        std::fs::write(dir.join("dbghelp.dll"), b"MZ\0\0Microsoft debug help").unwrap();
+
+        let status = detect(Some(&dir));
+        assert!(status.found);
+        assert_eq!(status.proxies, vec!["DXGI.dll"]); // on-disk spelling
+        assert!(!status.stray_dll);
+        assert_eq!(entry_point(&dir).unwrap().as_deref(), Some("DXGI.dll"));
+
+        // CONTROL Resonant: a pre-fix fetch left OptiScaler.dll beside the proxy.
+        std::fs::write(dir.join("OptiScaler.dll"), OPTI_DLL).unwrap();
+        assert!(detect(Some(&dir)).stray_dll);
+        assert_eq!(entry_point(&dir).unwrap().as_deref(), Some("DXGI.dll"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn detect_ignores_a_proxy_name_that_isnt_optiscaler() {
+        let dir = std::env::temp_dir().join("protongen-test-optiscaler-reshade");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("dxgi.dll"), b"MZ\0\0ReShade").unwrap();
+        assert!(!detect(Some(&dir)).found);
+
+        // ReShade as dxgi.dll beside OptiScaler as winmm.dll — and the
+        // UTF-16LE spelling some builds carry counts too.
+        let wide: Vec<u8> = "OptiScaler.log".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        std::fs::write(dir.join("winmm.dll"), wide).unwrap();
+        let status = detect(Some(&dir));
+        assert!(status.found);
+        assert_eq!(status.proxies, vec!["winmm.dll"]);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn entry_point_refuses_two_optiscaler_proxies() {
+        let dir = std::env::temp_dir().join("protongen-test-optiscaler-two-proxies");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("dxgi.dll"), OPTI_DLL).unwrap();
+        std::fs::write(dir.join("version.dll"), OPTI_DLL).unwrap();
+
+        assert_eq!(detect(Some(&dir)).proxies, vec!["dxgi.dll", "version.dll"]);
+        let err = entry_point(&dir).unwrap_err();
+        assert!(err.contains("dxgi.dll, version.dll"), "{err}");
+        // Not renamed at all → the archive's own name.
+        std::fs::remove_file(dir.join("version.dll")).unwrap();
+        std::fs::rename(dir.join("dxgi.dll"), dir.join("OptiScaler.dll")).unwrap();
+        assert_eq!(entry_point(&dir).unwrap(), None);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn copy_extracted_writes_the_dll_over_the_live_proxy() {
+        let staged = std::env::temp_dir().join("protongen-test-optiscaler-staged3");
+        let dest = std::env::temp_dir().join("protongen-test-optiscaler-dest3");
+        let _ = std::fs::remove_dir_all(&staged);
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(staged.join("OptiScaler.dll"), b"new build").unwrap();
+        std::fs::write(staged.join("libxess.dll"), b"new xess").unwrap();
+        std::fs::write(dest.join("dxgi.dll"), b"old build").unwrap();
+
+        let result = copy_extracted(&staged, &dest, "v0.9.5", Some("dxgi.dll")).unwrap();
+
+        assert_eq!(result.dll_name, "dxgi.dll");
+        assert_eq!(result.files_written, 2);
+        assert_eq!(std::fs::read(dest.join("dxgi.dll")).unwrap(), b"new build");
+        assert!(!dest.join("OptiScaler.dll").exists(), "the new build must not land beside the proxy");
+        assert!(dest.join("libxess.dll").exists());
+
+        std::fs::remove_dir_all(&staged).unwrap();
+        std::fs::remove_dir_all(&dest).unwrap();
+    }
+
+    #[test]
+    fn copy_extracted_reuses_existing_paths_that_differ_only_in_case() {
+        let staged = std::env::temp_dir().join("protongen-test-optiscaler-staged4");
+        let dest = std::env::temp_dir().join("protongen-test-optiscaler-dest4");
+        let _ = std::fs::remove_dir_all(&staged);
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(staged.join("D3D12_Optiscaler")).unwrap();
+        std::fs::create_dir_all(dest.join("D3D12_OptiScaler")).unwrap();
+        std::fs::write(staged.join("D3D12_Optiscaler").join("D3D12Core.dll"), b"new").unwrap();
+        std::fs::write(staged.join("OptiScaler.ini"), b"fresh from the release").unwrap();
+        std::fs::write(staged.join("OptiScaler.dll"), b"new build").unwrap();
+        std::fs::write(dest.join("D3D12_OptiScaler").join("D3D12Core.dll"), b"old").unwrap();
+        std::fs::write(dest.join("optiscaler.ini"), b"my tuned config").unwrap();
+        std::fs::write(dest.join("optiscaler.dll"), b"old build").unwrap();
+
+        let result = copy_extracted(&staged, &dest, "v0.9.5", None).unwrap();
+
+        assert!(result.ini_preserved);
+        assert_eq!(result.dll_name, "OptiScaler.dll");
+        let mut names = dir_names(&dest);
+        names.sort();
+        assert_eq!(names, vec!["D3D12_OptiScaler", "optiscaler.dll", "optiscaler.ini"]);
+        assert_eq!(std::fs::read(dest.join("D3D12_OptiScaler").join("D3D12Core.dll")).unwrap(), b"new");
+        assert_eq!(std::fs::read(dest.join("optiscaler.dll")).unwrap(), b"new build");
+        assert_eq!(std::fs::read(dest.join("optiscaler.ini")).unwrap(), b"my tuned config");
 
         std::fs::remove_dir_all(&staged).unwrap();
         std::fs::remove_dir_all(&dest).unwrap();
