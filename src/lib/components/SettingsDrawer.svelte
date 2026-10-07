@@ -240,6 +240,12 @@
               app.store.protondb_auto,
               () => app.setProtondbAuto(!app.store.protondb_auto),
             )}
+            {@render toggle(
+              "Check anti-cheat support",
+              "Look the selected game up on AreWeAntiCheatYet (one cached download of its list).",
+              app.store.anticheat_check,
+              () => app.setAnticheatCheck(!app.store.anticheat_check),
+            )}
             {@render globalProfile()}
           </div>
           {/if}

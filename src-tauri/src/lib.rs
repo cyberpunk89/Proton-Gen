@@ -28,6 +28,7 @@
 //! This crate is a Tauri backend: the pure logic modules below are exposed to
 //! the web frontend through `ipc`.
 
+mod anticheat;
 mod art;
 mod builder;
 pub mod cli;
@@ -128,6 +129,7 @@ pub fn run_with(initial_game: Option<u32>) {
             ipc::lint,
             ipc::protondb_url,
             ipc::protondb_fetch,
+            ipc::anticheat_lookup,
             ipc::game_art,
             ipc::read_proton_log,
             ipc::llm_analyze,

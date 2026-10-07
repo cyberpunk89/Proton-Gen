@@ -899,6 +899,24 @@ pub async fn protondb_fetch(appid: u32) -> Result<Tier, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Whether the game's anti-cheat runs on Linux, per AreWeAntiCheatYet
+/// (see [`crate::anticheat`]). `None` when the list has no anti-cheat entry
+/// for it. Opt-in: the frontend only asks when the Settings toggle is on.
+#[tauri::command]
+pub async fn anticheat_lookup(
+    state: State<'_, AppState>,
+    app_id: u32,
+) -> Result<Option<crate::anticheat::AntiCheat>, String> {
+    let Some(game) = state.game(app_id) else {
+        return Ok(None);
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::anticheat::db().map(|db| db.lookup(&game.source, game.app_id, &game.name))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Resolve a game's artwork to a `data:` URL (local cache → optional CDN), or
 /// `null` if none is available. Runs off the UI thread.
 ///

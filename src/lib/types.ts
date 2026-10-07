@@ -435,6 +435,8 @@ export interface Store {
    *  a `String`, and `options_from_lists` treats anything unrecognised as "". */
   gpu_gen: GpuGen;
   protondb_auto: boolean;
+  /** Look the selected game up on AreWeAntiCheatYet. Off by default. */
+  anticheat_check: boolean;
   /** Opt-in local-LLM log coach. Off by default (needs a local server). */
   llm_enabled: boolean;
   /** Base URL of the local LLM endpoint (the `/v1` base). */
@@ -634,4 +636,14 @@ export interface GameFolder {
   path: string;
   exists: boolean;
   bytes: number | null;
+}
+
+/** Mirrors anticheat::AntiCheat — AreWeAntiCheatYet's entry for a game. */
+export interface AntiCheat {
+  name: string;
+  /** Supported | Running | Planned | Broken | Denied */
+  status: string;
+  anticheats: string[];
+  url: string;
+  updated: string | null;
 }

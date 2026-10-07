@@ -12,6 +12,7 @@ import { LSFG_BUILDER_KEYS } from "./lsfg";
 import { encodePreset } from "./presetCode";
 import { buildOptiScaler, parseOptiScaler } from "./optiscaler";
 import type {
+  AntiCheat,
   Catalog,
   Config,
   DiffStatus,
@@ -66,6 +67,7 @@ const EMPTY_STORE: Store = {
   fsr4: false,
   gpu_gen: "",
   protondb_auto: false,
+  anticheat_check: false,
   llm_enabled: false,
   llm_endpoint: "http://127.0.0.1:1234/v1",
   llm_model: "gpt-oss-20b",
@@ -1345,6 +1347,7 @@ class AppStore {
     if (this.store.protondb_auto && game.source === "steam") {
       this.requestTier(game.app_id);
     }
+    this.requestAnticheat(game.app_id);
 
     const remembered = this.store.game_memory[String(game.app_id)];
     if (remembered) {
@@ -2325,6 +2328,30 @@ class AppStore {
     this.tierRequested.delete(appId);
     delete this.tierCache[String(appId)];
     this.requestTier(appId);
+  }
+
+  /** Session cache of AreWeAntiCheatYet lookups: appid -> entry, null when it
+   *  has none, absent while unknown. The list itself is cached by the backend. */
+  anticheatCache = $state<Record<string, AntiCheat | null>>({});
+  private anticheatRequested = new Set<number>();
+
+  requestAnticheat(appId: number) {
+    if (!this.store.anticheat_check || this.anticheatRequested.has(appId)) return;
+    this.anticheatRequested.add(appId);
+    ipc
+      .anticheatLookup(appId)
+      .then((a) => (this.anticheatCache[String(appId)] = a))
+      .catch((e) => {
+        console.error("anticheatLookup failed", appId, e);
+        // Forget it so the next visit retries — the list may be reachable then.
+        this.anticheatRequested.delete(appId);
+      });
+  }
+
+  setAnticheatCheck(v: boolean) {
+    this.store.anticheat_check = v;
+    this.persistStore();
+    if (v && this.selectedAppId != null) this.requestAnticheat(this.selectedAppId);
   }
 
   // ------------------------- OptiScaler upgrade -------------------------

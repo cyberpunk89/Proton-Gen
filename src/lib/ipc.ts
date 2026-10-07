@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AntiCheat,
   Bootstrap,
   Config,
   GameFolder,
@@ -68,6 +69,22 @@ export const ipc = {
     inTauri
       ? invoke<HeroicInjectResult>("inject_heroic", { appName, config })
       : Promise.resolve(mockInjectHeroic(appName, config)),
+
+  /** AreWeAntiCheatYet's entry for a game, or null when it has none. */
+  anticheatLookup: (appId: number) =>
+    inTauri
+      ? invoke<AntiCheat | null>("anticheat_lookup", { appId })
+      : Promise.resolve<AntiCheat | null>(
+          appId === 553850
+            ? {
+                name: "HELLDIVERS 2",
+                status: "Running",
+                anticheats: ["nProtect GameGuard"],
+                url: "https://areweanticheatyet.com/game/helldivers-2",
+                updated: "2026-03-02",
+              }
+            : null,
+        ),
 
   /** The selected game's Wine prefix and shader cache, measured. */
   gameFolders: (appId: number) =>

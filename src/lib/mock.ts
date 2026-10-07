@@ -659,6 +659,7 @@ export const mockBootstrap: Bootstrap = {
     // two-way filtering the Settings selector drives.
     gpu_gen: "rdna4",
     protondb_auto: false,
+    anticheat_check: true,
     // Enabled in the mock so the "Analyze with AI" button is visible under
     // `pnpm dev` (the mock IPC returns a canned suggestion).
     llm_enabled: true,

@@ -8,6 +8,7 @@
   import SyncPill from "./SyncPill.svelte";
   import LauncherAction from "./LauncherAction.svelte";
   import GameFolders from "./GameFolders.svelte";
+  import AntiCheatNote from "./AntiCheatNote.svelte";
   import { forgetTuningAction } from "$lib/commands";
   import { DownloadSimple, Cpu, CheckCircle, WarningCircle, Trash } from "phosphor-svelte";
 
@@ -59,6 +60,8 @@
       </button>
     {/if}
   </div>
+
+  <AntiCheatNote />
 
   <RuntimePicker />
 

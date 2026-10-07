@@ -130,6 +130,10 @@ pub struct Store {
     /// Auto-fetch the ProtonDB tier when a Steam game is selected.
     #[serde(default)]
     pub protondb_auto: bool,
+    /// Look the selected game up on AreWeAntiCheatYet (one cached download of
+    /// its list). Off by default, like every network feature.
+    #[serde(default)]
+    pub anticheat_check: bool,
     /// Opt-in local-LLM "log coach". Off by default — it needs a local
     /// OpenAI-compatible server running, so it only appears once the user enables
     /// it in Settings.
