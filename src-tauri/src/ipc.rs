@@ -668,8 +668,12 @@ pub async fn heroic_running() -> bool {
 /// Parse a pasted Steam/umu command into a `Config` (unknown env → extra_env).
 #[tauri::command]
 pub fn parse_command(state: State<'_, AppState>, input: String) -> ParsedCommand {
-    let catalog = &state.catalog;
-    let p = parser::parse(&input, &catalog.plain_wrappers());
+    parse_command_with(&state.catalog, &input)
+}
+
+/// [`parse_command`]'s logic, without the Tauri state — what the tests drive.
+fn parse_command_with(catalog: &Catalog, input: &str) -> ParsedCommand {
+    let p = parser::parse(input, &catalog.plain_wrappers());
 
     // Reconstruct wrapper key/value list from the parsed wrappers.
     let wrappers: Vec<(String, String)> = p
@@ -802,11 +806,14 @@ pub async fn launch_statuses(
 /// Merge recipe `index` onto `config`, returning the updated config.
 #[tauri::command]
 pub fn apply_recipe(state: State<'_, AppState>, index: usize, config: Config) -> Config {
-    let catalog = &state.catalog;
-    let Some(recipe) = state.recipes.recipes.get(index) else {
-        return config;
-    };
+    match state.recipes.recipes.get(index) {
+        Some(recipe) => apply_recipe_with(&state.catalog, recipe, config),
+        None => config,
+    }
+}
 
+/// [`apply_recipe`]'s logic, without the Tauri state — what the tests drive.
+fn apply_recipe_with(catalog: &Catalog, recipe: &recipes::Recipe, config: Config) -> Config {
     let (mut options, leftover) = compose::options_from_config(catalog, &config);
     // Recover keys the catalog no longer knows *before* the recipe merges, so the
     // round-trip through `options_to_lists` below can't erase them (#62). Without
@@ -959,8 +966,100 @@ pub async fn game_art(
 }
 
 #[cfg(test)]
-mod lock_tests {
+mod tests {
     use super::*;
+
+    fn steam_game(app_id: u32, source: GameSource) -> games::Game {
+        games::Game {
+            app_id,
+            name: "G".into(),
+            source,
+            executable: None,
+            installed: true,
+            heroic_id: None,
+            install_dir: None,
+            art_url: None,
+            nexus: None,
+        }
+    }
+
+    #[test]
+    fn parse_command_reports_only_what_it_could_not_import() {
+        let cat = Catalog::bundled();
+        let p = parse_command_with(&cat, "PROTON_ENABLE_WAYLAND=1 MY_VAR=\"a b\" A=x;y strangle 60 mangohud %command% -dx11");
+        // Catalog env and wrappers come back as rows; unknown env is kept as custom env.
+        assert!(p.config.env.iter().any(|(k, v)| k == "PROTON_ENABLE_WAYLAND" && v == "1"));
+        assert!(p.config.wrappers.iter().any(|(k, _)| k == "mangohud"));
+        assert!(p.config.extra_env.contains("MY_VAR=\"a b\""), "{}", p.config.extra_env);
+        assert_eq!(p.config.game_args, "-dx11");
+        // `A=x;y` was imported (as env), so it isn't reported dropped; the
+        // foreign wrapper and its argument are.
+        assert!(p.dropped.contains(&"strangle".to_string()), "{:?}", p.dropped);
+        assert!(!p.dropped.iter().any(|t| t.starts_with("A=")), "{:?}", p.dropped);
+    }
+
+    #[test]
+    fn applying_a_recipe_keeps_env_the_catalog_no_longer_knows() {
+        // #62: a stale key used to be erased by the options round trip.
+        let cat = Catalog::bundled();
+        let recipes = recipes::Recipes::bundled();
+        let recipe = &recipes.recipes[0];
+        let cfg = Config {
+            env: vec![("PROTON_SOMETHING_RETIRED".into(), "1".into())],
+            ..Config::default()
+        };
+        let out = apply_recipe_with(&cat, recipe, cfg);
+        assert!(out.extra_env.contains("PROTON_SOMETHING_RETIRED=1"), "{}", out.extra_env);
+    }
+
+    #[test]
+    fn stale_banner_only_for_a_newer_installed_cachyos() {
+        let mut cat = Catalog::bundled();
+        cat.meta.proton_cachyos_build = Some("20261005".into());
+        let rt = |name: &str| runtime::Runtime {
+            internal_name: name.into(),
+            display_name: name.into(),
+            kind: RuntimeKind::System,
+            path: format!("/x/{name}").into(),
+        };
+        let newer = compute_stale(&cat, &[rt("proton-cachyos-11.0-20261101 (steam linux runtime)")]).unwrap();
+        assert_eq!((newer.installed.as_str(), newer.catalog.as_str()), ("20261101", "20261005"));
+        assert!(compute_stale(&cat, &[rt("proton-cachyos-11.0-20260901")]).is_none());
+        assert!(compute_stale(&cat, &[rt("GE-Proton11-7")]).is_none());
+    }
+
+    #[test]
+    fn play_stats_come_from_each_source_own_record() {
+        let mut cfgs = HashMap::new();
+        cfgs.insert(10, steamcfg::AppUserCfg { launch_options: String::new(), last_played: Some(100), playtime_minutes: Some(5) });
+        let mut heroic = HashMap::new();
+        heroic.insert("h1".to_string(), heroic::PlayStats { last_played: Some(300), playtime_minutes: Some(7) });
+
+        let steam = game_dto(steam_game(10, GameSource::Steam), &cfgs, &heroic);
+        assert_eq!((steam.last_played, steam.playtime_minutes), (Some(100), Some(5)));
+
+        let mut h = steam_game(11, GameSource::Heroic);
+        h.heroic_id = Some("h1".into());
+        let h = game_dto(h, &cfgs, &heroic);
+        assert_eq!((h.last_played, h.playtime_minutes), (Some(300), Some(7)));
+
+        // Nexus: its own sessions plus the Heroic sideload's, newest timestamp.
+        let mut n = steam_game(12, GameSource::Nexus);
+        n.nexus = Some(crate::nexus::NexusInfo {
+            slug: "n".into(),
+            heroic_app_name: Some("h1".into()),
+            last_played: Some(200),
+            playtime_minutes: Some(10),
+            ..Default::default()
+        });
+        let n = game_dto(n, &cfgs, &heroic);
+        assert_eq!((n.last_played, n.playtime_minutes), (Some(300), Some(17)));
+        assert_eq!(n.nexus_slug.as_deref(), Some("n"));
+
+        let sc = game_dto(steam_game(13, GameSource::NonSteam), &cfgs, &heroic);
+        assert_eq!((sc.last_played, sc.playtime_minutes), (None, None));
+        assert!(sc.nexus_slug.is_none());
+    }
 
     #[test]
     fn a_poisoned_mutex_still_hands_out_its_data() {
