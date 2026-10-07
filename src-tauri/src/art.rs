@@ -18,6 +18,13 @@ pub const KINDS: &[&str] = &["portrait", "hero", "header"];
 /// Largest art file read or downloaded. Box art is well under this; anything
 /// bigger is not an image worth base64-ing into the webview.
 const MAX_ART_BYTES: u64 = 16 * 1024 * 1024;
+/// Per-request timeout for remote art. Shorter than ehttp's 30 s default: the
+/// frontend runs a dozen of these at once, and offline each would otherwise
+/// pin a slot for the full default.
+const ART_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// How long a remote 4xx is trusted before asking again — art does get added
+/// to the CDN after release, just not often.
+const MISS_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Candidate local file paths for a game's art, in priority order.
 fn local_candidates(steam_root: &Path, app_id: u32, source: &str, kind: &str) -> Vec<PathBuf> {
@@ -78,6 +85,21 @@ fn cache_path(app_id: u32, source: &str, kind: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
     Some(base.join(format!("protongen/art/{source}_{app_id}_{kind}.img")))
+}
+
+/// Sidecar recording when the remote source last said this art doesn't exist.
+fn miss_marker(cache: &Path) -> PathBuf {
+    cache.with_extension("miss")
+}
+
+/// Whether `marker` holds a timestamp newer than `MISS_TTL_SECS` before `now`.
+/// A missing or unreadable marker is "not missed", so the worst case is one
+/// extra request.
+fn recent_miss(marker: &Path, now: u64) -> bool {
+    std::fs::read_to_string(marker)
+        .ok()
+        .and_then(|t| t.trim().parse::<u64>().ok())
+        .is_some_and(|ts| now.saturating_sub(ts) < MISS_TTL_SECS)
 }
 
 fn mime_for(path: &Path) -> &'static str {
@@ -172,18 +194,28 @@ pub fn fetch(
         } else {
             None
         };
-        if let Some(url) = remote_url {
-            let req = ehttp::Request::get(url);
-            if let Ok(resp) = ehttp::fetch_blocking(&req) {
-                if resp.ok && !resp.bytes.is_empty() && resp.bytes.len() as u64 <= MAX_ART_BYTES {
+        let miss = cached.as_deref().map(miss_marker);
+        let recently_missed = miss.as_deref().is_some_and(|m| recent_miss(m, crate::fsutil::unix_ts()));
+        if let Some(url) = remote_url.filter(|_| !recently_missed) {
+            let req = ehttp::Request::get(url).with_timeout(Some(ART_TIMEOUT));
+            match ehttp::fetch_blocking(&req) {
+                Ok(resp) if resp.ok && !resp.bytes.is_empty() && resp.bytes.len() as u64 <= MAX_ART_BYTES => {
+                    // Atomic: a torn write would pass the non-empty check in
+                    // step 2 and be served as a broken image on every run.
                     if let Some(cp) = &cached {
-                        if let Some(parent) = cp.parent() {
-                            let _ = std::fs::create_dir_all(parent);
-                        }
-                        let _ = std::fs::write(cp, &resp.bytes);
+                        let _ = crate::fsutil::write_atomic(cp, &resp.bytes);
                     }
                     return Some(to_data_url(&resp.bytes, "image/jpeg"));
                 }
+                // A definite "no such art" (404 and friends): remember it so the
+                // next session doesn't spend a request slot asking again.
+                // Network errors are not remembered — offline is not "missing".
+                Ok(resp) if (400..500).contains(&resp.status) => {
+                    if let Some(m) = &miss {
+                        let _ = crate::fsutil::write_atomic(m, crate::fsutil::unix_ts().to_string().as_bytes());
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -287,5 +319,26 @@ mod tests {
     #[test]
     fn heroic_fetch_with_no_hint_and_offline_finds_nothing() {
         assert_eq!(fetch(None, 0x8000_0002, "heroic", "portrait", false, None), None);
+    }
+
+    #[test]
+    fn a_fresh_miss_marker_suppresses_the_refetch_and_an_old_one_does_not() {
+        let now = 2_000_000_000;
+        let fresh = temp_file("fresh.miss", (now - 60).to_string().as_bytes());
+        let stale = temp_file("stale.miss", (now - MISS_TTL_SECS - 1).to_string().as_bytes());
+        let junk = temp_file("junk.miss", b"not a number");
+        assert!(recent_miss(&fresh, now));
+        assert!(!recent_miss(&stale, now));
+        assert!(!recent_miss(&junk, now), "an unreadable marker must not block art forever");
+        assert!(!recent_miss(Path::new("/no/such/protongen.miss"), now));
+        for p in [fresh, stale, junk] {
+            std::fs::remove_file(p).ok();
+        }
+    }
+
+    #[test]
+    fn miss_marker_sits_next_to_the_cached_image() {
+        let cp = Path::new("/c/protongen/art/steam_10_hero.img");
+        assert_eq!(miss_marker(cp), Path::new("/c/protongen/art/steam_10_hero.miss"));
     }
 }
