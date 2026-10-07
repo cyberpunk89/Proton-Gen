@@ -346,25 +346,30 @@ fn plain_wrapper(def: &WrapperDef) -> Option<PlainWrapper> {
     })
 }
 
+/// The builder's [`Wrapper`] for a catalog entry, with `value` as gamescope's
+/// arguments (ignored by every other kind).
+pub fn wrapper_of(def: &WrapperDef, value: &str) -> Option<Wrapper> {
+    match def.kind {
+        WrapperKind::Gamescope => Some(Wrapper::Gamescope(value.to_string())),
+        WrapperKind::Plain => match def.key.as_str() {
+            "game-performance" => Some(Wrapper::GamePerformance),
+            "gamemoderun" => Some(Wrapper::Gamemoderun),
+            "mangohud" => Some(Wrapper::Mangohud),
+            // Every other plain wrapper used to fall into `_ => {}`, so
+            // enabling prime-run or dlss-swapper emitted nothing at all.
+            _ => plain_wrapper(def).map(Wrapper::Plain),
+        },
+    }
+}
+
 /// Translate enabled options into (env pairs, wrappers) for the builder.
 pub fn to_spec(cat: &Catalog, opts: &Options) -> (Vec<(String, String)>, Vec<Wrapper>) {
     let mut env = Vec::new();
     let mut wrappers = Vec::new();
 
     for (def, st) in cat.wrappers.iter().zip(&opts.wrappers) {
-        if !st.enabled {
-            continue;
-        }
-        match def.kind {
-            WrapperKind::Gamescope => wrappers.push(Wrapper::Gamescope(st.value.clone())),
-            WrapperKind::Plain => match def.key.as_str() {
-                "game-performance" => wrappers.push(Wrapper::GamePerformance),
-                "gamemoderun" => wrappers.push(Wrapper::Gamemoderun),
-                "mangohud" => wrappers.push(Wrapper::Mangohud),
-                // Every other plain wrapper used to fall into `_ => {}`, so
-                // enabling prime-run or dlss-swapper emitted nothing at all.
-                _ => wrappers.extend(plain_wrapper(def).map(Wrapper::Plain)),
-            },
+        if st.enabled {
+            wrappers.extend(wrapper_of(def, &st.value));
         }
     }
 

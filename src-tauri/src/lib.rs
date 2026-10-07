@@ -30,6 +30,7 @@
 
 mod art;
 mod builder;
+pub mod cli;
 mod compose;
 mod diff;
 mod explain;

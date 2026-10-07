@@ -259,12 +259,12 @@ impl AppState {
 /// `bootstrap` and replaced by every `rescan` — never by `AppState::new()`,
 /// which must stay cheap (see [`AppState::discovery`]).
 #[derive(Clone)]
-struct Discovery {
-    steam_root: Option<String>,
+pub(crate) struct Discovery {
+    pub(crate) steam_root: Option<String>,
     load_error: Option<String>,
     runtime_warning: Option<String>,
-    runtimes: Vec<RuntimeDto>,
-    games: Vec<GameDto>,
+    pub(crate) runtimes: Vec<RuntimeDto>,
+    pub(crate) games: Vec<GameDto>,
     launch_options: HashMap<String, String>,
     compat_tools: HashMap<String, String>,
     /// required binary name -> whether it's on `$PATH`. Part of the scan rather
@@ -281,7 +281,7 @@ struct Discovery {
 /// repeatedly. `catalog` is only read (for staleness); it never changes here.
 /// `paths` carries the user's Settings overrides; no discovery module reads the
 /// store itself.
-fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
+pub(crate) fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
     let mut steam_root = None;
     let mut load_error = None;
     let mut runtime_warning = None;
