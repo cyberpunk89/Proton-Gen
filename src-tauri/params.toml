@@ -1,5 +1,5 @@
 # protongen parameter catalog
-# Catalog for Proton 11.0 / proton-cachyos 11.0-20260703  —  updated 2026-09-26
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20261005  —  updated 2026-10-07
 #
 # Sources (refresh with the /update-proton-params Claude skill):
 #   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
@@ -9,6 +9,8 @@
 #   - https://wiki.cachyos.org/configuration/dual_gpu/
 #   - https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md
 #   - https://github.com/doitsujin/dxvk/blob/master/README.md
+#   - https://github.com/pythonlover02/DXVK-Sarek  (Sarek shader-compilation / pacing knobs)
+#   - https://github.com/netborg-afps/dxvk-low-latency  ·  https://github.com/netborg-afps/vkd3d-low-latency
 #
 # Two tables:
 #   [[wrapper]]  programs placed BEFORE the target (%command% or umu-run)
@@ -39,8 +41,8 @@
 # The app compares it to your installed build and shows a banner when newer.
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
-proton_cachyos_build = "20260703"
-updated = "2026-09-26"
+proton_cachyos_build = "20261005"
+updated = "2026-10-07"
 
 # ============================ Wrappers ============================
 
@@ -199,7 +201,7 @@ category = "Performance / Sync"
 default_value = "1"
 values = ["1", "0"]
 help = "CachyOS: enable the vkd3d-low-latency fork for better D3D12 frame pacing / input lag."
-details = "CachyOS-specific (added 11.0-20260703): swaps in the vkd3d-low-latency fork, giving hardware-agnostic low-latency frame pacing for D3D12 titles — the VKD3D counterpart to PROTON_DXVK_LOWLATENCY. It natively implements the NVIDIA Reflex API inside the translation layer (bypassing conversion into VK_NV_low_latency2) and adds advanced frame pacing via waitable DXGI swapchains to cut input lag; AMD users should check the upstream discussion for caveats first. Disable if you see artifacts or regressions. CachyOS-Proton only."
+details = "CachyOS-specific (added 11.0-20260703): swaps in the vkd3d-low-latency fork, giving hardware-agnostic low-latency frame pacing for D3D12 titles — the VKD3D counterpart to PROTON_DXVK_LOWLATENCY. It natively implements the NVIDIA Reflex API inside the translation layer (bypassing conversion into VK_NV_low_latency2) and adds advanced frame pacing via waitable DXGI swapchains to cut input lag; AMD users should check the upstream discussion for caveats first. Tune it with VKD3D_LOW_LATENCY_OFFSET. Disable if you see artifacts or regressions. CachyOS-Proton only."
 example = "PROTON_VKD3D_LOWLATENCY=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
@@ -289,7 +291,7 @@ category = "Render backend"
 default_value = "auto"
 values = ["auto", "1", "0"]
 help = "CachyOS: dxvk-sarek fork for older GPUs lacking Vulkan 1.3 (auto/1/0)."
-details = "Replaces DXVK with the dxvk-sarek fork, which targets older GPUs (Vulkan 1.1-1.2) that don't properly support Vulkan 1.3. As of 11.0-20260602 it accepts 'auto' (the default — fall back to sarek only when the GPU lacks Vulkan 1.3), '1' (force on), or '0' (force off). Set 1 if a game fails to start with a Vulkan 1.3 / feature-level error on legacy hardware. CachyOS-Proton only."
+details = "Replaces DXVK with the dxvk-sarek fork, which targets older GPUs (Vulkan 1.1-1.2) that don't properly support Vulkan 1.3. As of 11.0-20260602 it accepts 'auto' (the default — fall back to sarek only when the GPU lacks Vulkan 1.3), '1' (force on), or '0' (force off). Set 1 if a game fails to start with a Vulkan 1.3 / feature-level error on legacy hardware. Sarek compiles shaders asynchronously by default (see DXVK_SHADER_COMPILATION_METHOD), which upstream warns against in anti-cheat / multiplayer games. CachyOS-Proton only."
 example = "PROTON_DXVK_SAREK=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
@@ -887,9 +889,52 @@ tier = "advanced"
 category = "DXVK"
 default_value = ""
 help = "Set dxvk.conf options inline, e.g. 'dxgi.maxFrameLatency=1;dxvk.hud=fps'."
-details = "Applies dxvk.conf settings directly from the environment as a semicolon-separated list of key=value pairs, so you don't need a separate config file (unlike DXVK_CONFIG_FILE). Handy one-offs include dxgi.maxFrameLatency=1 (lower input lag), dxvk.maxFrameRate=60 (cap the frame rate — there is no standalone DXVK_FRAME_RATE variable), and dxvk.enableGraphicsPipelineLibrary. Values here override the config file."
+details = "Applies dxvk.conf settings directly from the environment as a semicolon-separated list of key=value pairs, so you don't need a separate config file (unlike DXVK_CONFIG_FILE). Handy one-offs include dxgi.maxFrameLatency=1 (lower input lag), dxvk.maxFrameRate=60 (cap the frame rate — stock DXVK has no standalone DXVK_FRAME_RATE variable; only the CachyOS forks read it), and dxvk.enableGraphicsPipelineLibrary. Values here override the config file."
 example = "DXVK_CONFIG='dxvk.maxFrameRate=60;dxgi.syncInterval=0' %command%"
 url = "https://github.com/doitsujin/dxvk/blob/master/dxvk.conf"
+
+[[env]]
+key = "DXVK_FRAME_RATE"
+category = "DXVK"
+default_value = "60"
+values = ["30", "60", "120", "144", "165", "0"]
+help = "Frame-rate cap (0 = uncapped) — dxvk-low-latency / dxvk-sarek forks only."
+details = "Caps D3D8-11 rendering at the given FPS; 0 uncaps. Only the CachyOS DXVK forks read this variable — the low-latency fork (PROTON_DXVK_LOWLATENCY=1) and dxvk-sarek (PROTON_DXVK_SAREK) — while stock DXVK ignores it, so there use DXVK_CONFIG='dxvk.maxFrameRate=60' instead. With the low-latency fork on a VRR display, a cap a few FPS under the refresh rate (e.g. 225 on 240 Hz) keeps frame pacing tight. Doesn't affect D3D12 (VKD3D) games; use MangoHud's fps_limit for a universal cap."
+example = "PROTON_DXVK_LOWLATENCY=1 DXVK_FRAME_RATE=141 %command%"
+url = "https://github.com/netborg-afps/dxvk-low-latency"
+
+[[env]]
+key = "DXVK_FRAME_PACE"
+tier = "advanced"
+category = "DXVK"
+default_value = "low-latency"
+values = ["low-latency", "low-latency-vrr", "low-latency-vrr-240", "max-frame-latency", "min-latency"]
+help = "Frame-pacing mode of the dxvk-low-latency / dxvk-sarek forks."
+details = "Selects how the CachyOS DXVK forks pace CPU frame submission. 'low-latency' (the dxvk-low-latency default) predicts when the GPU finishes to cut input lag; the '-vrr' variants tune that for variable-refresh displays; 'max-frame-latency' is classic DXVK behaviour (dxvk-sarek's default); 'min-latency' forces the minimum frame queue for the lowest latency at a noticeable FPS cost. Only read by the forks (PROTON_DXVK_LOWLATENCY=1 or PROTON_DXVK_SAREK) — stock DXVK ignores it."
+example = "PROTON_DXVK_LOWLATENCY=1 DXVK_FRAME_PACE=low-latency-vrr %command%"
+url = "https://github.com/netborg-afps/dxvk-low-latency"
+
+[[env]]
+key = "DXVK_SHADER_COMPILATION_METHOD"
+tier = "advanced"
+category = "DXVK"
+default_value = "dyasync"
+values = ["dyasync", "async", "none"]
+help = "dxvk-sarek: how shader pipelines compile (dyasync / async / none)."
+details = "dxvk-sarek only (PROTON_DXVK_SAREK). 'dyasync' (default) compiles a shader's first use synchronously, then builds later variants in the background while drawing a close stand-in; 'async' skips drawing anything not yet compiled, removing stalls but only behaving well with spare CPU cores; 'none' is plain DXVK 1.10 draw-time compilation — use it as the reference when something looks like a rendering bug. Both async modes can cause brief visual glitches and upstream cautions they could trip client-side anti-cheat."
+example = "PROTON_DXVK_SAREK=1 DXVK_SHADER_COMPILATION_METHOD=async %command%"
+url = "https://github.com/pythonlover02/DXVK-Sarek#shader-compilation"
+
+[[env]]
+key = "DXVK_ALL_CORES"
+tier = "advanced"
+category = "DXVK"
+default_value = "1"
+values = ["1"]
+help = "dxvk-sarek: use every CPU core for background shader compilation."
+details = "dxvk-sarek only (PROTON_DXVK_SAREK). By default Sarek uses about half the CPU cores for background shader compilation, leaving the rest to the game. On CPUs with weak per-core performance that need all cores for throughput, setting this to 1 can shorten loading and compile backlogs, at the cost of brief unresponsiveness while shaders build."
+example = "PROTON_DXVK_SAREK=1 DXVK_ALL_CORES=1 %command%"
+url = "https://github.com/pythonlover02/DXVK-Sarek#shader-compilation"
 
 [[env]]
 key = "PROTON_LOCAL_SHADER_CACHE"
@@ -978,6 +1023,28 @@ help = "Override the reported D3D12 shader model."
 details = "Overrides the maximum reported Direct3D 12 shader model version, capping the shader language features available to the game. Supported values are 5_1, 6_0, 6_1, 6_2, 6_3, 6_4, 6_5, 6_6, 6_7, 6_8. Use this to force games to use simpler shaders if they fail with advanced shader features or to work around driver issues with newer shader models."
 example = "VKD3D_SHADER_MODEL=6_5 %command%"
 url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/libs/vkd3d/device.c"
+
+[[env]]
+key = "VKD3D_SHADER_CACHE_PATH"
+tier = "advanced"
+category = "VKD3D (D3D12)"
+default_value = ""
+values = ["0"]
+help = "Directory for vkd3d-proton's pipeline cache, or 0 to disable it."
+details = "Overrides where vkd3d-proton writes its internal pipeline cache (vkd3d-proton.cache) for D3D12 games — the VKD3D counterpart to DXVK_SHADER_CACHE_PATH. Point it at a faster or larger disk, or share one cache across prefixes. Setting 0 disables the internal cache entirely, leaving caching to the driver and Steam's shader pre-caching; useful only for debugging stale-cache problems."
+example = "VKD3D_SHADER_CACHE_PATH=$HOME/.cache/vkd3d %command%"
+url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md"
+
+[[env]]
+key = "VKD3D_LOW_LATENCY_OFFSET"
+tier = "advanced"
+category = "VKD3D (D3D12)"
+default_value = "100"
+values = ["100", "150", "200", "300"]
+help = "vkd3d-low-latency: frame-delivery offset in µs (0-500, default 100)."
+details = "Tunes the vkd3d-low-latency fork (PROTON_VKD3D_LOWLATENCY=1). Shifts its frame-delivery prediction further into the future, trading a little FPS for lower input latency. The default 100 balances throughput and pacing; 150-300 is upstream's suggestion for competitive titles. Accepts 0-500 microseconds and has no effect on stock vkd3d-proton."
+example = "PROTON_VKD3D_LOWLATENCY=1 VKD3D_LOW_LATENCY_OFFSET=200 %command%"
+url = "https://github.com/netborg-afps/vkd3d-low-latency"
 
 [[env]]
 key = "VKD3D_DEBUG"
