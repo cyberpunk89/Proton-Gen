@@ -19,6 +19,7 @@ import {
 } from "phosphor-svelte";
 
 import { app } from "./state.svelte";
+import { lookups } from "./lookups.svelte";
 import { toast } from "./toast.svelte";
 import { copyText } from "./util";
 
@@ -231,7 +232,7 @@ export const protondbAction: AppCommand = {
   available: () => app.steamAppId != null,
   run() {
     const id = app.steamAppId;
-    if (id != null) app.requestTier(id);
+    if (id != null) lookups.requestTier(id);
   },
 };
 

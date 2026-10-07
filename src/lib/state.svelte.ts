@@ -3,6 +3,8 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { ipc } from "./ipc";
 import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
+import { art } from "./art.svelte";
+import { lookups } from "./lookups.svelte";
 import type { Entry, Snapshot } from "./history.svelte";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import { formatExtraEnv, mergeIntoExtraEnv, setInExtraEnv, splitExtraEnv } from "./shell";
@@ -12,7 +14,6 @@ import { LSFG_BUILDER_KEYS } from "./lsfg";
 import { encodePreset } from "./presetCode";
 import { buildOptiScaler, parseOptiScaler } from "./optiscaler";
 import type {
-  AntiCheat,
   Catalog,
   Config,
   DiffStatus,
@@ -35,7 +36,6 @@ import type {
   StaleInfo,
   Store,
   SyncState,
-  Tier,
   Token,
   TroubleshootResult,
   UiMode,
@@ -86,12 +86,6 @@ const EMPTY_STORE: Store = {
  *  string that may predate any of them. */
 export type LibrarySort = "recent" | "alpha" | "tuned";
 export const DEFAULT_LIBRARY_SORT: LibrarySort = "recent";
-
-export type ArtKind = "portrait" | "hero" | "header";
-
-/** Simultaneous art lookups. Bounded because the grid now requests art for
- *  every tile that scrolls near the viewport instead of a fixed first-N. */
-const ART_CONCURRENCY = 12;
 
 /** Single source of truth for the whole UI, backed by Svelte 5 runes. */
 class AppStore {
@@ -218,20 +212,6 @@ class AppStore {
   /** True while the "apply your default profile?" prompt is up for a
    *  freshly-opened game that had no saved config. Ephemeral, never persisted. */
   pendingDefaultPrompt = $state(false);
-
-  // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
-  //   undefined = not requested/loading · null = none found · string = asset: URL
-  artCache = $state<Record<string, string | null>>({});
-  private artRequested = new Set<string>();
-  /** Art fetches currently awaiting IPC, and the backlog behind them. Each call
-   *  is a Tauri round-trip (plus a disk or CDN read), so scrolling fast through
-   *  a few thousand tiles would otherwise fan out into thousands of concurrent
-   *  requests. */
-  private artInFlight = 0;
-  private artQueue: Array<{ key: string; run: () => void }> = [];
-  /** Bumped when `retryFailedArt` forgets requests, so visible tiles — whose
-   *  `inView` has already fired — re-ask for their art. */
-  artEpoch = $state(0);
 
   /** Last build_command failure, rendered inline in the command bar. */
   buildError = $state<string | null>(null);
@@ -455,7 +435,7 @@ class AppStore {
     }
     // A refresh is the user asking for a fresh look, so give art that came back
     // empty another chance rather than leaving those tiles blank all session.
-    this.retryFailedArt();
+    art.retryFailed();
     // launchOptions just changed, so every badge is potentially stale.
     this.refreshLaunchStatuses();
     return "ok";
@@ -1345,9 +1325,9 @@ class AppStore {
     // nothing about. `requestTier` de-dupes per session, so re-opening a game
     // costs no request.
     if (this.store.protondb_auto && game.source === "steam") {
-      this.requestTier(game.app_id);
+      lookups.requestTier(game.app_id);
     }
-    this.requestAnticheat(game.app_id);
+    lookups.requestAnticheat(game.app_id, this.store.anticheat_check);
 
     const remembered = this.store.game_memory[String(game.app_id)];
     if (remembered) {
@@ -2226,132 +2206,12 @@ class AppStore {
     this.persistStore();
   }
 
-  // -------------------------------- game art --------------------------------
-
-  private artKey(appId: number, source: string, kind: ArtKind): string {
-    return `${source}:${appId}:${kind}`;
-  }
-
-  /** Cached art (asset-protocol URL), `null` if none found, `undefined` if not loaded. */
-  artFor(appId: number, source: string, kind: ArtKind): string | null | undefined {
-    return this.artCache[this.artKey(appId, source, kind)];
-  }
-
-  /**
-   * Lazily fetch a game's art once; result lands in `artCache` reactively.
-   * A Heroic sideload's `art_url` hint is looked up by the backend itself.
-   */
-  requestArt(appId: number, source: string, kind: ArtKind) {
-    const key = this.artKey(appId, source, kind);
-    if (this.artRequested.has(key)) return;
-    this.artRequested.add(key);
-
-    // "Local + online fallback" per the user's choice: allow the CDN backstop.
-    const run = () => {
-      this.artInFlight++;
-      ipc
-        .gameArt(appId, source, kind, true)
-        .then((url) => (this.artCache[key] = url))
-        .catch(() => (this.artCache[key] = null))
-        .finally(() => {
-          this.artInFlight--;
-          this.artQueue.shift()?.run();
-        });
-    };
-
-    if (this.artInFlight < ART_CONCURRENCY) run();
-    else this.artQueue.push({ key, run });
-  }
-
-  /**
-   * Retry art that previously came back empty.
-   *
-   * `artRequested` is a permanent "don't ask twice" set, which is right for the
-   * steady state but means a lookup that failed once stays blank for the rest of
-   * the session. A library refresh is the natural moment to try again — but only
-   * for the failures: successes stay cached so a refresh doesn't re-fetch every
-   * tile the user can already see.
-   */
-  private retryFailedArt() {
-    for (const [key, value] of Object.entries(this.artCache)) {
-      if (value === null) {
-        delete this.artCache[key];
-        this.artRequested.delete(key);
-      }
-    }
-    // Anything still queued was scheduled against the pre-refresh library.
-    // Forget those too, or `requestArt` would treat them as already asked
-    // for and the tile would stay blank for the rest of the session.
-    for (const { key } of this.artQueue) this.artRequested.delete(key);
-    this.artQueue.length = 0;
-    this.artEpoch++;
-  }
-
-  // ------------------------------- protondb ---------------------------------
-
-  /**
-   * Session cache for ProtonDB tiers, mirroring the art cache above: switching
-   * between two games used to refetch both every time, which is needless load on
-   * an unofficial third-party API of unknown rate limits.
-   *
-   * Session-only on purpose. A persisted TTL cache needs a `Store` field, a
-   * clock, an eviction policy and `Tier: Deserialize` — worth measuring for
-   * first, and it would have to respect the wholesale-overwrite hazard in #43.
-   */
-  tierCache = $state<Record<string, Tier | null>>({});
-  private tierRequested = new Set<number>();
-  /** Appids with a fetch in flight, so the chip can show a spinner. */
-  tierLoading = $state<Record<string, boolean>>({});
-
-  /** Cached tier, `null` if the lookup failed, `undefined` if never requested. */
-  tierFor(appId: number): Tier | null | undefined {
-    return this.tierCache[String(appId)];
-  }
-
-  /** Fetch a tier at most once per session. Safe to call repeatedly. */
-  requestTier(appId: number) {
-    if (this.tierRequested.has(appId)) return;
-    this.tierRequested.add(appId);
-    this.tierLoading[String(appId)] = true;
-    ipc
-      .protondbFetch(appId)
-      .then((t) => (this.tierCache[String(appId)] = t))
-      .catch((e) => {
-        console.error("protondbFetch failed", appId, e);
-        this.tierCache[String(appId)] = null;
-      })
-      .finally(() => (this.tierLoading[String(appId)] = false));
-  }
-
-  /** Drop a failed lookup so the chip's Retry can try again. */
-  retryTier(appId: number) {
-    this.tierRequested.delete(appId);
-    delete this.tierCache[String(appId)];
-    this.requestTier(appId);
-  }
-
-  /** Session cache of AreWeAntiCheatYet lookups: appid -> entry, null when it
-   *  has none, absent while unknown. The list itself is cached by the backend. */
-  anticheatCache = $state<Record<string, AntiCheat | null>>({});
-  private anticheatRequested = new Set<number>();
-
-  requestAnticheat(appId: number) {
-    if (!this.store.anticheat_check || this.anticheatRequested.has(appId)) return;
-    this.anticheatRequested.add(appId);
-    ipc
-      .anticheatLookup(appId)
-      .then((a) => (this.anticheatCache[String(appId)] = a))
-      .catch((e) => {
-        console.error("anticheatLookup failed", appId, e);
-        // Forget it so the next visit retries — the list may be reachable then.
-        this.anticheatRequested.delete(appId);
-      });
-  }
+  // ------------------------------ anti-cheat --------------------------------
 
   setAnticheatCheck(v: boolean) {
     this.store.anticheat_check = v;
     this.persistStore();
-    if (v && this.selectedAppId != null) this.requestAnticheat(this.selectedAppId);
+    if (v && this.selectedAppId != null) lookups.requestAnticheat(this.selectedAppId, true);
   }
 
   // ------------------------- OptiScaler upgrade -------------------------

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { art as artStore } from "$lib/art.svelte";
   import { formatLastPlayed, formatPlaytime } from "$lib/util";
   import { GameController, Terminal, ArrowLeft } from "phosphor-svelte";
 
@@ -13,12 +14,12 @@
   );
 
   $effect(() => {
-    void app.artEpoch; // re-ask after a refresh forgets failed art
-    if (game) app.requestArt(game.app_id, game.source, "portrait");
+    void artStore.epoch; // re-ask after a refresh forgets failed art
+    if (game) artStore.request(game.app_id, game.source, "portrait");
   });
 
   let art = $derived(
-    game ? app.artFor(game.app_id, game.source, "portrait") : undefined,
+    game ? artStore.for(game.app_id, game.source, "portrait") : undefined,
   );
 
   let stats = $derived.by(() => {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { lookups } from "$lib/lookups.svelte";
   import { openUrl } from "$lib/util";
   import { ShieldCheck, ShieldWarning, ArrowSquareOut } from "phosphor-svelte";
 
@@ -8,7 +9,7 @@
    * "Denied"/"Broken" is the one thing worth knowing before any tuning: no
    * launch option makes a kernel anti-cheat that blocks Linux run.
    */
-  let ac = $derived(app.selectedAppId == null ? undefined : app.anticheatCache[String(app.selectedAppId)]);
+  let ac = $derived(app.selectedAppId == null ? undefined : lookups.anticheatCache[String(app.selectedAppId)]);
   let bad = $derived(ac ? ac.status === "Denied" || ac.status === "Broken" : false);
   let gplasync = $derived(app.env["PROTON_DXVK_GPLASYNC"]?.enabled ?? false);
 

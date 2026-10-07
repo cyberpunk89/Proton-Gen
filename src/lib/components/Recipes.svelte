@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { lookups } from "$lib/lookups.svelte";
   import { irrelevance, matchesTier } from "$lib/util";
   import {
     Sparkle,
@@ -46,9 +47,9 @@
   let showAll = $derived(app.store.show_irrelevant);
 
   /** The selected game's fetched ProtonDB tier, if any — undefined while
-   *  unfetched, null on a failed fetch, matching `app.tierFor`. */
+   *  unfetched, null on a failed fetch, matching `lookups.tierFor`. */
   let currentTier = $derived(
-    app.selectedAppId == null ? undefined : app.tierFor(app.selectedAppId),
+    app.selectedAppId == null ? undefined : lookups.tierFor(app.selectedAppId),
   );
 
   /** Recipes explicitly tagged for the selected game's current tier — a

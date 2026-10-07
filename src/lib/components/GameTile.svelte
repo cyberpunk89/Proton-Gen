@@ -1,5 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { art as artStore } from "$lib/art.svelte";
+  import { lookups } from "$lib/lookups.svelte";
   import { inView, clickOutside, autofocus } from "$lib/actions";
   import { keys } from "$lib/keys.svelte";
   import { tierColor, formatPlaytime, formatLastPlayed, sourceBadge, sourceColor, sourceLabel } from "$lib/util";
@@ -58,8 +60,8 @@
   let seen = $state(false);
   $effect(() => {
     if (!seen) return;
-    void app.artEpoch;
-    entries.forEach((e) => app.requestArt(e.app_id, e.source, "portrait"));
+    void artStore.epoch;
+    entries.forEach((e) => artStore.request(e.app_id, e.source, "portrait"));
   });
   let multi = $derived(entries.length > 1);
   /** Every launch path's files are gone (or the launcher says so): the tile
@@ -99,7 +101,7 @@
   let artLoaded = $state(false);
   let art = $derived.by(() => {
     for (const e of entries) {
-      const a = app.artFor(e.app_id, e.source, "portrait");
+      const a = artStore.for(e.app_id, e.source, "portrait");
       if (a) return a;
     }
     return undefined;
@@ -113,7 +115,7 @@
   let favorite = $derived(app.isFavorite(game.app_id));
 
   /** Cached only — see `tier` below. */
-  let tier = $derived(app.tierFor(game.app_id));
+  let tier = $derived(lookups.tierFor(game.app_id));
 
   /** Every source represented in this tile besides Steam's (which gets no
    *  badge of its own, same as a single-source Steam tile today). */

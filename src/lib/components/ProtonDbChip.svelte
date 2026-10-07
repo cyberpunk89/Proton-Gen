@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
+  import { lookups } from "$lib/lookups.svelte";
   import { ipc } from "$lib/ipc";
   import { mergeStyle, openUrl, tierColor, tierForeground, tierRank } from "$lib/util";
   import Popover from "./Popover.svelte";
@@ -14,14 +15,14 @@
 
   /**
    * Purely presentational now: the fetch, the de-duping and the result all live
-   * in the store's session cache (`app.requestTier`). Previously this component
+   * in the store's session cache (`lookups.requestTier`). Previously this component
    * held the tier in local state and refetched on every game change, so bouncing
    * between two games hit protondb.com four times instead of twice.
    */
 
   let appId = $derived(app.selectedAppId);
-  let tier = $derived(appId == null ? undefined : app.tierFor(appId));
-  let loading = $derived(appId != null && app.tierLoading[String(appId)] === true);
+  let tier = $derived(appId == null ? undefined : lookups.tierFor(appId));
+  let loading = $derived(appId != null && lookups.tierLoading[String(appId)] === true);
 
   /**
    * `trendingTier` and `bestReportedTier` were parsed by the backend and then
@@ -136,7 +137,7 @@
 {:else if tier === null}
   <!-- Cached failure: offer a retry rather than silently hiding. -->
   <button
-    onclick={() => app.retryTier(appId)}
+    onclick={() => lookups.retryTier(appId)}
     class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red"
     title="Couldn't reach ProtonDB"
   >
@@ -144,7 +145,7 @@
   </button>
 {:else}
   <button
-    onclick={() => app.requestTier(appId)}
+    onclick={() => lookups.requestTier(appId)}
     class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/60 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
   >
     <Trophy size={13} /> ProtonDB
