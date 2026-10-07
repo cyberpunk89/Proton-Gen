@@ -3,7 +3,7 @@
 //! catalog / recipes / runtimes / games / hardware are sent once via `bootstrap`.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
 use steamlocate::SteamDir;
@@ -33,6 +33,22 @@ use crate::steamcfg;
 use crate::store::{self, Config, Store};
 use crate::update::{self, UpdateInfo};
 use crate::vkbasalt_export;
+
+/// `lock()` that shrugs off poisoning. Everything behind these mutexes is
+/// plain data replaced wholesale (store snapshot, discovery cache, a unit
+/// for save ordering), so a panic mid-hold can't leave it half-updated in a
+/// way that matters — but with `.unwrap()` that one panic would make every
+/// later command touching the mutex panic too, `save_store` included, for
+/// the rest of the session.
+trait Locked<T> {
+    fn locked(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> Locked<T> for Mutex<T> {
+    fn locked(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
 
 /// A runtime, flattened for the frontend (path + kind as strings).
 #[derive(Clone, Serialize)]
@@ -173,7 +189,7 @@ impl AppState {
     /// Built per call rather than cached: `save_store` can replace the whole
     /// store mid-session, and a cached copy would stay stale until restart.
     fn bins(&self) -> builder::Bins {
-        builder::Bins::with_overrides(&self.store.lock().unwrap().paths.bins)
+        builder::Bins::with_overrides(&self.store.locked().paths.bins)
     }
 
     /// Find a discovered game by appid — the OptiScaler-upgrade commands look
@@ -186,13 +202,13 @@ impl AppState {
     /// and these callers `.await` afterwards, which a `MutexGuard` must not
     /// outlive.
     fn game(&self, app_id: u32) -> Option<GameDto> {
-        let guard = self.discovery.lock().unwrap();
+        let guard = self.discovery.locked();
         guard.as_ref()?.games.iter().find(|g| g.app_id == app_id).cloned()
     }
 
     /// The Steam root from the last discovery pass, if any has run.
     fn steam_root(&self) -> Option<String> {
-        self.discovery.lock().unwrap().as_ref()?.steam_root.clone()
+        self.discovery.locked().as_ref()?.steam_root.clone()
     }
 
     /// Assemble the frontend payload from a discovery snapshot plus the static
@@ -345,7 +361,7 @@ impl AppState {
 
     /// Open on this game once the UI boots (see `Bootstrap::initial_game_appid`).
     pub fn with_initial_game(self, appid: Option<u32>) -> Self {
-        *self.initial_game.lock().unwrap() = appid;
+        *self.initial_game.locked() = appid;
         self
     }
 }
@@ -465,8 +481,8 @@ fn compute_stale(catalog: &Catalog, runtimes: &[runtime::Runtime]) -> Option<Sta
 /// `init()` is cheap. `rescan` is the way to force a fresh look.
 #[tauri::command]
 pub async fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap, String> {
-    let store = { state.store.lock().unwrap().clone() };
-    let cached = { state.discovery.lock().unwrap().clone() };
+    let store = { state.store.locked().clone() };
+    let cached = { state.discovery.locked().clone() };
 
     let d = match cached {
         Some(d) => d,
@@ -476,13 +492,13 @@ pub async fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap, String> 
             let d = tauri::async_runtime::spawn_blocking(move || scan_discovery(&catalog, &paths))
                 .await
                 .map_err(|e| e.to_string())?;
-            *state.discovery.lock().unwrap() = Some(d.clone());
+            *state.discovery.locked() = Some(d.clone());
             d
         }
     };
 
     let mut b = state.bootstrap_from(&d, store);
-    b.initial_game_appid = state.initial_game.lock().unwrap().take();
+    b.initial_game_appid = state.initial_game.locked().take();
     Ok(b)
 }
 
@@ -499,7 +515,7 @@ pub async fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap, String> 
 /// point them at a library the user just corrected.
 #[tauri::command]
 pub async fn rescan(state: State<'_, AppState>) -> Result<Bootstrap, String> {
-    let store = { state.store.lock().unwrap().clone() };
+    let store = { state.store.locked().clone() };
     let catalog = Arc::clone(&state.catalog);
     let paths = store.paths.clone();
 
@@ -507,7 +523,7 @@ pub async fn rescan(state: State<'_, AppState>) -> Result<Bootstrap, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    *state.discovery.lock().unwrap() = Some(d.clone());
+    *state.discovery.locked() = Some(d.clone());
     Ok(state.bootstrap_from(&d, store))
 }
 
@@ -540,7 +556,7 @@ pub async fn inject_heroic(
     config: Config,
 ) -> Result<heroic::InjectResult, String> {
     // Only a game discovery actually found may be written to.
-    let known = state.discovery.lock().unwrap().as_ref().is_some_and(|d| {
+    let known = state.discovery.locked().as_ref().is_some_and(|d| {
         d.games.iter().any(|g| g.heroic_id.as_deref() == Some(app_name.as_str()))
     });
     if !known {
@@ -639,7 +655,7 @@ pub struct SteamUserConfig {
 pub async fn steam_user_config(
     state: State<'_, AppState>,
 ) -> Result<Option<SteamUserConfig>, String> {
-    let paths = state.store.lock().unwrap().paths.clone();
+    let paths = state.store.locked().paths.clone();
     let fresh = tauri::async_runtime::spawn_blocking(move || {
         let dir = steam::locate_native(&paths.steam_roots, &mut Vec::new()).ok()?;
         // Warnings belong to the full scan's banner; this re-read is silent.
@@ -651,7 +667,7 @@ pub async fn steam_user_config(
     })
     .await
     .map_err(|e| e.to_string())?;
-    if let (Some(cfg), Some(d)) = (&fresh, state.discovery.lock().unwrap().as_mut()) {
+    if let (Some(cfg), Some(d)) = (&fresh, state.discovery.locked().as_mut()) {
         d.launch_options = cfg.launch_options.clone();
         d.compat_tools = cfg.compat_tools.clone();
     }
@@ -770,7 +786,7 @@ pub async fn lint(
     // and a user who never touched the Settings selector would see RDNA4 rows
     // while the RDNA4 lint notices stayed silent.
     let gpu_gen = lint::effective_gpu_gen(
-        &state.store.lock().unwrap().gpu_gen,
+        &state.store.locked().gpu_gen,
         state.hardware.gpu_gen_detected.as_deref(),
         state.hardware.amd,
     );
@@ -920,6 +936,20 @@ mod log_tests {
     use super::*;
 
     #[test]
+    fn a_poisoned_mutex_still_hands_out_its_data() {
+        let m = Arc::new(Mutex::new(7));
+        let m2 = Arc::clone(&m);
+        let _ = std::thread::spawn(move || {
+            let _g = m2.lock().unwrap();
+            panic!("poison it");
+        })
+        .join();
+        assert!(m.is_poisoned());
+        *m.locked() += 1;
+        assert_eq!(*m.locked(), 8);
+    }
+
+    #[test]
     fn error_lines_match_the_common_markers_case_insensitively() {
         assert!(is_error_line("wine: FIXME:module stub"));
         assert!(is_error_line("err:  vulkan device lost"));
@@ -950,7 +980,7 @@ pub async fn llm_analyze(
     req: LlmRequest,
 ) -> Result<LlmSuggestion, String> {
     let (endpoint, model) = {
-        let s = state.store.lock().unwrap();
+        let s = state.store.locked();
         (s.llm_endpoint.clone(), s.llm_model.clone())
     };
     let hardware = state.hardware.llm_context();
@@ -974,7 +1004,7 @@ pub async fn llm_troubleshoot(
     req: TroubleshootRequest,
 ) -> Result<TroubleshootResult, String> {
     let (endpoint, model) = {
-        let s = state.store.lock().unwrap();
+        let s = state.store.locked();
         (s.llm_endpoint.clone(), s.llm_model.clone())
     };
     let hardware = state.hardware.llm_context();
@@ -1007,7 +1037,7 @@ pub async fn llm_troubleshoot(
 /// thread), for the Settings model picker / connection test.
 #[tauri::command]
 pub async fn llm_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let endpoint = state.store.lock().unwrap().llm_endpoint.clone();
+    let endpoint = state.store.locked().llm_endpoint.clone();
     tauri::async_runtime::spawn_blocking(move || llm::list_models_blocking(&endpoint))
         .await
         .map_err(|e| e.to_string())?
@@ -1022,14 +1052,14 @@ pub async fn llm_models(state: State<'_, AppState>) -> Result<Vec<String>, Strin
 /// thread it was a write of the entire store between keystrokes.
 #[tauri::command]
 pub async fn save_store(state: State<'_, AppState>, store: Store) -> Result<(), String> {
-    *state.store.lock().unwrap() = store;
+    *state.store.locked() = store;
     let current = Arc::clone(&state.store);
     let save_lock = Arc::clone(&state.save_lock);
     tauri::async_runtime::spawn_blocking(move || {
-        let _serial = save_lock.lock().unwrap();
+        let _serial = save_lock.locked();
         // Snapshot under the lock, not before it: a save that lost the race
         // then writes the newest store instead of rolling the file back.
-        let snapshot = current.lock().unwrap().clone();
+        let snapshot = current.locked().clone();
         snapshot.save()
     })
     .await
@@ -1153,8 +1183,7 @@ pub async fn check_runtime_updates(
 ) -> Result<Vec<runtime_updates::RuntimeUpdate>, String> {
     let runtimes: Vec<RuntimeDto> = state
         .discovery
-        .lock()
-        .unwrap()
+        .locked()
         .as_ref()
         .map(|d| d.runtimes.clone())
         .unwrap_or_default();
