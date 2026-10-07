@@ -627,3 +627,11 @@ export function emptyConfig(): Config {
     game_args: "",
   };
 }
+
+/** Mirrors folders::Folder — one of a game's folders, with its size. */
+export interface GameFolder {
+  kind: "prefix" | "shadercache";
+  path: string;
+  exists: boolean;
+  bytes: number | null;
+}

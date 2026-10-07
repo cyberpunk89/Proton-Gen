@@ -34,6 +34,7 @@ pub mod cli;
 mod compose;
 mod diff;
 mod explain;
+mod folders;
 mod fsutil;
 mod games;
 mod hardware;
@@ -114,6 +115,8 @@ pub fn run_with(initial_game: Option<u32>) {
             ipc::build_command,
             ipc::inject_heroic,
             ipc::apply_to_nexus,
+            ipc::game_folders,
+            ipc::open_game_folder,
             ipc::heroic_running,
             ipc::parse_command,
             ipc::explain_command,

@@ -7,11 +7,13 @@
   import ProtonDbChip from "./ProtonDbChip.svelte";
   import SyncPill from "./SyncPill.svelte";
   import LauncherAction from "./LauncherAction.svelte";
+  import GameFolders from "./GameFolders.svelte";
   import { forgetTuningAction } from "$lib/commands";
   import { DownloadSimple, Cpu, CheckCircle, WarningCircle, Trash } from "phosphor-svelte";
 
   let isSteam = $derived(app.selectedGame?.source === "steam");
   let isHeroic = $derived(app.selectedGame?.source === "heroic");
+  let isNexus = $derived(app.selectedGame?.source === "nexus");
   let mismatch = $derived(app.runtimeMismatch);
 
   let currentOpts = $derived(
@@ -141,6 +143,24 @@
       <LauncherAction />
     </div>
   {/if}
+
+  {#if isNexus}
+    <!-- Nexus launches this repack and keeps its Steam shortcut and Heroic
+         entry in step, so tuning goes to Nexus, which re-applies it to all
+         three. -->
+    <div class="space-y-2 rounded-xl border border-border/60 bg-surface-2/40 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Nexus</p>
+      <p class="text-xs text-subtext">
+        Nexus launches this game{app.selectedGame?.pinned_proton
+          ? ` with ${app.selectedGame.pinned_proton}`
+          : ""}. Send it this tuning and it updates its launch script, Steam shortcut and
+        Heroic entry together.
+      </p>
+      <LauncherAction />
+    </div>
+  {/if}
+
+  <GameFolders />
 
   <!--
     These two are `value` + `oninput` rather than `bind:value`, so the handler

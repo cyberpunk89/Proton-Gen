@@ -563,6 +563,47 @@ pub fn build_command(
     compose::assemble(&state.catalog, &config, proton_path.as_deref(), &bins)
 }
 
+/// A game's Wine prefix and shader cache, with their sizes (see
+/// [`crate::folders`]). Walks the folders, so it's off the UI thread and only
+/// called for the selected game.
+#[tauri::command]
+pub async fn game_folders(
+    state: State<'_, AppState>,
+    app_id: u32,
+) -> Result<Vec<crate::folders::Folder>, String> {
+    let Some(game) = state.game(app_id) else {
+        return Ok(Vec::new());
+    };
+    let root = state.steam_root().map(std::path::PathBuf::from);
+    tauri::async_runtime::spawn_blocking(move || crate::folders::measure(&game, root.as_deref()))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Open one of a game's folders (`kind`: `prefix` | `shadercache`) in the
+/// file manager. The path is recomputed here from discovery — the webview
+/// names a kind, never a path — which is why this goes through Rust rather
+/// than a frontend `openPath` with a filesystem-wide capability scope.
+#[tauri::command]
+pub fn open_game_folder(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    app_id: u32,
+    kind: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let game = state.game(app_id).ok_or("unknown game")?;
+    let root = state.steam_root().map(std::path::PathBuf::from);
+    let (_, path) = crate::folders::locate(&game, root.as_deref())
+        .into_iter()
+        .find(|(k, _)| *k == kind)
+        .ok_or_else(|| format!("no {kind} folder for this game"))?;
+    if !path.is_dir() {
+        return Err(format!("{} doesn't exist yet", path.display()));
+    }
+    app.opener().open_path(path.display().to_string(), None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Hand the current tuning to Nexus for one of its games: runs
 /// `nexus-cli --set-launch <slug> <code>`, where `code` is the config as a
 /// `protongen:v1:` share code (the frontend's `encodePreset`, which already

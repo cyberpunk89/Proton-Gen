@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Bootstrap,
   Config,
+  GameFolder,
   DiffStatus,
   HeroicInjectResult,
   LaunchDiff,
@@ -67,6 +68,19 @@ export const ipc = {
     inTauri
       ? invoke<HeroicInjectResult>("inject_heroic", { appName, config })
       : Promise.resolve(mockInjectHeroic(appName, config)),
+
+  /** The selected game's Wine prefix and shader cache, measured. */
+  gameFolders: (appId: number) =>
+    inTauri
+      ? invoke<GameFolder[]>("game_folders", { appId })
+      : Promise.resolve<GameFolder[]>([
+          { kind: "prefix", path: `~/.local/share/Steam/steamapps/compatdata/${appId}/pfx`, exists: true, bytes: 1_342_177_280 },
+          { kind: "shadercache", path: `~/.local/share/Steam/steamapps/shadercache/${appId}`, exists: true, bytes: 356_515_840 },
+        ]),
+
+  /** Open one of those in the file manager; the backend recomputes the path. */
+  openGameFolder: (appId: number, kind: GameFolder["kind"]) =>
+    inTauri ? invoke<void>("open_game_folder", { appId, kind }) : Promise.resolve(),
 
   /** Nexus's report on success; rejects with its error otherwise. */
   applyToNexus: (appId: number, code: string) =>
