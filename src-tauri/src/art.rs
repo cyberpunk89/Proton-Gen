@@ -5,10 +5,11 @@
 //! Read-only; downloaded art is cached under `$XDG_CACHE_HOME/protongen/art`
 //! so repeat lookups stay offline.
 //!
-//! Returns a `data:` URL (base64) so the frontend can drop it straight into an
-//! `<img src>` without any asset-protocol/capability configuration.
+//! Returns the image's *path*; `ipc::game_art` adds exactly that file to the
+//! asset-protocol scope and the frontend loads it with `convertFileSrc`. Art
+//! used to travel as base64 `data:` URLs through JSON IPC — a third larger,
+//! and held as strings in the webview for the whole session.
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// The `source` values `fetch` accepts — `GameDto::source`'s vocabulary.
@@ -80,16 +81,55 @@ fn cdn_url(app_id: u32, kind: &str) -> String {
     format!("https://steamcdn-a.akamaihd.net/steam/apps/{app_id}/{file}")
 }
 
-fn cache_path(app_id: u32, source: &str, kind: &str) -> Option<PathBuf> {
+/// The cache file's path *without* its extension; the extension comes from
+/// what the downloaded bytes are (see [`image_ext`]), so the asset protocol
+/// can serve the right content type.
+fn cache_stem(app_id: u32, source: &str, kind: &str) -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
-    Some(base.join(format!("protongen/art/{source}_{app_id}_{kind}.img")))
+    Some(base.join(format!("protongen/art/{source}_{app_id}_{kind}")))
+}
+
+/// What image format `bytes` are, by magic number; `None` for anything that
+/// isn't one (an HTML error page served with a 200, say).
+fn image_ext(bytes: &[u8]) -> Option<&'static str> {
+    match bytes {
+        [0xFF, 0xD8, 0xFF, ..] => Some("jpg"),
+        [0x89, b'P', b'N', b'G', ..] => Some("png"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("webp"),
+        [b'G', b'I', b'F', b'8', ..] => Some("gif"),
+        [0, 0, 1, 0, ..] => Some("ico"),
+        _ => None,
+    }
+}
+
+/// A previously downloaded image for `stem`, if any. A pre-asset-protocol
+/// `.img` file is renamed to its real extension on the way.
+fn cached_file(stem: &Path) -> Option<PathBuf> {
+    for ext in ["jpg", "png", "webp", "gif", "ico"] {
+        let p = stem.with_extension(ext);
+        if usable(&p) {
+            return Some(p);
+        }
+    }
+    let legacy = stem.with_extension("img");
+    if usable(&legacy) {
+        let head = std::fs::read(&legacy).ok()?;
+        let target = stem.with_extension(image_ext(&head)?);
+        return std::fs::rename(&legacy, &target).ok().map(|_| target);
+    }
+    None
+}
+
+/// A non-empty regular file no bigger than [`MAX_ART_BYTES`].
+fn usable(p: &Path) -> bool {
+    std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0 && m.len() <= MAX_ART_BYTES)
 }
 
 /// Sidecar recording when the remote source last said this art doesn't exist.
-fn miss_marker(cache: &Path) -> PathBuf {
-    cache.with_extension("miss")
+fn miss_marker(stem: &Path) -> PathBuf {
+    stem.with_extension("miss")
 }
 
 /// Whether `marker` holds a timestamp newer than `MISS_TTL_SECS` before `now`.
@@ -102,49 +142,22 @@ fn recent_miss(marker: &Path, now: u64) -> bool {
         .is_some_and(|ts| now.saturating_sub(ts) < MISS_TTL_SECS)
 }
 
-fn mime_for(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("ico") => "image/x-icon",
-        Some("webp") => "image/webp",
-        _ => "image/jpeg",
-    }
+/// A Heroic `art_cover`/`art_square` hint that is a local file. Heroic stores
+/// these as `file://` URIs; a bare path is accepted too since nothing
+/// guarantees the scheme survived whatever wrote it.
+fn local_hint(hint: &str) -> Option<PathBuf> {
+    let p = PathBuf::from(hint.strip_prefix("file://").unwrap_or(hint));
+    usable(&p).then_some(p)
 }
 
-fn to_data_url(bytes: &[u8], mime: &str) -> String {
-    format!("data:{mime};base64,{}", base64_encode(bytes))
-}
-
-/// A Heroic `art_cover`/`art_square` hint that is a local file, read straight
-/// off disk. Heroic stores these as `file://` URIs; a bare path is accepted
-/// too since nothing guarantees the scheme survived whatever wrote it.
-fn read_local_hint(hint: &str) -> Option<Vec<u8>> {
-    let path = hint.strip_prefix("file://").unwrap_or(hint);
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take(MAX_ART_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    if bytes.is_empty() || bytes.len() as u64 > MAX_ART_BYTES {
-        return None;
-    }
-    Some(bytes)
-}
-
-/// Resolve a game's art to a `data:` URL: local Steam cache → previously
-/// downloaded cache → (if `online`) Steam CDN / Heroic's own art hint. `None`
-/// when nothing is found.
+/// Resolve a game's art to an image file: local Steam cache → previously
+/// downloaded cache → (if `online`) Steam CDN / Heroic's own art hint,
+/// downloaded into the cache. `None` when nothing is found.
 ///
 /// `hint` is a Heroic sideload's `art_cover`/`art_square` (a `file://` path or
-/// a remote URL, e.g. SteamGridDB) — the only lead on its art, since a
-/// sideloaded game has no Steam appid a cache lookup could key off. Ignored
-/// for every other source.
+/// a remote URL, e.g. SteamGridDB), or a Nexus game's artwork folder — the
+/// only lead on their art, since neither has a Steam appid a cache lookup
+/// could key off. Ignored for every other source.
 pub fn fetch(
     steam_root: Option<String>,
     app_id: u32,
@@ -152,120 +165,78 @@ pub fn fetch(
     kind: &str,
     online: bool,
     hint: Option<String>,
-) -> Option<String> {
+) -> Option<PathBuf> {
     let hint = hint.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let local = |src: &str| {
+        steam_root
+            .as_deref()
+            .map(Path::new)
+            .into_iter()
+            .flat_map(|root| local_candidates(root, app_id, src, kind))
+            .find(|c| usable(c))
+    };
 
-    // 1) Local Steam cache / custom grid art, or a Heroic hint that's already
-    // a local file — no need to wait for the online step below.
-    if source == "nexus" {
+    // 1) Local art — no need to wait for the online step below.
+    match source {
         // Nexus keeps art per game as `<dir>/{cover,hero,wide}.<ext>`; failing
         // that, its Steam shortcut (same appid) may carry custom grid art.
-        if let Some(file) = hint.and_then(|d| crate::nexus::art_file(d, kind)) {
-            if let Some(bytes) = read_local_hint(&file.display().to_string()) {
-                return Some(to_data_url(&bytes, mime_for(&file)));
+        "nexus" => {
+            return hint
+                .and_then(|d| crate::nexus::art_file(d, kind))
+                .filter(|f| usable(f))
+                .or_else(|| local("non-steam"));
+        }
+        "heroic" => {
+            if let Some(f) = hint.filter(|h| !h.starts_with("http://") && !h.starts_with("https://")).and_then(local_hint) {
+                return Some(f);
             }
         }
-        if let Some(root) = steam_root.as_deref().map(Path::new) {
-            for cand in local_candidates(root, app_id, "non-steam", kind) {
-                if let Ok(bytes) = std::fs::read(&cand) {
-                    if !bytes.is_empty() {
-                        return Some(to_data_url(&bytes, mime_for(&cand)));
-                    }
-                }
-            }
-        }
-        return None;
-    }
-    if source == "heroic" {
-        if let Some(h) = hint {
-            if !h.starts_with("http://") && !h.starts_with("https://") {
-                if let Some(bytes) = read_local_hint(h) {
-                    return Some(to_data_url(&bytes, mime_for(Path::new(h))));
-                }
-            }
-        }
-    } else if let Some(root) = steam_root.as_deref().map(Path::new) {
-        for cand in local_candidates(root, app_id, source, kind) {
-            if let Ok(bytes) = std::fs::read(&cand) {
-                if !bytes.is_empty() {
-                    return Some(to_data_url(&bytes, mime_for(&cand)));
-                }
+        _ => {
+            if let Some(f) = local(source) {
+                return Some(f);
             }
         }
     }
 
     // 2) Previously downloaded art (kept across runs).
-    let cached = cache_path(app_id, source, kind);
-    if let Some(cp) = &cached {
-        if let Ok(bytes) = std::fs::read(cp) {
-            if !bytes.is_empty() {
-                return Some(to_data_url(&bytes, "image/jpeg"));
-            }
-        }
+    let stem = cache_stem(app_id, source, kind)?;
+    if let Some(f) = cached_file(&stem) {
+        return Some(f);
     }
 
     // 3) Online fallback: the Steam CDN for Steam apps, or a Heroic hint URL.
-    if online {
-        let remote_url = if source == "steam" {
-            Some(cdn_url(app_id, kind))
-        } else if source == "heroic" {
-            hint.filter(|h| h.starts_with("http://") || h.starts_with("https://"))
-                .map(str::to_string)
-        } else {
-            None
-        };
-        let miss = cached.as_deref().map(miss_marker);
-        let recently_missed = miss.as_deref().is_some_and(|m| recent_miss(m, crate::fsutil::unix_ts()));
-        if let Some(url) = remote_url.filter(|_| !recently_missed) {
-            let req = ehttp::Request::get(url).with_timeout(Some(ART_TIMEOUT));
-            match ehttp::fetch_blocking(&req) {
-                Ok(resp) if resp.ok && !resp.bytes.is_empty() && resp.bytes.len() as u64 <= MAX_ART_BYTES => {
-                    // Atomic: a torn write would pass the non-empty check in
-                    // step 2 and be served as a broken image on every run.
-                    if let Some(cp) = &cached {
-                        let _ = crate::fsutil::write_atomic(cp, &resp.bytes);
-                    }
-                    return Some(to_data_url(&resp.bytes, "image/jpeg"));
-                }
-                // A definite "no such art" (404 and friends): remember it so the
-                // next session doesn't spend a request slot asking again.
-                // Network errors are not remembered — offline is not "missing".
-                Ok(resp) if (400..500).contains(&resp.status) => {
-                    if let Some(m) = &miss {
-                        let _ = crate::fsutil::write_atomic(m, crate::fsutil::unix_ts().to_string().as_bytes());
-                    }
-                }
-                _ => {}
-            }
+    if !online {
+        return None;
+    }
+    let remote_url = match source {
+        "steam" => Some(cdn_url(app_id, kind)),
+        "heroic" => hint.filter(|h| h.starts_with("http://") || h.starts_with("https://")).map(str::to_string),
+        _ => None,
+    }?;
+    let miss = miss_marker(&stem);
+    if recent_miss(&miss, crate::fsutil::unix_ts()) {
+        return None;
+    }
+    let req = ehttp::Request::get(remote_url).with_timeout(Some(ART_TIMEOUT));
+    match ehttp::fetch_blocking(&req) {
+        Ok(resp) if resp.ok && resp.bytes.len() as u64 <= MAX_ART_BYTES => {
+            // Only something that is an image gets cached and served; the
+            // extension it gets is what the asset protocol's content type
+            // comes from. Atomic, so a torn write can't be served forever.
+            let ext = image_ext(&resp.bytes)?;
+            let file = stem.with_extension(ext);
+            crate::fsutil::write_atomic(&file, &resp.bytes).ok()?;
+            Some(file)
         }
+        // A definite "no such art" (404 and friends): remember it so the
+        // next session doesn't spend a request slot asking again.
+        // Network errors are not remembered — offline is not "missing".
+        Ok(resp) if (400..500).contains(&resp.status) => {
+            let _ = crate::fsutil::write_atomic(&miss, crate::fsutil::unix_ts().to_string().as_bytes());
+            None
+        }
+        _ => None,
     }
-
-    None
-}
-
-/// Minimal standard-alphabet base64 (avoids pulling in a crate for a few imgs).
-fn base64_encode(input: &[u8]) -> String {
-    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(A[((n >> 18) & 63) as usize] as char);
-        out.push(A[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            A[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            A[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    out
 }
 
 #[cfg(test)]
@@ -273,14 +244,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base64_matches_known_vectors() {
-        assert_eq!(base64_encode(b""), "");
-        assert_eq!(base64_encode(b"f"), "Zg==");
-        assert_eq!(base64_encode(b"fo"), "Zm8=");
-        assert_eq!(base64_encode(b"foo"), "Zm9v");
-        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
-        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
-        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    fn image_ext_reads_magic_numbers() {
+        assert_eq!(image_ext(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("jpg"));
+        assert_eq!(image_ext(b"\x89PNG\r\n"), Some("png"));
+        assert_eq!(image_ext(b"RIFF\0\0\0\0WEBPVP8 "), Some("webp"));
+        assert_eq!(image_ext(b"<!doctype html>"), None, "an error page is not art");
+        assert_eq!(image_ext(b""), None);
+    }
+
+    #[test]
+    fn a_legacy_img_cache_file_gets_its_real_extension() {
+        let dir = std::env::temp_dir().join(format!("protongen-art-legacy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stem = dir.join("steam_10_hero");
+        std::fs::write(stem.with_extension("img"), b"\x89PNG-ish").unwrap();
+        assert_eq!(cached_file(&stem), Some(stem.with_extension("png")));
+        assert!(!stem.with_extension("img").exists());
+        assert_eq!(cached_file(&stem), Some(stem.with_extension("png")), "found directly next time");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -311,28 +292,27 @@ mod tests {
     }
 
     #[test]
-    fn read_local_hint_accepts_file_scheme_and_bare_path() {
+    fn local_hint_accepts_file_scheme_and_bare_path() {
         let path = temp_file("cover.jpg", b"fake-jpeg-bytes");
         let uri = format!("file://{}", path.display());
-        assert_eq!(read_local_hint(&uri).as_deref(), Some(&b"fake-jpeg-bytes"[..]));
-        assert_eq!(
-            read_local_hint(&path.display().to_string()).as_deref(),
-            Some(&b"fake-jpeg-bytes"[..])
-        );
+        assert_eq!(local_hint(&uri), Some(path.clone()));
+        assert_eq!(local_hint(&path.display().to_string()), Some(path.clone()));
         std::fs::remove_file(&path).ok();
     }
 
     #[test]
-    fn read_local_hint_missing_file_is_none_not_a_panic() {
-        assert_eq!(read_local_hint("file:///no/such/protongen-test-file.jpg"), None);
+    fn local_hint_missing_or_empty_file_is_none() {
+        assert_eq!(local_hint("file:///no/such/protongen-test-file.jpg"), None);
+        let empty = temp_file("empty.png", b"");
+        assert_eq!(local_hint(&empty.display().to_string()), None);
+        std::fs::remove_file(&empty).ok();
     }
 
     #[test]
-    fn heroic_fetch_reads_a_local_file_hint_with_no_network() {
+    fn heroic_fetch_returns_a_local_file_hint_with_no_network() {
         let path = temp_file("hero-cover.png", b"\x89PNG-fake");
         let uri = format!("file://{}", path.display());
-        let url = fetch(None, 0x8000_0001, "heroic", "portrait", false, Some(uri));
-        assert_eq!(url.as_deref(), Some("data:image/png;base64,iVBORy1mYWtl"));
+        assert_eq!(fetch(None, 0x8000_0001, "heroic", "portrait", false, Some(uri)), Some(path.clone()));
         std::fs::remove_file(&path).ok();
     }
 
@@ -358,7 +338,7 @@ mod tests {
 
     #[test]
     fn miss_marker_sits_next_to_the_cached_image() {
-        let cp = Path::new("/c/protongen/art/steam_10_hero.img");
-        assert_eq!(miss_marker(cp), Path::new("/c/protongen/art/steam_10_hero.miss"));
+        let stem = Path::new("/c/protongen/art/steam_10_hero");
+        assert_eq!(miss_marker(stem), Path::new("/c/protongen/art/steam_10_hero.miss"));
     }
 }

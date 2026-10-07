@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   AntiCheat,
   Bootstrap,
@@ -190,7 +190,11 @@ export const ipc = {
     online: boolean,
   ) =>
     inTauri
-      ? invoke<string | null>("game_art", { appId, source, kind, online })
+      ? // The backend returns the image's path, already in the asset scope;
+        // the webview loads it straight off disk rather than as base64.
+        invoke<string | null>("game_art", { appId, source, kind, online }).then((p) =>
+          p ? convertFileSrc(p) : null,
+        )
       : Promise.resolve(null),
 
   // Read one of a game's logs for the diagnostics viewer: `sourceId` picks one

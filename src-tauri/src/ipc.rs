@@ -917,8 +917,12 @@ pub async fn anticheat_lookup(
     .map_err(|e| e.to_string())?
 }
 
-/// Resolve a game's artwork to a `data:` URL (local cache → optional CDN), or
-/// `null` if none is available. Runs off the UI thread.
+/// Resolve a game's artwork to an image file (local cache → optional CDN),
+/// or `null` if none is available. Runs off the UI thread.
+///
+/// The returned path is added — that one file, nothing around it — to the
+/// asset-protocol scope, which starts empty (tauri.conf.json), so the webview
+/// can load it via `convertFileSrc` and nothing else on disk.
 ///
 /// A Heroic sideload has no Steam appid a cache lookup could key off, so its
 /// own `art_cover` / `art_square` (a `file://` path or remote URL) is the only
@@ -927,12 +931,14 @@ pub async fn anticheat_lookup(
 /// caller-supplied one would read any file or fetch any URL.
 #[tauri::command]
 pub async fn game_art(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     app_id: u32,
     source: String,
     kind: String,
     online: bool,
 ) -> Result<Option<String>, String> {
+    use tauri::Manager;
     // Both end up in a cache file name, so only the known values pass.
     if !art::SOURCES.contains(&source.as_str()) || !art::KINDS.contains(&kind.as_str()) {
         return Err(format!("unknown art source/kind: {source}/{kind}"));
@@ -942,11 +948,14 @@ pub async fn game_art(
         .filter(|g| g.source == source)
         .and_then(|g| g.art_url);
     let steam_root = state.steam_root();
-    tauri::async_runtime::spawn_blocking(move || {
+    let path = tauri::async_runtime::spawn_blocking(move || {
         art::fetch(steam_root, app_id, &source, &kind, online, art_hint)
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    let Some(path) = path else { return Ok(None) };
+    app.asset_protocol_scope().allow_file(&path).map_err(|e| e.to_string())?;
+    Ok(Some(path.display().to_string()))
 }
 
 #[cfg(test)]

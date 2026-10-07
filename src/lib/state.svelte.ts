@@ -220,11 +220,11 @@ class AppStore {
   pendingDefaultPrompt = $state(false);
 
   // ---- game art (lazy, cached): key `${source}:${appId}:${kind}` ----
-  //   undefined = not requested/loading · null = none found · string = data URL
+  //   undefined = not requested/loading · null = none found · string = asset: URL
   artCache = $state<Record<string, string | null>>({});
   private artRequested = new Set<string>();
   /** Art fetches currently awaiting IPC, and the backlog behind them. Each call
-   *  is a Tauri round-trip returning a base64 data URL, so scrolling fast through
+   *  is a Tauri round-trip (plus a disk or CDN read), so scrolling fast through
    *  a few thousand tiles would otherwise fan out into thousands of concurrent
    *  requests. */
   private artInFlight = 0;
@@ -2232,7 +2232,7 @@ class AppStore {
     return `${source}:${appId}:${kind}`;
   }
 
-  /** Cached art (data URL), `null` if none found, `undefined` if not loaded. */
+  /** Cached art (asset-protocol URL), `null` if none found, `undefined` if not loaded. */
   artFor(appId: number, source: string, kind: ArtKind): string | null | undefined {
     return this.artCache[this.artKey(appId, source, kind)];
   }
