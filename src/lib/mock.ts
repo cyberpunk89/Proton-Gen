@@ -18,7 +18,7 @@ import type {
   TokenKind,
   VkBasaltExportResult,
 } from "./types";
-import { formatExtraEnv, shQuote, splitExtraEnv } from "./shell";
+import { formatExtraEnv, mergeIntoExtraEnv, shQuote, splitExtraEnv, tokenizeEnv } from "./shell";
 
 /** [key, default, values, help, tier] for the mock's lsfg-vk rows. */
 const LSFG_MOCK: [string, string, string[], string, string][] = [
@@ -809,6 +809,79 @@ export function mockPreviewRecipe(index: number, config: Config): RecipeChange[]
   }
 
   return out;
+}
+
+/** `mockPreviewRecipe`'s changes, applied — so Apply under `pnpm dev` does
+ *  what the preview said, instead of nothing. */
+export function mockApplyRecipe(index: number, config: Config): Config {
+  const out: Config = {
+    ...config,
+    env: config.env.map(([k, v]) => [k, v] as [string, string]),
+    wrappers: config.wrappers.map(([k, v]) => [k, v] as [string, string]),
+  };
+  for (const c of mockPreviewRecipe(index, config)) {
+    if (c.kind === "no_op") continue;
+    if (c.kind === "extra_env") {
+      out.extra_env = mergeIntoExtraEnv(out.extra_env, [[c.key, c.to]]);
+      continue;
+    }
+    const list = c.is_wrapper ? out.wrappers : out.env;
+    const i = list.findIndex(([k]) => k === c.key);
+    if (i >= 0) list[i] = [c.key, c.to];
+    else list.push([c.key, c.to]);
+  }
+  return out;
+}
+
+/**
+ * A small twin of `ipc::parse_command` for `pnpm dev`: env before the target
+ * (catalog keys as rows, the rest as custom env), known wrappers (gamescope's
+ * args up to `--`), the umu lead vars and exe, and game args after the
+ * target. Anything else is reported dropped, like the real one.
+ */
+export function mockParseCommand(input: string): { config: Config; dropped: string[] } {
+  const words = tokenizeEnv(input);
+  const cfg = emptyMockConfig();
+  const dropped: string[] = [];
+  const envKeys = new Set(mockBootstrap.catalog.envs.map((e) => e.key));
+  const wrapKeys = new Set(mockBootstrap.catalog.wrappers.map((w) => w.key));
+  const extra: [string, string][] = [];
+  let i = 0;
+  for (; i < words.length; i++) {
+    const w = words[i];
+    if (w === "%command%") {
+      i++;
+      break;
+    }
+    if (w === "umu-run") {
+      cfg.umu = true;
+      cfg.umu_exe = words[i + 1] ?? "";
+      i += 2;
+      break;
+    }
+    const eq = w.indexOf("=");
+    if (eq > 0 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(w.slice(0, eq))) {
+      const [k, v] = [w.slice(0, eq), w.slice(eq + 1)];
+      if (k === "WINEPREFIX") cfg.umu_wineprefix = v;
+      else if (k === "GAMEID") cfg.umu_gameid = v;
+      else if (k === "PROTONPATH") continue;
+      else if (envKeys.has(k)) cfg.env.push([k, v]);
+      else extra.push([k, v]);
+      continue;
+    }
+    if (w === "gamescope" && wrapKeys.has("gamescope")) {
+      const end = words.indexOf("--", i + 1);
+      const args = words.slice(i + 1, end < 0 ? words.length : end);
+      cfg.wrappers.push(["gamescope", args.join(" ")]);
+      i = end < 0 ? words.length : end;
+      continue;
+    }
+    if (wrapKeys.has(w)) cfg.wrappers.push([w, ""]);
+    else dropped.push(w);
+  }
+  cfg.extra_env = formatExtraEnv(extra);
+  cfg.game_args = words.slice(i).join(" ");
+  return { config: cfg, dropped };
 }
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {

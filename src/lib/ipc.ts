@@ -40,6 +40,8 @@ import {
   mockLaunchStatuses,
   mockLsfgStatus,
   mockNotices,
+  mockApplyRecipe,
+  mockParseCommand,
   mockPreviewRecipe,
   mockProtonLog,
   mockSteam,
@@ -115,7 +117,7 @@ export const ipc = {
   parseCommand: (input: string) =>
     inTauri
       ? invoke<ParsedCommand>("parse_command", { input })
-      : Promise.resolve<ParsedCommand>({ config: emptyParse(), dropped: [] }),
+      : Promise.resolve<ParsedCommand>(mockParseCommand(input)),
 
   // Tokenize the preview for colouring/annotation. Tokens carry only a catalog
   // `key`; look help/details/url up in the already-loaded catalog.
@@ -151,7 +153,9 @@ export const ipc = {
       : Promise.resolve(mockLaunchStatuses(memory, launchOptions)),
 
   applyRecipe: (index: number, config: Config) =>
-    inTauri ? invoke<Config>("apply_recipe", { index, config }) : Promise.resolve(config),
+    inTauri
+      ? invoke<Config>("apply_recipe", { index, config })
+      : Promise.resolve(mockApplyRecipe(index, config)),
 
   // What applying a recipe would change, without changing it.
   previewRecipe: (index: number, config: Config) =>
@@ -359,16 +363,3 @@ export const ipc = {
       : Promise.resolve(mockExportVkbasaltSystem(config)),
 };
 
-function emptyParse(): Config {
-  return {
-    umu: false,
-    runtime: null,
-    env: [],
-    wrappers: [],
-    extra_env: "",
-    umu_exe: "",
-    umu_wineprefix: "",
-    umu_gameid: "",
-    game_args: "",
-  };
-}
