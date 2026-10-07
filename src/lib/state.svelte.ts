@@ -880,6 +880,9 @@ class AppStore {
         if (seq === this.recomputeSeq) this.notices = notices;
       } catch (e) {
         console.error("lint failed", e);
+        // Drop the previous config's notices: their one-click fixes were
+        // computed against a selection that no longer exists.
+        if (seq === this.recomputeSeq) this.notices = [];
       }
 
       // Third await in the existing debounce rather than a timer of its own.
