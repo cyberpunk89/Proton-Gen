@@ -50,12 +50,14 @@ pub const TIER_ADVANCED: &str = "advanced";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum WrapperKind {
     Plain,
     Gamescope,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct WrapperDef {
     pub key: String,
     #[serde(default)]
@@ -92,10 +94,12 @@ pub struct WrapperDef {
     /// Where a plain wrapper sits in the command, outer (low) to inner (high);
     /// see `builder::Wrapper::rank`. Builder-only, so it never crosses IPC.
     #[serde(default, skip_serializing)]
+    #[cfg_attr(test, ts(skip))]
     pub order: Option<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct EnvDef {
     pub key: String,
     #[serde(default = "default_category")]
@@ -145,6 +149,7 @@ fn default_category() -> String {
 /// Catalog metadata (the `[meta]` table) — records the proton-cachyos build the
 /// catalog was last refreshed against, used for the "catalog stale" banner.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Meta {
     #[serde(default)]
     pub proton_cachyos_build: Option<String>,
@@ -153,6 +158,7 @@ pub struct Meta {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Catalog {
     #[serde(default)]
     pub meta: Meta,
@@ -232,6 +238,7 @@ pub fn config_dir() -> Option<PathBuf> {
 /// a TOML override and nonsense for a Settings path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum WarningKind {
     /// A `params.toml` / `recipes.toml` override that failed to parse.
     Parse,
@@ -252,6 +259,7 @@ pub enum WarningKind {
 /// else. Deliberately not silent either — that is what makes a portability
 /// feature feel broken.
 #[derive(Clone, Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct ConfigWarning {
     pub kind: WarningKind,
     /// For a parse warning, the override file (`params.toml`). For a path

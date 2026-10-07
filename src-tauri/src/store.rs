@@ -9,6 +9,7 @@ use crate::params::{self, Catalog, Options};
 
 /// A serializable snapshot of the builder state (everything except the chosen game).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Config {
     #[serde(default)]
     pub umu: bool,
@@ -31,6 +32,7 @@ pub struct Config {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Preset {
     pub name: String,
     #[serde(default)]
@@ -49,6 +51,7 @@ pub struct Preset {
 /// gets a legible `[paths]` table — which matters, because hand-editing it is
 /// exactly what this audience does.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Paths {
     /// Extra Steam roots, tried *before* the built-in candidates: a user only
     /// adds one because the defaults were wrong, so an explicit choice outranks
@@ -81,6 +84,7 @@ impl Paths {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Store {
     #[serde(default)]
     pub theme: String,

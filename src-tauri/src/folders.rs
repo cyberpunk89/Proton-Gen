@@ -14,6 +14,7 @@ use crate::ipc::GameDto;
 
 /// One folder of a game's, with its size once measured.
 #[derive(Clone, Debug, Serialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Folder {
     /// `prefix` or `shadercache`: what `open_game_folder` takes.
     pub kind: &'static str,

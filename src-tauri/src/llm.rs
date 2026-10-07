@@ -29,6 +29,7 @@ const MAX_TAIL_CHARS: usize = 12 * 1024;
 /// Context for one analysis. The catalog allow-list and hardware summary are
 /// added by the IPC command from `AppState`, not sent from the frontend.
 #[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LlmRequest {
     /// The built launch command currently on screen.
     pub command: String,
@@ -44,6 +45,7 @@ pub struct LlmRequest {
 /// frontend can render a one-click "Apply" chip. `kind` is a hint; the frontend
 /// re-checks the key against its env/wrapper maps before applying.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LlmChange {
     pub key: String,
     pub value: String,
@@ -54,6 +56,7 @@ pub struct LlmChange {
 
 /// The result of an analysis: the model's prose plus any catalog-backed changes.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LlmSuggestion {
     /// The model's markdown analysis (also the broader setup suggestions).
     pub text: String,
@@ -175,6 +178,7 @@ fn json_post(url: &str, payload: Vec<u8>) -> ehttp::Request {
 /// A Fix recipe the model may recommend, passed in by the command from the
 /// loaded recipe set. `index` is the IPC index the frontend applies by.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct RecipeRef {
     pub index: u32,
     pub name: String,
@@ -187,6 +191,7 @@ pub struct RecipeRef {
 /// run). The recipe list, hardware summary and catalog allow-list are added by
 /// the command.
 #[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct TroubleshootRequest {
     pub symptom: String,
     pub command: String,
@@ -200,6 +205,7 @@ pub struct TroubleshootRequest {
 /// The result of a troubleshooting request: prose, recommended existing recipes
 /// (by IPC index), and any extra catalog-backed changes no recipe covers.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct TroubleshootResult {
     pub text: String,
     pub recipes: Vec<u32>,

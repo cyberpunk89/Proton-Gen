@@ -20,6 +20,7 @@ use crate::parser;
 /// What a token is, for the frontend's colouring and hover copy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum TokenKind {
     /// A run of whitespace between words. Carried so the tokens reassemble exactly.
     Space,
@@ -45,6 +46,7 @@ pub enum TokenKind {
 /// catalog lookup key (env var name / wrapper name) when there is one — the
 /// frontend resolves help/details/url from the already-loaded catalog.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Token {
     pub text: String,
     pub kind: TokenKind,

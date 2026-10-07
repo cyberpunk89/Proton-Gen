@@ -19,6 +19,7 @@ use serde::Serialize;
 use crate::which;
 
 #[derive(Clone, Debug, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Hardware {
     pub nvidia: bool,
     pub amd: bool,
@@ -53,6 +54,7 @@ pub struct Hardware {
 
 /// One connected display, from `/sys/class/drm/<card>-<connector>/`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Monitor {
     /// The DRM connector, e.g. `DP-2`.
     pub connector: String,

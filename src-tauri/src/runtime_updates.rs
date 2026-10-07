@@ -19,6 +19,7 @@ const USER_AGENT: &str = "protongen-runtime-updates";
 /// The Proton builds this notice knows how to version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum Family {
     GeProton,
     ProtonCachyos,
@@ -88,6 +89,7 @@ pub struct Upstream {
 
 /// A family where upstream is ahead of the newest installed build.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct RuntimeUpdate {
     pub family: Family,
     pub installed: String,

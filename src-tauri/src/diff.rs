@@ -35,6 +35,7 @@ use crate::store::Config;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum DiffStatus {
     /// Steam already has exactly this command.
     InSync,
@@ -49,6 +50,7 @@ pub enum DiffStatus {
 
 /// One key present on both sides with a different value.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Change {
     /// Env var name, wrapper key, or `"game_args"`.
     pub key: String,
@@ -57,6 +59,7 @@ pub struct Change {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LaunchDiff {
     pub status: DiffStatus,
     /// Keys in the built command that Steam does not have.

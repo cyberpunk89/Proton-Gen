@@ -8,6 +8,7 @@
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Tier {
     pub tier: String,
     pub total: u64,

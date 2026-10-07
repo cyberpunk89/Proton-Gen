@@ -346,6 +346,7 @@ pub fn is_running() -> bool {
 
 /// What a successful [`inject`] wrote, for the UI toast.
 #[derive(Clone, Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct InjectResult {
     pub config_path: String,
     pub backup_path: String,

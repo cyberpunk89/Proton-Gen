@@ -14,6 +14,7 @@ use crate::params::{Catalog, Options};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum Severity {
     /// Will actively break something (bans, hard conflicts).
     Error,
@@ -25,6 +26,7 @@ pub enum Severity {
 
 /// A one-click remedy. Interpreted by the frontend against its own option state.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Fix {
     /// Button text, e.g. "Disable PROTON_USE_WINED3D".
     pub label: String,
@@ -35,6 +37,7 @@ pub struct Fix {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Notice {
     /// Stable rule id — safe to use as a list key or a dismissal token.
     pub id: String,

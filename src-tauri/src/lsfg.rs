@@ -35,6 +35,7 @@ const DLL_NAMES: &[&str] = &["lsfg-vk.dll", "Lossless.dll", "LosslessScaling.dll
 
 /// The installed layer, from its Vulkan manifest.
 #[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LsfgLayer {
     /// Manifest path, shown so "installed where?" has an answer.
     pub manifest: String,
@@ -48,6 +49,7 @@ pub struct LsfgLayer {
 /// user never wrote falls back to lsfg-vk's own default, and the UI says so
 /// rather than inventing a value.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LsfgProfile {
     pub name: String,
     /// Executables / process names / path suffixes that auto-activate it.
@@ -59,6 +61,7 @@ pub struct LsfgProfile {
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LsfgStatus {
     /// `None` when no lsfg-vk layer manifest is installed anywhere.
     pub layer: Option<LsfgLayer>,

@@ -88,6 +88,7 @@ pub fn merge(
 
 /// What a system-config export reports back to the confirm dialog.
 #[derive(Clone, Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct ExportResult {
     pub config_path: String,
     /// Where the previous file was backed up; `None` when there wasn't one.

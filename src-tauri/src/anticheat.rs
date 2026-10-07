@@ -22,6 +22,7 @@ const MAX_BYTES: usize = 8 * 1024 * 1024;
 
 /// One game's entry, as the frontend shows it.
 #[derive(Clone, Debug, Serialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct AntiCheat {
     pub name: String,
     /// `Supported` (works, enabled by the developer), `Running` (works),

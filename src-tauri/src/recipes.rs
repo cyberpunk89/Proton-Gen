@@ -10,12 +10,14 @@ const BUNDLED: &str = include_str!("../recipes.toml");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum RecipeKind {
     Profile,
     Fix,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Recipe {
     pub name: String,
     pub kind: RecipeKind,
@@ -137,6 +139,7 @@ pub fn apply(recipe: &Recipe, catalog: &Catalog, options: &mut Options, extra_en
 /// What applying a recipe would do to one key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum ChangeKind {
     /// Currently off; applying turns it on.
     Enable,
@@ -149,6 +152,7 @@ pub enum ChangeKind {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct RecipeChange {
     pub key: String,
     pub kind: ChangeKind,

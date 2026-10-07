@@ -52,6 +52,7 @@ impl<T> Locked<T> for Mutex<T> {
 
 /// A runtime, flattened for the frontend (path + kind as strings).
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct RuntimeDto {
     pub internal_name: String,
     pub display_name: String,
@@ -67,6 +68,7 @@ pub struct RuntimeDto {
 /// `None` for a game neither source has recorded yet, and always `None` for
 /// non-Steam shortcuts (neither Steam nor Heroic tracks those).
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct GameDto {
     pub app_id: u32,
     pub name: String,
@@ -102,6 +104,7 @@ pub use crate::logs::ProtonLog;
 
 /// The "catalog refreshed for an older build" banner data.
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct StaleInfo {
     pub installed: String,
     pub catalog: String,
@@ -110,6 +113,7 @@ pub struct StaleInfo {
 
 /// Everything the frontend needs at startup, in one round-trip.
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Bootstrap {
     pub steam_root: Option<String>,
     pub load_error: Option<String>,
@@ -717,6 +721,7 @@ fn parse_command_with(catalog: &Catalog, input: &str) -> ParsedCommand {
 
 /// A pasted command read back into a `Config`, plus what couldn't be.
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct ParsedCommand {
     pub config: Config,
     /// Pre-target tokens with no place in a `Config` — a foreign wrapper
@@ -735,6 +740,7 @@ pub fn explain_command(state: State<'_, AppState>, command: String) -> Vec<Token
 
 /// Steam's per-game launch options and compat-tool mapping, freshly read.
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct SteamUserConfig {
     pub launch_options: HashMap<String, String>,
     pub compat_tools: HashMap<String, String>,

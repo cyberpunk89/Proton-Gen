@@ -21,6 +21,7 @@ const SHA_ASSET: &str = "protongen.sha256";
 
 /// "Update available" banner data, and the download inputs for `run_update`.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct UpdateInfo {
     pub available: bool,
     pub current: String,

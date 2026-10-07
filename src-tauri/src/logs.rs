@@ -30,6 +30,7 @@ const LOG_ERROR_LINES: usize = 200;
 
 /// One place a log for this game may be.
 #[derive(Clone, Debug, Serialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct LogSource {
     /// Stable within one game + config: what the viewer sends back to pick it.
     pub id: String,
@@ -47,6 +48,7 @@ pub struct LogSource {
 /// `present: false` result, not an error, so the viewer can say "no log yet —
 /// enable logging and relaunch" rather than showing a failure.
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct ProtonLog {
     /// Whether the log file exists.
     pub present: bool,

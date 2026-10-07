@@ -34,6 +34,7 @@ const USER_AGENT: &str = "protongen-optiscaler-upgrade";
 /// there, with no assets).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum Channel {
     #[default]
     Stable,
@@ -88,6 +89,7 @@ const INI_FILE: &str = "OptiScaler.ini";
 /// Whether an OptiScaler install was found for a game, for the frontend to
 /// decide whether to offer the fetch action at all.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct OptiscalerStatus {
     pub install_dir: Option<String>,
     pub found: bool,
@@ -223,6 +225,7 @@ pub fn manual_install_files(install_dir: &Path, proxy: &str) -> Vec<String> {
 /// the "current vs latest" comparison and the confirm dialog's source/version
 /// line.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct OptiscalerRelease {
     pub channel: Channel,
     pub repo: String,
@@ -298,6 +301,7 @@ fn parse_release(v: &serde_json::Value, channel: Channel) -> Result<OptiscalerRe
 
 /// What `fetch_and_extract` did, for the confirmation toast.
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct OptiscalerExtractResult {
     pub tag: String,
     pub files_written: usize,

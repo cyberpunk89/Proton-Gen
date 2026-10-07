@@ -48,3 +48,10 @@ jobs:
       - name: Rust unit tests
         working-directory: src-tauri
         run: cargo test --locked
+
+      # cargo test regenerates src/lib/generated/ (ts-rs); src/lib/contract.ts
+      # checks types.ts against those files, so they must be committed fresh.
+      - name: Generated bindings are up to date
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git diff --exit-code -- src/lib/generated
