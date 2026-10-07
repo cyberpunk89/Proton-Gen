@@ -193,6 +193,21 @@ export interface ProtonLog {
   truncated: boolean;
   /** Lines from the tail matching common error/warning markers. */
   error_lines: string[];
+  /** Which of `sources` this is. */
+  source_id: string;
+  /** Every place a log for this game may be, present ones newest first. */
+  sources: LogSource[];
+}
+
+/** Mirrors logs::LogSource. */
+export interface LogSource {
+  id: string;
+  label: string;
+  path: string;
+  present: boolean;
+  size: number;
+  /** Unix seconds of the last write, when present. */
+  modified: number | null;
 }
 
 /** Mirrors llm::LlmRequest. The context the frontend hands the backend for one

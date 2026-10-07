@@ -40,6 +40,7 @@ mod hardware;
 mod heroic;
 mod ipc;
 mod lint;
+mod logs;
 mod lsfg;
 mod llm;
 mod mangohud_export;

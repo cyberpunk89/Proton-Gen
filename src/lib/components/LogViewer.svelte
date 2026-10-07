@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { app } from "$lib/state.svelte";
   import { ipc } from "$lib/ipc";
   import { toast } from "$lib/toast.svelte";
@@ -23,6 +24,10 @@
   let log = $state<ProtonLog | null>(null);
   let loading = $state(false);
   let loadError = $state<string | null>(null);
+  /** The source the user picked; null follows the newest log present. Reset
+   *  per game — another game's source ids mean nothing here. */
+  let sourceId = $state<string | null>(null);
+  let sourceGame: number | null = null;
 
   // Only the latest read may land: switching games mid-read must not let the
   // slower, older game's log win.
@@ -31,13 +36,17 @@
   async function refresh() {
     const id = app.selectedAppId;
     if (id == null) return;
+    if (sourceGame !== id) {
+      sourceGame = id;
+      sourceId = null;
+    }
     const seq = ++readSeq;
     loading = true;
     loadError = null;
     // A fresh log means the previous analysis no longer applies.
     app.clearAnalysis();
     try {
-      const next = await ipc.readProtonLog(id);
+      const next = await ipc.readProtonLog(id, untrack(() => app.toConfig()), untrack(() => sourceId));
       if (seq === readSeq) log = next;
     } catch (e) {
       if (seq !== readSeq) return;
@@ -82,6 +91,15 @@
     });
   }
 
+  function pickSource(id: string) {
+    sourceId = id;
+    void refresh();
+  }
+
+  /** Present sources first, as the backend sorted them; absent ones only as a
+   *  hint of where a log would appear, so they're listed but dimmed. */
+  const presentSources = $derived(log?.sources.filter((s) => s.present) ?? []);
+
   function human(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -98,6 +116,24 @@
   width="52rem"
 >
   <div class="space-y-3">
+    {#if presentSources.length > 1}
+      <!-- More than one log exists for this game (Proton, Nexus's launch
+           output, DXVK, VKD3D): newest is shown first; switch here. -->
+      <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Log source">
+        {#each presentSources as s (s.id)}
+          <button
+            onclick={() => pickSource(s.id)}
+            aria-pressed={log?.source_id === s.id}
+            title={s.path}
+            class="rounded-full border px-2.5 py-1 text-[11px] transition {log?.source_id === s.id
+              ? 'border-accent bg-accent/15 text-text'
+              : 'border-border text-subtext hover:border-accent/50'}"
+          >
+            {s.label}
+          </button>
+        {/each}
+      </div>
+    {/if}
     <!-- Path + actions -->
     <div class="flex flex-wrap items-center gap-2">
       <span

@@ -39,6 +39,7 @@ import {
   mockLsfgStatus,
   mockNotices,
   mockPreviewRecipe,
+  mockProtonLog,
   mockSteam,
 } from "./mock";
 
@@ -161,29 +162,16 @@ export const ipc = {
       ? invoke<string | null>("game_art", { appId, source, kind, online })
       : Promise.resolve(null),
 
-  // Read a game's Proton log (~/steam-<appid>.log) for the diagnostics viewer.
-  // The mock has no filesystem, so it returns a small canned "present" log — just
-  // enough to exercise the viewer and the AI coach (present + a couple of error
-  // lines) under `pnpm dev`.
-  readProtonLog: (appId: number) =>
+  // Read one of a game's logs for the diagnostics viewer: `sourceId` picks one
+  // of the `sources` a previous read returned, else the newest present one.
+  // `config` is the game's current config (PROTON_LOG_DIR, umu game id, DXVK /
+  // VKD3D paths). The mock has no filesystem, so it returns a canned Proton
+  // log plus a canned DXVK one — enough to exercise the viewer, its source
+  // switcher and the AI coach under `pnpm dev`.
+  readProtonLog: (appId: number, config: Config | null, sourceId: string | null = null) =>
     inTauri
-      ? invoke<ProtonLog>("read_proton_log", { appId })
-      : Promise.resolve<ProtonLog>({
-          present: true,
-          path: "~/steam-" + appId + ".log",
-          tail:
-            "info:  Game: eldenring.exe\n" +
-            "info:  DXVK: v2.4\n" +
-            "warn:  D3D11: unsupported feature level\n" +
-            "err:   vulkan: device lost while presenting\n" +
-            "info:  shader cache: 1423 entries\n",
-          size: 4096,
-          truncated: false,
-          error_lines: [
-            "warn:  D3D11: unsupported feature level",
-            "err:   vulkan: device lost while presenting",
-          ],
-        }),
+      ? invoke<ProtonLog>("read_proton_log", { appId, config, sourceId })
+      : Promise.resolve<ProtonLog>(mockProtonLog(appId, sourceId)),
 
   // Analyze a game's Proton log with the configured local LLM. The mock returns
   // a canned suggestion (with one apply-able change) so the UI is exercisable in

@@ -8,9 +8,11 @@ import type {
   DiffStatus,
   HeroicInjectResult,
   LaunchDiff,
+  LogSource,
   LsfgStatus,
   MangohudExportResult,
   Notice,
+  ProtonLog,
   RecipeChange,
   Token,
   TokenKind,
@@ -968,4 +970,39 @@ export function mockExplain(command: string): Token[] {
     }
     return { text, kind, key };
   });
+}
+
+export function mockProtonLog(appId: number, sourceId: string | null): ProtonLog {
+  const sources: LogSource[] = [
+    { id: "proton", label: "Proton", path: `~/steam-${appId}.log`, present: true, size: 4096, modified: 1785500000 },
+    { id: "dxvk-d3d11", label: "DXVK (d3d11)", path: "~/Games/game/Game_d3d11.log", present: true, size: 812, modified: 1785400000 },
+    { id: "vkd3d", label: "VKD3D-Proton", path: "~/vkd3d.log", present: false, size: 0, modified: null },
+  ];
+  if (sourceId === "dxvk-d3d11") {
+    return {
+      present: true,
+      path: sources[1].path,
+      tail: "info:  DXVK: v2.4\nwarn:  D3D11Device: unsupported format 0x45\n",
+      size: 812,
+      truncated: false,
+      error_lines: ["warn:  D3D11Device: unsupported format 0x45"],
+      source_id: "dxvk-d3d11",
+      sources,
+    };
+  }
+  return {
+    present: true,
+    path: sources[0].path,
+    tail:
+      "info:  Game: eldenring.exe\n" +
+      "info:  DXVK: v2.4\n" +
+      "warn:  D3D11: unsupported feature level\n" +
+      "err:   vulkan: device lost while presenting\n" +
+      "info:  shader cache: 1423 entries\n",
+    size: 4096,
+    truncated: false,
+    error_lines: ["warn:  D3D11: unsupported feature level", "err:   vulkan: device lost while presenting"],
+    source_id: "proton",
+    sources,
+  };
 }

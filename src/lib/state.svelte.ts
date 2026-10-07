@@ -2397,7 +2397,7 @@ class AppStore {
       let hasLog = false;
       if (this.selectedAppId != null) {
         try {
-          const log = await ipc.readProtonLog(this.selectedAppId);
+          const log = await ipc.readProtonLog(this.selectedAppId, this.toConfig());
           if (log.present) {
             hasLog = true;
             errorLines = log.error_lines;
