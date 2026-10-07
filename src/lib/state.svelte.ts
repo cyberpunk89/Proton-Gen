@@ -9,6 +9,7 @@ import { formatExtraEnv, mergeIntoExtraEnv, setInExtraEnv, splitExtraEnv } from 
 import { irrelevance, isRecommended } from "./util";
 import { isAdvanced, withoutLaunchTarget } from "./types";
 import { LSFG_BUILDER_KEYS } from "./lsfg";
+import { encodePreset } from "./presetCode";
 import { buildOptiScaler, parseOptiScaler } from "./optiscaler";
 import type {
   Catalog,
@@ -1366,6 +1367,38 @@ class AppStore {
     }
   }
 
+  /** Nexus's key for the selected game, or null when it isn't a Nexus game —
+   *  the gate for "Apply to Nexus" (and, by exclusion, for Heroic/Steam). */
+  get nexusSlug(): string | null {
+    const g = this.selectedGame;
+    return g?.source === "nexus" ? (g.nexus_slug ?? null) : null;
+  }
+
+  /** Whether an Apply to Nexus is in flight, so the button can't double-fire. */
+  nexusApplying = $state(false);
+
+  /**
+   * Hand the current tuning to Nexus as its launch profile for this game.
+   * Nexus decodes the share code, saves it, and re-applies it to launch.sh
+   * and the Steam/Heroic entries it keeps for the game — protongen never
+   * writes those itself. The launch target is stripped by `encodePreset`;
+   * Nexus supplies its own exe and prefix.
+   */
+  async applyToNexus() {
+    const g = this.selectedGame;
+    if (!g || this.nexusSlug == null || this.nexusApplying) return;
+    this.nexusApplying = true;
+    try {
+      const code = encodePreset({ name: g.name.slice(0, 64), config: this.toConfig() });
+      await ipc.applyToNexus(g.app_id, code);
+      toast.success(`Applied to Nexus — ${g.name} launches with this tuning now`, { ms: 5000 });
+    } catch (e) {
+      toast.error(`Nexus didn't take it: ${e}`, { ms: 8000 });
+    } finally {
+      this.nexusApplying = false;
+    }
+  }
+
   /**
    * Merge `pendingMangoSystemConfig` into the real, system-wide MangoHud.conf,
    * so it becomes the default for every MangoHud-enabled program — not just
@@ -1803,6 +1836,8 @@ class AppStore {
    * and strand `body { pointer-events: none }`.
    */
   heroicConfirmOpen = $state(false);
+  /** Same as `heroicConfirmOpen`, for "Apply to Nexus?" (`NexusConfirm`). */
+  nexusConfirmOpen = $state(false);
 
   /**
    * Whether the "Set as system MangoHud default?" confirmation is up, and the

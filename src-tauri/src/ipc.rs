@@ -585,6 +585,33 @@ pub fn build_command(
     compose::assemble(&state.catalog, &config, proton_path.as_deref(), &bins)
 }
 
+/// Hand the current tuning to Nexus for one of its games: runs
+/// `nexus-cli --set-launch <slug> <code>`, where `code` is the config as a
+/// `protongen:v1:` share code (the frontend's `encodePreset`, which already
+/// strips the launch target). Nexus saves it as the game's launch profile
+/// and re-applies it to launch.sh and the Steam/Heroic entries it maintains.
+///
+/// Explicit-confirm only (the frontend's NexusConfirm). The slug comes from
+/// discovery, never from the caller, so this can only ever address a game
+/// Nexus itself listed; the code must be share-code shaped. Nexus owns every
+/// file it touches — protongen writes nothing here itself.
+#[tauri::command]
+pub async fn apply_to_nexus(
+    state: State<'_, AppState>,
+    app_id: u32,
+    code: String,
+) -> Result<String, String> {
+    let game = state.game(app_id).filter(|g| g.source == "nexus");
+    let slug = game.and_then(|g| g.nexus_slug).ok_or("not a Nexus game")?;
+    if !crate::nexus::is_share_code(&code) {
+        return Err("not a protongen share code".into());
+    }
+    let cli = crate::nexus::cli_path().ok_or("nexus-cli isn't installed (looked on PATH and in ~/.local/bin)")?;
+    tauri::async_runtime::spawn_blocking(move || crate::nexus::set_launch(&cli, &slug, &code))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Write the current `config`'s env vars + wrappers into a Heroic sideloaded
 /// game's per-game config (`GamesConfig/<app_name>.json`). The one sanctioned
 /// write outside protongen's own state: it backs up first, preserves every key

@@ -17,6 +17,7 @@
   import ShortcutsSheet from "$lib/components/ShortcutsSheet.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
+  import NexusConfirm from "$lib/components/NexusConfirm.svelte";
   import MangoHudSystemConfirm from "$lib/components/MangoHudSystemConfirm.svelte";
   import VkBasaltSystemConfirm from "$lib/components/VkBasaltSystemConfirm.svelte";
   import OverlayBuilders from "$lib/components/OverlayBuilders.svelte";
@@ -243,6 +244,7 @@
 <!-- Mounted here, away from its two triggers in LauncherAction, so a view or
      section change can't unmount an open bits-ui modal — see HeroicConfirm. -->
 <HeroicConfirm />
+<NexusConfirm />
 <!-- Same rationale, one level up: its trigger lives inside the MangoHud
      dialog, which the user can close mid-flow. -->
 <MangoHudSystemConfirm />

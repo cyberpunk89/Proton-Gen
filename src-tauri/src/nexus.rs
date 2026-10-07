@@ -216,6 +216,83 @@ pub fn absorb(mut games: Vec<Game>, nexus: Vec<Game>) -> Vec<Game> {
     games
 }
 
+/// `nexus-cli`, Nexus's backend: on `$PATH`, else where Nexus's installer
+/// links it (`~/.local/bin`, which a desktop-launched protongen's `$PATH`
+/// often lacks).
+pub fn cli_path() -> Option<PathBuf> {
+    crate::which::find("nexus-cli").or_else(|| {
+        let p = PathBuf::from(std::env::var_os("HOME")?).join(".local/bin/nexus-cli");
+        p.is_file().then_some(p)
+    })
+}
+
+/// Longest a `--set-launch` may run. It rewrites launch.sh, the desktop entry
+/// and the Steam/Heroic entries; seconds at most, so a minute means stuck.
+const CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Whether `code` is shaped like a protongen share code: the prefix, then
+/// base64 only, within the size protongen's own decoder accepts.
+pub fn is_share_code(code: &str) -> bool {
+    const PREFIX: &str = "protongen:v1:";
+    code.len() <= 32 * 1024
+        && code.strip_prefix(PREFIX).is_some_and(|b64| {
+            !b64.is_empty() && b64.bytes().all(|b| b.is_ascii_alphanumeric() || b"+/=".contains(&b))
+        })
+}
+
+/// Hand a tuned config to Nexus: `nexus-cli --set-launch <slug> <code>`,
+/// which saves it as the game's launch profile and re-applies it to every
+/// launcher Nexus keeps for it (launch.sh, desktop entry, Steam shortcut,
+/// Heroic entry). Nexus owns those files; protongen only asks. Arguments go
+/// straight to `execve`, never through a shell. Returns Nexus's own report.
+pub fn set_launch(cli: &Path, slug: &str, code: &str) -> Result<String, String> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(cli)
+        .args(["--set-launch", slug, code])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("couldn't run {}: {e}", cli.display()))?;
+
+    // Drain both pipes on threads so a chatty child can't block on a full
+    // pipe while we wait for it to exit.
+    let drain = |r: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut s = String::new();
+            if let Some(mut r) = r {
+                let _ = r.read_to_string(&mut s);
+            }
+            s
+        })
+    };
+    let out = drain(child.stdout.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
+    let err = drain(child.stderr.take().map(|r| Box::new(r) as Box<dyn Read + Send>));
+
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() > CLI_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("nexus-cli didn't finish within a minute and was stopped".into());
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(e) => return Err(format!("couldn't wait for nexus-cli: {e}")),
+        }
+    };
+    let (out, err) = (out.join().unwrap_or_default(), err.join().unwrap_or_default());
+    if status.success() {
+        Ok(out.trim().to_string())
+    } else {
+        let msg = if err.trim().is_empty() { out } else { err };
+        Err(format!("nexus-cli failed: {}", msg.trim()))
+    }
+}
+
 /// Box art for a Nexus game, from its artwork folder:
 /// `<dir>/{cover,hero,wide}.{png,jpg}`.
 pub fn art_file(artwork_dir: &str, kind: &str) -> Option<PathBuf> {
@@ -337,6 +414,41 @@ mod tests {
         let ids: Vec<u32> = out.iter().filter(|g| g.source != GameSource::Nexus).map(|g| g.app_id).collect();
         assert_eq!(ids, vec![1_245_620, 456]);
         assert_eq!(out.iter().filter(|g| g.source == GameSource::Nexus).count(), 4);
+    }
+
+    #[test]
+    fn share_code_shape() {
+        assert!(is_share_code("protongen:v1:eyJuYW1lIjoieCJ9"));
+        assert!(!is_share_code("protongen:v1:"));
+        assert!(!is_share_code("--help"));
+        assert!(!is_share_code("protongen:v1:abc def"));
+        assert!(!is_share_code("protongen:v1:abc;rm"));
+        assert!(!is_share_code(&format!("protongen:v1:{}", "A".repeat(33 * 1024))));
+    }
+
+    /// A stand-in nexus-cli: a shell script that echoes its argv, or fails.
+    fn fake_cli(name: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = std::env::temp_dir().join(format!("protongen-fake-nexus-{}-{name}", std::process::id()));
+        std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    #[test]
+    fn set_launch_passes_argv_verbatim_and_reports_output() {
+        let cli = fake_cli("ok", r#"printf '%s|' "$@""#);
+        let out = set_launch(&cli, "my game; rm -rf ~", "protongen:v1:QQ==").unwrap();
+        assert_eq!(out, "--set-launch|my game; rm -rf ~|protongen:v1:QQ==|");
+        std::fs::remove_file(cli).ok();
+    }
+
+    #[test]
+    fn set_launch_surfaces_nexus_errors() {
+        let cli = fake_cli("fail", "echo 'Error: no game named x' >&2; exit 1");
+        let err = set_launch(&cli, "x", "protongen:v1:QQ==").unwrap_err();
+        assert_eq!(err, "nexus-cli failed: Error: no game named x");
+        std::fs::remove_file(cli).ok();
     }
 
     #[test]

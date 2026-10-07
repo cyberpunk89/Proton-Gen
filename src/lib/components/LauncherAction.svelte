@@ -14,8 +14,8 @@
    * command bar, Heroic buried in Game & runtime), which made the Heroic path
    * easy to miss entirely.
    *
-   * `app.steamAppId` and `app.heroicId` are mutually exclusive by construction:
-   * each returns null unless `selectedGame.source` matches. A non-Steam shortcut
+   * `app.nexusSlug`, `app.heroicId` and `app.steamAppId` are mutually exclusive
+   * by construction: each returns null unless `selectedGame.source` matches. A non-Steam shortcut
    * gets neither, which is correct — its synthetic appid can't be deep-linked.
    *
    * This renders the *button only*. The confirm dialog lives once in App.svelte
@@ -29,7 +29,23 @@
   let { collapsible = false }: { collapsible?: boolean } = $props();
 </script>
 
-{#if app.heroicId != null}
+{#if app.nexusSlug != null}
+  <!-- Nexus keeps this game's Steam shortcut and Heroic entry itself, so it is
+       the one place to send tuning — writing Heroic's config directly would
+       just be overwritten by Nexus's next apply. -->
+  <button
+    onclick={() => (app.nexusConfirmOpen = true)}
+    disabled={app.nexusApplying}
+    title="Make this the game's launch profile in Nexus"
+    aria-label="Apply to Nexus"
+    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent py-1.5 text-xs font-medium text-on-accent transition hover:opacity-90 active:scale-95 disabled:opacity-50 {collapsible
+      ? 'px-2 @2xl:px-2.5'
+      : 'px-2.5'}"
+  >
+    <Export size={14} />
+    <span class={collapsible ? "hidden @2xl:inline" : ""}>Apply to Nexus</span>
+  </button>
+{:else if app.heroicId != null}
   <button
     onclick={() => (app.heroicConfirmOpen = true)}
     title="Write these environment variables and wrappers into this game's Heroic config"

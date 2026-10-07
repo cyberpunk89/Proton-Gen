@@ -67,6 +67,12 @@ export const ipc = {
       ? invoke<HeroicInjectResult>("inject_heroic", { appName, config })
       : Promise.resolve(mockInjectHeroic(appName, config)),
 
+  /** Nexus's report on success; rejects with its error otherwise. */
+  applyToNexus: (appId: number, code: string) =>
+    inTauri
+      ? invoke<string>("apply_to_nexus", { appId, code })
+      : Promise.resolve(`Launch profile set (browser mock — nothing was written).`),
+
   // Best-effort: is Heroic currently running? It caches a game's settings in
   // memory at launch and can flush that stale copy back over whatever protongen
   // just wrote when it exits, so the confirm dialog checks this before writing

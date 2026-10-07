@@ -5,7 +5,7 @@
 //! env-vars / wrappers, and previews + copies the resulting launch command. It
 //! never writes to Steam config files.
 //!
-//! Four sanctioned writes outside protongen's own `state.toml`:
+//! Five sanctioned writes outside protongen's own `state.toml`:
 //! - [`heroic::inject`]: Heroic reads structured per-game JSON rather than a
 //!   launch string, so applying tweaks means writing them into its config
 //!   (backing up first, preserving every key it doesn't own).
@@ -21,6 +21,9 @@
 //! - [`vkbasalt_export::write_system_config`]: the same shape again, for the
 //!   effect chain built in protongen's vkBasalt builder, written into the
 //!   real, system-wide `vkBasalt.conf`.
+//! - [`nexus::set_launch`]: hands a game's tuning to Nexus (the user's own
+//!   launcher) by running `nexus-cli --set-launch`. protongen writes nothing
+//!   itself; Nexus updates the files it owns for that game.
 //!
 //! This crate is a Tauri backend: the pure logic modules below are exposed to
 //! the web frontend through `ipc`.
@@ -108,6 +111,7 @@ pub fn run_with(initial_game: Option<u32>) {
             ipc::rescan,
             ipc::build_command,
             ipc::inject_heroic,
+            ipc::apply_to_nexus,
             ipc::heroic_running,
             ipc::parse_command,
             ipc::explain_command,
