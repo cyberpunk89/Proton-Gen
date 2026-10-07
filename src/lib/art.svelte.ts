@@ -11,7 +11,7 @@ const ART_CONCURRENCY = 12;
 
 class ArtStore {
   // key `${source}:${appId}:${kind}` →
-  //   undefined = not requested/loading · null = none found · string = asset: URL
+  //   undefined = not requested/loading · null = none found · string = art: URL
   cache = $state<Record<string, string | null>>({});
   /** Bumped when `retryFailed` forgets requests, so visible tiles — whose
    *  `inView` has already fired — re-ask for their art. */
@@ -28,7 +28,7 @@ class ArtStore {
     return `${source}:${appId}:${kind}`;
   }
 
-  /** Cached art (asset-protocol URL), `null` if none found, `undefined` if not loaded. */
+  /** Cached art (`art:` URL), `null` if none found, `undefined` if not loaded. */
   for(appId: number, source: string, kind: ArtKind): string | null | undefined {
     return this.cache[this.#key(appId, source, kind)];
   }

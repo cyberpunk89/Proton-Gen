@@ -194,10 +194,10 @@ export const ipc = {
     online: boolean,
   ) =>
     inTauri
-      ? // The backend returns the image's path, already in the asset scope;
-        // the webview loads it straight off disk rather than as base64.
-        invoke<string | null>("game_art", { appId, source, kind, online }).then((p) =>
-          p ? convertFileSrc(p) : null,
+      ? // The backend returns an opaque key for the image; the `art` protocol
+        // (lib.rs) serves it off the UI thread, cacheably.
+        invoke<string | null>("game_art", { appId, source, kind, online }).then((key) =>
+          key ? convertFileSrc(key, "art") : null,
         )
       : Promise.resolve(null),
 

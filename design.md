@@ -384,9 +384,11 @@ field. All saves are best-effort (failures are swallowed; the app keeps working)
   local Steam cache (`appcache/librarycache`, or per-user `config/grid` for non-Steam
   shortcuts; a Heroic file hint; a Nexus game's artwork folder) → previously downloaded
   cache (`$XDG_CACHE_HOME/protongen/art`) → optional Steam CDN / Heroic URL fallback (when
-  `online`). It returns the image **file**: `ipc::game_art` adds exactly that file to the
-  asset-protocol scope (which starts empty in `tauri.conf.json`) and the frontend loads it
-  via `convertFileSrc`. Downloads are cached atomically under their real extension (by
+  `online`). It returns the image **file**: `ipc::game_art` registers it under an opaque key
+  (`<source>-<appid>-<kind>-<mtime>`) and the frontend loads `art://localhost/<key>`, served
+  by an **asynchronous** custom protocol (`lib.rs`, `art::response`) on a worker thread with
+  an immutable cache header. Not Tauri's asset protocol: that one is synchronous, so on Linux
+  it read every tile's file on the UI thread, uncached — the 0.27.0 library stutter. Downloads are cached atomically under their real extension (by
   magic number — an HTML error page is never cached as art), with a 10 s timeout, and a
   remote 4xx is remembered for a week in a `.miss` sidecar.
 - **`anticheat.rs`** — opt-in (`anticheat_check`): AreWeAntiCheatYet's community
@@ -441,7 +443,7 @@ troubleshooter, compare) is mounted once at the root (the #63 rule, §11).
 - **Game art** (`art.svelte.ts`) and the **ProtonDB / anti-cheat lookups**
   (`lookups.svelte.ts`) live in their own rune modules — neither touches builder state.
   Art is lazy, concurrency-bounded and cached by `${source}:${appId}:${kind}` (undefined =
-  not loaded, null = none found, string = asset-protocol URL).
+  not loaded, null = none found, string = `art:` URL).
 
 Key behaviors: `selectGame()` persists the outgoing game's config into `game_memory` and
 restores the incoming game's remembered config (or resets), prefilling the umu exe for
@@ -601,11 +603,11 @@ browser-mock path (`pnpm dev`) and the Preview tools.
   one process protongen starts is the user's own `nexus-cli`, for Apply to Nexus, with
   arguments passed straight to `execve` (no shell) and a slug taken from discovery. `decorations: false` means the client-side titlebar owns move, minimize,
   maximize, close *and* resize (`ResizeGrips.svelte`), so the window permission set is
-  four narrow verbs rather than a general window capability. The asset protocol is on with an **empty static scope**; each art file is added at runtime,
-  one file at a time, only after `art.rs` chose it. "Open folder" re-derives its path in
+  four narrow verbs rather than a general window capability. Art is served by a custom `art:` protocol that only answers keys `game_art` registered —
+  no URL ever names a filesystem path, and Tauri's asset protocol stays off. "Open folder" re-derives its path in
   Rust and uses the opener's Rust API, so no filesystem-wide open-path capability exists.
 - **Content-Security-Policy** (`tauri.conf.json`): `default-src 'self'`, images from
-  self/`data:`/`asset:`, IPC only for connections — a backstop behind `markdown.ts`'s
+  self/`data:`/`art:`, IPC only for connections — a backstop behind `markdown.ts`'s
   no-`{@html}` rule for LLM output and release notes. `style-src` keeps `'unsafe-inline'`
   (Svelte styles) and is excluded from Tauri's nonce injection, which would disable it.
 - **Local-only state.** Everything persistent lives under the user's XDG dirs.
@@ -652,7 +654,7 @@ browser-mock path (`pnpm dev`) and the Preview tools.
 | Single `bootstrap()` payload | One round-trip; discovery cached in `AppState` | Startup does all discovery eagerly (acceptable: it's fast and read-only). |
 | Read-only / paste-yourself | Safety, trust, no risk of corrupting Steam config | Slightly less convenient than auto-applying. |
 | Native Steam only (no Flatpak) | Predictable paths; CachyOS target | Flatpak Steam users unsupported by design. |
-| Artwork over the asset protocol, scoped per file | No base64 over IPC, nothing held as strings in the webview | The asset protocol is enabled; its scope must only ever grow through `game_art`. |
+| Artwork over an async `art:` protocol, by registered key | No base64 over IPC; read off the UI thread and cached by WebKit | One more protocol handler to keep honest: it must only serve keys `game_art` registered. |
 | Debounced live recompute | Smooth typing, fewer IPC calls | ~60 ms latency between edit and preview. |
 | Svelte 5 runes single store | Minimal boilerplate, fine-grained reactivity | All state centralized in one class (intentional). |
 | OptiScaler-upgrade fetch writes into a game's folder | The one place read-only/paste-yourself has a named exception — see below | Introduces a network+filesystem write path that has to stay explicit-confirm-only forever, or the invariant is gone. |
@@ -782,7 +784,7 @@ Proton-gui/
         ├── mangohud_export.rs merge the MangoHud builder into the system MangoHud.conf
         ├── vkbasalt_export.rs merge the vkBasalt builder into the system vkBasalt.conf
         ├── llm.rs             opt-in local-LLM log coach + troubleshooter (OpenAI-compatible)
-        └── art.rs             local→cache→CDN artwork, served via the asset protocol
+        └── art.rs             local→cache→CDN artwork, served via the async `art:` protocol
 ```
 
 ---

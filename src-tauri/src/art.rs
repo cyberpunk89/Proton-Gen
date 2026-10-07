@@ -5,10 +5,10 @@
 //! Read-only; downloaded art is cached under `$XDG_CACHE_HOME/protongen/art`
 //! so repeat lookups stay offline.
 //!
-//! Returns the image's *path*; `ipc::game_art` adds exactly that file to the
-//! asset-protocol scope and the frontend loads it with `convertFileSrc`. Art
-//! used to travel as base64 `data:` URLs through JSON IPC — a third larger,
-//! and held as strings in the webview for the whole session.
+//! Returns the image's *path*; `ipc::game_art` registers it under an opaque
+//! key and the webview loads `art://localhost/<key>`, served by [`response`]
+//! from a worker thread. (Tauri's own asset protocol reads files on the UI
+//! thread on Linux, uncached — a library grid of tiles made the app stutter.)
 
 use std::path::{Path, PathBuf};
 
@@ -239,6 +239,43 @@ pub fn fetch(
     }
 }
 
+/// The key a resolved art file is served under: which art it is, plus the
+/// file's mtime so a replaced image gets a new (uncached) URL. URL-safe by
+/// construction — `source`/`kind` are from fixed lists.
+pub fn key_for(app_id: u32, source: &str, kind: &str, path: &Path) -> String {
+    let mtime = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_secs());
+    format!("{source}-{app_id}-{kind}-{mtime}")
+}
+
+fn content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("ico") => "image/x-icon",
+        _ => "image/jpeg",
+    }
+}
+
+/// The `art` protocol's response for a registered file (`None`: unknown key).
+/// Immutable caching is safe because the key changes with the file's mtime.
+pub fn response(path: Option<&Path>) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{header, Response, StatusCode};
+    let body = path.filter(|p| usable(p)).and_then(|p| std::fs::read(p).ok().map(|b| (p, b)));
+    match body {
+        Some((p, bytes)) => Response::builder()
+            .header(header::CONTENT_TYPE, content_type(p))
+            .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+            .body(bytes),
+        None => Response::builder().status(StatusCode::NOT_FOUND).body(Vec::new()),
+    }
+    .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,5 +377,22 @@ mod tests {
     fn miss_marker_sits_next_to_the_cached_image() {
         let stem = Path::new("/c/protongen/art/steam_10_hero");
         assert_eq!(miss_marker(stem), Path::new("/c/protongen/art/steam_10_hero.miss"));
+    }
+
+    #[test]
+    fn art_protocol_serves_registered_files_with_a_long_cache() {
+        let path = temp_file("served.png", b"\x89PNG-bytes");
+        let ok = response(Some(&path));
+        assert_eq!(ok.status(), 200);
+        assert_eq!(ok.headers()["content-type"], "image/png");
+        assert!(ok.headers()["cache-control"].to_str().unwrap().contains("immutable"));
+        assert_eq!(ok.body(), b"\x89PNG-bytes");
+        assert_eq!(response(None).status(), 404);
+        assert_eq!(response(Some(Path::new("/no/such.png"))).status(), 404);
+
+        let key = key_for(7, "steam", "portrait", &path);
+        assert!(key.starts_with("steam-7-portrait-"));
+        assert!(key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'));
+        std::fs::remove_file(&path).ok();
     }
 }

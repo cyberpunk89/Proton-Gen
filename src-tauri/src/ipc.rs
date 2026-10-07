@@ -174,6 +174,10 @@ pub struct AppState {
     /// does not exist yet. Deferring it to `bootstrap` (which runs off the main
     /// thread) is what lets that spinner do its job.
     discovery: Arc<Mutex<Option<Discovery>>>,
+    /// Art files `game_art` resolved, by the opaque key the webview loads them
+    /// with (`art://localhost/<key>`). The `art` protocol serves only these —
+    /// a URL never carries a filesystem path.
+    pub(crate) art_files: Arc<Mutex<HashMap<String, std::path::PathBuf>>>,
 }
 
 impl AppState {
@@ -352,6 +356,7 @@ impl AppState {
             save_lock: Arc::new(Mutex::new(())),
             initial_game: Arc::new(Mutex::new(None)),
             discovery: Arc::new(Mutex::new(None)),
+            art_files: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -933,9 +938,10 @@ pub async fn anticheat_lookup(
 /// Resolve a game's artwork to an image file (local cache → optional CDN),
 /// or `null` if none is available. Runs off the UI thread.
 ///
-/// The returned path is added — that one file, nothing around it — to the
-/// asset-protocol scope, which starts empty (tauri.conf.json), so the webview
-/// can load it via `convertFileSrc` and nothing else on disk.
+/// Returns an opaque key for the file, registered in `art_files`; the webview
+/// loads `art://localhost/<key>`, which the asynchronous `art` protocol
+/// (`lib.rs`) serves off the UI thread with a long cache lifetime. The key
+/// carries the file's mtime, so changed art gets a new URL.
 ///
 /// A Heroic sideload has no Steam appid a cache lookup could key off, so its
 /// own `art_cover` / `art_square` (a `file://` path or remote URL) is the only
@@ -944,14 +950,12 @@ pub async fn anticheat_lookup(
 /// caller-supplied one would read any file or fetch any URL.
 #[tauri::command]
 pub async fn game_art(
-    app: tauri::AppHandle,
     state: State<'_, AppState>,
     app_id: u32,
     source: String,
     kind: String,
     online: bool,
 ) -> Result<Option<String>, String> {
-    use tauri::Manager;
     // Both end up in a cache file name, so only the known values pass.
     if !art::SOURCES.contains(&source.as_str()) || !art::KINDS.contains(&kind.as_str()) {
         return Err(format!("unknown art source/kind: {source}/{kind}"));
@@ -961,14 +965,16 @@ pub async fn game_art(
         .filter(|g| g.source == source)
         .and_then(|g| g.art_url);
     let steam_root = state.steam_root();
+    let (src, knd) = (source.clone(), kind.clone());
     let path = tauri::async_runtime::spawn_blocking(move || {
-        art::fetch(steam_root, app_id, &source, &kind, online, art_hint)
+        art::fetch(steam_root, app_id, &src, &knd, online, art_hint)
     })
     .await
     .map_err(|e| e.to_string())?;
     let Some(path) = path else { return Ok(None) };
-    app.asset_protocol_scope().allow_file(&path).map_err(|e| e.to_string())?;
-    Ok(Some(path.display().to_string()))
+    let key = art::key_for(app_id, &source, &kind, &path);
+    state.art_files.locked().insert(key.clone(), path);
+    Ok(Some(key))
 }
 
 #[cfg(test)]

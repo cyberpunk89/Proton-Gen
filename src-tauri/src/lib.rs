@@ -108,6 +108,17 @@ pub fn run_with(initial_game: Option<u32>) {
             let _ = app.emit(OPEN_GAME_EVENT, OpenGame { app_id });
         }))
         .plugin(tauri_plugin_opener::init())
+        // Game art, by the key `game_art` registered. Asynchronous: the file is
+        // read on a worker thread, never the UI thread — a grid of tiles
+        // loading at once used to stall the window.
+        .register_asynchronous_uri_scheme_protocol("art", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let key = request.uri().path().trim_start_matches('/').to_string();
+            tauri::async_runtime::spawn_blocking(move || {
+                let path = app.state::<ipc::AppState>().art_files.lock().ok().and_then(|m| m.get(&key).cloned());
+                responder.respond(art::response(path.as_deref()));
+            });
+        })
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ipc::AppState::new().with_initial_game(initial_game))

@@ -180,10 +180,12 @@ extra `--` into cargo).
   dialog has no close transition to protect, `250` in `SettingsDrawer` to clear its own
   200ms `fly` transition first (bits-ui's own doc comment on `restoreScrollDelay`: it must
   exceed the transition duration). Any new bits-ui `Dialog`/`AlertDialog` needs the same.
-- **CSP and the asset protocol.** `tauri.conf.json` sets a restrictive CSP (all network
+- **CSP and the `art:` protocol.** `tauri.conf.json` sets a restrictive CSP (all network
   goes through Rust); `style-src` is excluded from Tauri's nonce injection so Svelte's
-  inline styles keep working. The asset protocol's static scope is **empty** — `game_art`
-  adds one file at a time. Never widen it to a directory glob.
+  inline styles keep working. Art is served by an *asynchronous* custom `art:` protocol
+  (`lib.rs`) that answers only keys `game_art` registered. Don't switch to Tauri's asset
+  protocol: its handler is synchronous, so on Linux it reads files on the UI thread and the
+  library grid stutters (shipped in 0.27.0, fixed after).
 - **Minimal Tauri capabilities** (`capabilities/default.json`): core, opener, clipboard,
   dialog. Adding a plugin = `Cargo.toml` dep + `.plugin(...)` in `lib.rs` + a capability
   permission + the JS `@tauri-apps/plugin-*` package. `opener:default` only scopes
