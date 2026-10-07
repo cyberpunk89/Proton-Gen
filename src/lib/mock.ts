@@ -484,6 +484,10 @@ export const mockBootstrap: Bootstrap = {
       heroic_id: null,
       install_dir: "/home/you/.local/share/Steam/steamapps/common/Helldivers 2",
       art_url: null,
+      nexus_slug: null,
+      wine_prefix: null,
+      pinned_proton: null,
+      alias_ids: [],
     },
     {
       app_id: 1245620,
@@ -496,6 +500,10 @@ export const mockBootstrap: Bootstrap = {
       heroic_id: null,
       install_dir: "/home/you/.local/share/Steam/steamapps/common/ELDEN RING",
       art_url: null,
+      nexus_slug: null,
+      wine_prefix: null,
+      pinned_proton: null,
+      alias_ids: [],
     },
     {
       app_id: 275850,
@@ -509,6 +517,10 @@ export const mockBootstrap: Bootstrap = {
       // Not installed — nothing for steamlocate to resolve a folder from.
       install_dir: null,
       art_url: null,
+      nexus_slug: null,
+      wine_prefix: null,
+      pinned_proton: null,
+      alias_ids: [],
     },
     {
       app_id: 0x80000001,
@@ -521,6 +533,10 @@ export const mockBootstrap: Bootstrap = {
       heroic_id: "7Hm5qmyaYmaSZ45Mqo3u4s",
       install_dir: "/home/u/Games/FitGirl/crimson-desert/pfx/drive_c/Crimson Desert/bin64",
       art_url: "https://cdn2.steamgriddb.com/grid/mock-crimson-desert.png",
+      nexus_slug: null,
+      wine_prefix: null,
+      pinned_proton: null,
+      alias_ids: [],
     },
     // Same title as the Steam entry above, sideloaded through Heroic too — the
     // library grid's job is to fold this into ELDEN RING's tile with a source
@@ -536,6 +552,29 @@ export const mockBootstrap: Bootstrap = {
       heroic_id: "9Zk2qmyaYmaSZ45Mqo9x7c",
       install_dir: "/home/u/Games/FitGirl/elden-ring/pfx/drive_c/ELDEN RING/Game",
       art_url: null,
+      nexus_slug: null,
+      wine_prefix: null,
+      pinned_proton: null,
+      alias_ids: [],
+    },
+    // A FitGirl repack in Nexus (the user's launcher): one entry standing in
+    // for the Steam shortcut and Heroic sideload Nexus mirrors it into, with
+    // the repack's own prefix and the Proton build Nexus runs it with.
+    {
+      app_id: 3632060096,
+      name: "007 First Light",
+      source: "nexus",
+      executable: "/home/u/Games/FitGirl/007-first-light/Retail/007FirstLight.exe",
+      installed: true,
+      last_played: 1785500000,
+      playtime_minutes: 95,
+      heroic_id: null,
+      install_dir: "/home/u/Games/FitGirl/007-first-light/Retail",
+      art_url: null,
+      nexus_slug: "007-first-light",
+      wine_prefix: "/home/u/Games/FitGirl/007-first-light/pfx",
+      pinned_proton: "GE-Proton11-1",
+      alias_ids: [0x80000003],
     },
   ],
   // Both vendors on, so the dev path exercises the NVAPI/DLSS *and* the AMD
@@ -753,7 +792,9 @@ export function mockBuildCommand(config: Config, protonPath: string | null): str
     k === "gamescope" ? `gamescope ${v} --`.trim() : k,
   );
   if (config.umu) {
+    const prefix = config.umu_wineprefix.trim();
     const lead = [
+      ...(prefix ? [`WINEPREFIX=${shQuote(prefix)}`] : []),
       `GAMEID=${shQuote(config.umu_gameid || "umu-0")}`,
       `PROTONPATH=${shQuote(protonPath ?? "")}`,
     ];

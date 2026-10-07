@@ -240,10 +240,45 @@ export interface GameGroup {
   entries: GameDto[];
 }
 
-/** steam > non-steam > heroic, so a merged tile's badges/favourite/tuned
+/** steam > nexus > non-steam > heroic, so a merged tile's badges/favourite/tuned
  *  status (keyed off `entries[0]`) prefer the Steam entry when there is one —
  *  that's the entry with real launch-options sync status to show. */
-const SOURCE_PRIORITY: Record<string, number> = { steam: 0, "non-steam": 1, heroic: 2 };
+const SOURCE_PRIORITY: Record<string, number> = { steam: 0, nexus: 1, "non-steam": 2, heroic: 3 };
+
+/** A game source's name for menus and tooltips. */
+export function sourceLabel(source: string): string {
+  switch (source) {
+    case "steam":
+      return "Steam";
+    case "non-steam":
+      return "Non-Steam shortcut";
+    case "heroic":
+      return "Heroic";
+    case "nexus":
+      return "Nexus";
+    default:
+      return source;
+  }
+}
+
+/** A game source's badge text — short, since it sits on a tile's art. */
+export function sourceBadge(source: string): string {
+  return source === "non-steam" ? "shortcut" : sourceLabel(source);
+}
+
+/** A game source's accent colour (a CSS custom property). */
+export function sourceColor(source: string): string {
+  switch (source) {
+    case "heroic":
+      return "var(--blue)";
+    case "non-steam":
+      return "var(--mauve)";
+    case "nexus":
+      return "var(--peach)";
+    default:
+      return "var(--accent)";
+  }
+}
 
 /**
  * Normalize a game title for cross-source matching. Lowercased, diacritics

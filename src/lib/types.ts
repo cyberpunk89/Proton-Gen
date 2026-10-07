@@ -143,7 +143,7 @@ export interface RuntimeDto {
 export interface GameDto {
   app_id: number;
   name: string;
-  source: string; // "steam" | "non-steam" | "heroic"
+  source: string; // "steam" | "non-steam" | "heroic" | "nexus"
   executable: string | null;
   installed: boolean;
   /** Unix seconds, from localconfig.vdf. Null when never played (or non-Steam). */
@@ -157,6 +157,15 @@ export interface GameDto {
   /** Box art hint (`file://` path or remote URL) for `source === "heroic"`;
    *  null otherwise. Passed back into `ipc.gameArt` as its art hint. */
   art_url: string | null;
+  /** Nexus's key for the game; non-null only when source === "nexus". */
+  nexus_slug: string | null;
+  /** The game's own Wine prefix (Nexus games), prefilled into umu mode. */
+  wine_prefix: string | null;
+  /** The Proton build Nexus runs it with, by folder name. */
+  pinned_proton: string | null;
+  /** Ids this entry replaced (a Nexus game's Steam-shortcut / Heroic mirrors),
+   *  best source of saved tuning first. */
+  alias_ids: number[];
 }
 
 /** Result of a successful `inject_heroic` write, for the confirmation toast. */

@@ -2,7 +2,7 @@
   import { app } from "$lib/state.svelte";
   import { inView, clickOutside, autofocus } from "$lib/actions";
   import { keys } from "$lib/keys.svelte";
-  import { tierColor, formatPlaytime, formatLastPlayed } from "$lib/util";
+  import { tierColor, formatPlaytime, formatLastPlayed, sourceBadge, sourceColor, sourceLabel } from "$lib/util";
   import type { GameDto } from "$lib/types";
   import {
     GameController,
@@ -118,19 +118,6 @@
   /** Every source represented in this tile besides Steam's (which gets no
    *  badge of its own, same as a single-source Steam tile today). */
   let extraSources = $derived([...new Set(entries.map((e) => e.source))].filter((s) => s !== "steam"));
-
-  function sourceLabel(source: string): string {
-    switch (source) {
-      case "steam":
-        return "Steam";
-      case "non-steam":
-        return "Non-Steam shortcut";
-      case "heroic":
-        return "Heroic";
-      default:
-        return source;
-    }
-  }
 
   /**
    * The single status indicator. "Has saved settings" is a precondition for
@@ -317,11 +304,7 @@
           >
             <span
               class="size-2 shrink-0 rounded-full"
-              style="background: {e.source === 'heroic'
-                ? 'var(--blue)'
-                : e.source === 'non-steam'
-                  ? 'var(--mauve)'
-                  : 'var(--accent)'}"
+              style="background: {sourceColor(e.source)}"
             ></span>
             {sourceLabel(e.source)}
             {#if !e.installed}<span class="ml-auto text-[10px] font-normal text-white/60">not installed</span>{/if}
@@ -356,10 +339,8 @@
     {#each extraSources as src (src)}
       <span
         class="rounded-full px-1.5 py-0.5 text-[10px] font-medium backdrop-blur-sm"
-        style="background: color-mix(in srgb, {src === 'heroic'
-          ? 'var(--blue)'
-          : 'var(--mauve)'} 75%, transparent); color: var(--on-accent)"
-        >{src === "heroic" ? "Heroic" : "shortcut"}</span
+        style="background: color-mix(in srgb, {sourceColor(src)} 75%, transparent); color: var(--on-accent)"
+        >{sourceBadge(src)}</span
       >
     {/each}
     {#if tier}

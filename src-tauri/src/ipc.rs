@@ -85,6 +85,17 @@ pub struct GameDto {
     /// Box art hint for `source == "heroic"` — see `games::Game::art_url`.
     /// `game_art` looks it up from discovery; the webview never passes it back.
     pub art_url: Option<String>,
+    /// Nexus's key for the game; `Some` only for `source == "nexus"`. What
+    /// `apply_to_nexus` addresses it by.
+    pub nexus_slug: Option<String>,
+    /// The game's own Wine prefix (Nexus games) — prefilled into umu mode.
+    pub wine_prefix: Option<String>,
+    /// The Proton build Nexus runs it with, by folder name.
+    pub pinned_proton: Option<String>,
+    /// Ids this entry replaced (a Nexus game's Steam-shortcut / Heroic
+    /// mirrors), best source of saved tuning first — the frontend carries
+    /// `game_memory` saved under them over to `app_id`.
+    pub alias_ids: Vec<u32>,
 }
 
 /// One game's Proton log, read for the diagnostics viewer.
@@ -311,7 +322,10 @@ fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
             load_error = Some(e.to_string());
             // Heroic games don't need Steam. With no Steam install, `list_games`
             // never runs, so surface sideloaded Heroic games on their own here.
-            games = games::dedup_and_sort(games::list_heroic_games())
+            games = games::dedup_and_sort(crate::nexus::absorb(
+                games::list_heroic_games(),
+                crate::nexus::list(),
+            ))
                 .into_iter()
                 .map(|g| game_dto(g, &HashMap::new(), &heroic_playtime))
                 .collect();
@@ -409,7 +423,25 @@ fn game_dto(
             (stats.and_then(|s| s.last_played), stats.and_then(|s| s.playtime_minutes))
         }
         GameSource::NonSteam => (None, None),
+        // Nexus tracks its own sessions; time played through the Heroic
+        // sideload it mirrors the game into adds to that, as Nexus counts it.
+        GameSource::Nexus => {
+            let info = g.nexus.as_ref();
+            let heroic = info
+                .and_then(|i| i.heroic_app_name.as_deref())
+                .and_then(|id| heroic_playtime.get(id));
+            let last = [info.and_then(|i| i.last_played), heroic.and_then(|s| s.last_played)]
+                .into_iter()
+                .flatten()
+                .max();
+            let minutes = [info.and_then(|i| i.playtime_minutes), heroic.and_then(|s| s.playtime_minutes)]
+                .into_iter()
+                .flatten()
+                .reduce(u32::saturating_add);
+            (last, minutes)
+        }
     };
+    let nexus = g.nexus.unwrap_or_default();
     GameDto {
         app_id: g.app_id,
         name: g.name,
@@ -421,6 +453,10 @@ fn game_dto(
         heroic_id: g.heroic_id,
         install_dir: g.install_dir.map(|p| p.display().to_string()),
         art_url: g.art_url,
+        nexus_slug: (g.source == GameSource::Nexus).then_some(nexus.slug),
+        wine_prefix: nexus.wine_prefix,
+        pinned_proton: nexus.proton,
+        alias_ids: nexus.alias_ids,
     }
 }
 

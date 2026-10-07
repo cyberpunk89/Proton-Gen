@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// The `source` values `fetch` accepts — `GameDto::source`'s vocabulary.
-pub const SOURCES: &[&str] = &["steam", "non-steam", "heroic"];
+pub const SOURCES: &[&str] = &["steam", "non-steam", "heroic", "nexus"];
 /// The `kind` values `fetch` accepts.
 pub const KINDS: &[&str] = &["portrait", "hero", "header"];
 /// Largest art file read or downloaded. Box art is well under this; anything
@@ -111,6 +111,7 @@ fn mime_for(path: &Path) -> &'static str {
     {
         Some("png") => "image/png",
         Some("ico") => "image/x-icon",
+        Some("webp") => "image/webp",
         _ => "image/jpeg",
     }
 }
@@ -156,6 +157,25 @@ pub fn fetch(
 
     // 1) Local Steam cache / custom grid art, or a Heroic hint that's already
     // a local file — no need to wait for the online step below.
+    if source == "nexus" {
+        // Nexus keeps art per game as `<dir>/{cover,hero,wide}.<ext>`; failing
+        // that, its Steam shortcut (same appid) may carry custom grid art.
+        if let Some(file) = hint.and_then(|d| crate::nexus::art_file(d, kind)) {
+            if let Some(bytes) = read_local_hint(&file.display().to_string()) {
+                return Some(to_data_url(&bytes, mime_for(&file)));
+            }
+        }
+        if let Some(root) = steam_root.as_deref().map(Path::new) {
+            for cand in local_candidates(root, app_id, "non-steam", kind) {
+                if let Ok(bytes) = std::fs::read(&cand) {
+                    if !bytes.is_empty() {
+                        return Some(to_data_url(&bytes, mime_for(&cand)));
+                    }
+                }
+            }
+        }
+        return None;
+    }
     if source == "heroic" {
         if let Some(h) = hint {
             if !h.starts_with("http://") && !h.starts_with("https://") {

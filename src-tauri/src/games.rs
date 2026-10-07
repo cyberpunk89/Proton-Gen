@@ -15,6 +15,9 @@ pub enum GameSource {
     /// A game discovered from Heroic (see [`crate::heroic`]) — sideloaded, or
     /// installed through one of Heroic's native stores (Epic, GOG, Amazon).
     Heroic,
+    /// A game in Nexus's library (see [`crate::nexus`]), standing in for the
+    /// Steam shortcut and Heroic sideload Nexus mirrors it into.
+    Nexus,
 }
 
 impl GameSource {
@@ -23,6 +26,7 @@ impl GameSource {
             GameSource::Steam => "steam",
             GameSource::NonSteam => "non-steam",
             GameSource::Heroic => "heroic",
+            GameSource::Nexus => "nexus",
         }
     }
 }
@@ -54,6 +58,9 @@ pub struct Game {
     /// source: Steam games and non-Steam shortcuts resolve art by `app_id`
     /// alone (`art::fetch`'s local-cache/CDN lookup), so they need no hint.
     pub art_url: Option<String>,
+    /// Nexus-only extras (slug, prefix, pinned Proton, absorbed mirrors);
+    /// `Some` exactly when `source` is [`GameSource::Nexus`].
+    pub nexus: Option<crate::nexus::NexusInfo>,
 }
 
 /// Well-known non-game app IDs (runtimes / redistributables) to hide.
@@ -103,7 +110,7 @@ pub(crate) fn dedup_and_sort(mut games: Vec<Game>) -> Vec<Game> {
 /// The high bit is forced on, parking Heroic ids above every real Steam appid
 /// (all well under 2³¹) — so a hash can't collide with a Steam game and trip
 /// `dedup_and_sort`'s silent drop or crash a keyed Svelte `{#each}`.
-fn heroic_app_id(app_name: &str) -> u32 {
+pub(crate) fn heroic_app_id(app_name: &str) -> u32 {
     let mut hash: u32 = 0x811c_9dc5;
     for b in app_name.bytes() {
         hash ^= b as u32;
@@ -123,7 +130,9 @@ fn heroic_app_id(app_name: &str) -> u32 {
 fn on_disk(g: &Game) -> bool {
     let target = match g.source {
         GameSource::Steam => g.install_dir.clone(),
-        GameSource::NonSteam | GameSource::Heroic => g.executable.as_deref().map(PathBuf::from),
+        GameSource::NonSteam | GameSource::Heroic | GameSource::Nexus => {
+            g.executable.as_deref().map(PathBuf::from)
+        }
     };
     match target.filter(|p| p.is_absolute()) {
         None => true,
@@ -132,7 +141,7 @@ fn on_disk(g: &Game) -> bool {
 }
 
 /// `g` with `installed` cleared when its files are gone (see [`on_disk`]).
-fn checked(mut g: Game) -> Game {
+pub(crate) fn checked(mut g: Game) -> Game {
     g.installed = g.installed && on_disk(&g);
     g
 }
@@ -154,6 +163,7 @@ pub fn list_heroic_games() -> Vec<Game> {
             installed: h.installed,
             heroic_id: Some(h.app_name),
             art_url: h.art,
+            nexus: None,
         })
         .map(checked)
         .collect()
@@ -184,6 +194,7 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
             heroic_id: None,
             install_dir: Some(library.resolve_app_dir(&app)),
             art_url: None,
+            nexus: None,
         }));
     }
     out.len() - before
@@ -268,6 +279,7 @@ pub fn list_games(
                 installed: true,
                 heroic_id: None,
                 art_url: None,
+                nexus: None,
             }));
         }
     }
@@ -277,7 +289,8 @@ pub fn list_games(
     // through the same dedup + sort.
     games.extend(list_heroic_games());
 
-    dedup_and_sort(games)
+    // Nexus's repacks replace their own Steam-shortcut and Heroic mirrors.
+    dedup_and_sort(crate::nexus::absorb(games, crate::nexus::list()))
 }
 
 #[cfg(test)]
@@ -322,6 +335,7 @@ mod tests {
             heroic_id: None,
             install_dir: None,
             art_url: None,
+            nexus: None,
         }
     }
 

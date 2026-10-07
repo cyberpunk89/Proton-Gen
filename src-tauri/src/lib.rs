@@ -39,6 +39,7 @@ mod lint;
 mod lsfg;
 mod llm;
 mod mangohud_export;
+mod nexus;
 mod optiscaler_upgrade;
 mod params;
 mod parser;

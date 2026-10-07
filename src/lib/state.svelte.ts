@@ -286,6 +286,7 @@ class AppStore {
     this.selectedRuntime = this.defaultRuntime();
 
     // Needs `games` (each entry's own exe) and the default runtime, both set above.
+    this.adoptAliases();
     this.repairGameMemory();
 
     // Restore the last session (selected game + every builder selection) so the
@@ -420,6 +421,8 @@ class AppStore {
       // would never turn its badge green.
       this.configWarnings = b.config_warnings;
       this.requiresStatus = b.requires_status;
+      // A repack Nexus added since the last scan now stands in for its mirrors.
+      this.adoptAliases();
 
       // Re-validate current selections against the refreshed lists.
       if (
@@ -482,6 +485,32 @@ class AppStore {
 
   /** Preferred default runtime: an installed proton-cachyos, else the first
    *  real (non-synthetic) runtime, else the GE-Proton-auto entry. */
+  /** The runtime a Nexus game is pinned to (Nexus names it by folder), or
+   *  null when it isn't one protongen found. */
+  private runtimeNamed(name: string | null): RuntimeDto | null {
+    if (!name) return null;
+    return (
+      this.runtimes.find(
+        (r) => r.path.replace(/\/+$/, "").split("/").pop() === name || r.internal_name === name,
+      ) ?? null
+    );
+  }
+
+  /** What opening `game` with nothing saved looks like. Heroic and Nexus
+   *  launch through umu/Proton themselves, so Steam mode's `%command%` means
+   *  nothing for them; a Nexus game also starts on its own prefix and the
+   *  Proton build Nexus runs it with — without the prefix, a copied umu
+   *  command ran the repack in umu's default prefix. */
+  private freshLaunch(game: GameDto | null) {
+    const nexus = game?.source === "nexus";
+    return {
+      umu: game?.source === "heroic" || nexus,
+      exe: game?.executable ?? "",
+      prefix: (nexus && game?.wine_prefix) || "",
+      runtime: (nexus && this.runtimeNamed(game?.pinned_proton ?? null)) || this.defaultRuntime(),
+    };
+  }
+
   private defaultRuntime(): RuntimeDto | null {
     return (
       this.runtimes.find((r) => r.display_name.toLowerCase().includes("cachyos")) ??
@@ -1155,30 +1184,31 @@ class AppStore {
    *  previous game's exe, prefix and runtime, which then got saved under it. */
   private resetLaunchFields(game: GameDto | null) {
     this.resetOptions();
-    // Heroic launches its games itself via umu/Proton; Steam mode's `%command%`
-    // is meaningless for them, so a Heroic game defaults to umu.
-    this.umu = game?.source === "heroic";
-    this.umuExe = game?.executable ?? "";
-    this.umuWineprefix = "";
+    const fresh = this.freshLaunch(game);
+    this.umu = fresh.umu;
+    this.umuExe = fresh.exe;
+    this.umuWineprefix = fresh.prefix;
     this.umuGameid = "";
-    this.selectedRuntime = this.defaultRuntime();
+    this.selectedRuntime = fresh.runtime;
   }
 
   /** Whether `cfg` is exactly what opening `game` fresh would produce — i.e.
    *  the user hasn't tuned anything. umu fields only count in umu mode. */
   private isBaseline(cfg: Config, game: GameDto | null): boolean {
-    const freshUmu = game?.source === "heroic";
+    const fresh = this.freshLaunch(game);
     if (cfg.env.length || cfg.wrappers.length || cfg.extra_env.trim() || cfg.game_args.trim()) {
       return false;
     }
-    if (cfg.umu !== freshUmu) return false;
+    if (cfg.umu !== fresh.umu) return false;
     // A null runtime means "none chosen" — loadConfig falls back to the default.
-    if (cfg.runtime !== null && cfg.runtime !== (this.defaultRuntime()?.internal_name ?? null)) {
+    if (cfg.runtime !== null && cfg.runtime !== (fresh.runtime?.internal_name ?? null)) {
       return false;
     }
     return (
       !cfg.umu ||
-      (cfg.umu_exe === (game?.executable ?? "") && !cfg.umu_wineprefix.trim() && !cfg.umu_gameid.trim())
+      (cfg.umu_exe === fresh.exe &&
+        cfg.umu_wineprefix.trim() === fresh.prefix &&
+        !cfg.umu_gameid.trim())
     );
   }
 
@@ -1202,16 +1232,51 @@ class AppStore {
     for (const [key, cfg] of Object.entries(this.store.game_memory)) {
       const game = this.games.find((g) => String(g.app_id) === key) ?? null;
       if (!cfg.umu) {
-        const own = game?.executable ?? "";
-        if (cfg.umu_exe !== own || cfg.umu_wineprefix || cfg.umu_gameid) {
-          cfg.umu_exe = own;
-          cfg.umu_wineprefix = "";
+        const fresh = this.freshLaunch(game);
+        if (cfg.umu_exe !== fresh.exe || cfg.umu_wineprefix !== fresh.prefix || cfg.umu_gameid) {
+          cfg.umu_exe = fresh.exe;
+          cfg.umu_wineprefix = fresh.prefix;
           cfg.umu_gameid = "";
           changed = true;
         }
       }
       if (this.isBaseline(cfg, game)) {
         delete this.store.game_memory[key];
+        changed = true;
+      }
+    }
+    if (changed) this.persistStore();
+  }
+
+  /**
+   * A Nexus game replaces the Steam shortcut and Heroic sideload Nexus mirrors
+   * it into, each of which had its own `game_memory` slot. Carry tuning,
+   * favourite and last-open state from those ids over to the Nexus entry's —
+   * preferring the mirror Nexus last imported from (first in `alias_ids`) —
+   * so nothing tuned before is lost. Only copies: Nexus's own importer still
+   * reads the old slots. An umu config gets the game's real prefix if it had
+   * none, since that is what it always should have run in. Idempotent.
+   */
+  private adoptAliases() {
+    let changed = false;
+    for (const g of this.games) {
+      if (!g.alias_ids?.length) continue;
+      const key = String(g.app_id);
+      if (!(key in this.store.game_memory)) {
+        const from = g.alias_ids.find((a) => String(a) in this.store.game_memory);
+        if (from != null) {
+          const cfg = $state.snapshot(this.store.game_memory[String(from)]) as Config;
+          if (cfg.umu && !cfg.umu_wineprefix.trim() && g.wine_prefix) cfg.umu_wineprefix = g.wine_prefix;
+          this.store.game_memory[key] = cfg;
+          changed = true;
+        }
+      }
+      if (!this.store.favorites.includes(g.app_id) && g.alias_ids.some((a) => this.store.favorites.includes(a))) {
+        this.store.favorites.push(g.app_id);
+        changed = true;
+      }
+      if (this.store.last_game_appid != null && g.alias_ids.includes(this.store.last_game_appid)) {
+        this.store.last_game_appid = g.app_id;
         changed = true;
       }
     }

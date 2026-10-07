@@ -3,7 +3,7 @@ import { GameController, Faders, Sparkle, FloppyDisk, Package } from "phosphor-s
 import { computeCommandScore } from "bits-ui";
 
 import { app } from "./state.svelte";
-import { irrelevance } from "./util";
+import { irrelevance, sourceBadge } from "./util";
 import { subsequence } from "./fuzzy";
 import { APP_COMMANDS } from "./commands";
 
@@ -89,8 +89,7 @@ export function buildItems(): PaletteItem[] {
       id: `game:${g.source}:${g.app_id}`,
       group: "game",
       label: g.name,
-      sublabel:
-        g.source === "non-steam" ? "shortcut" : g.source === "heroic" ? "Heroic" : undefined,
+      sublabel: g.source === "steam" ? undefined : sourceBadge(g.source),
       keywords: [String(g.app_id)],
       icon: GameController,
       badge: app.isFavorite(g.app_id) ? "★" : undefined,
