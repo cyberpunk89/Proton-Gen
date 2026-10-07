@@ -1523,6 +1523,9 @@ class AppStore {
    *  until the first read lands. */
   lsfgStatus = $state<LsfgStatus | null>(null);
   lsfgStatusLoading = $state(false);
+  /** Why the last read failed; cleared by the next successful one. Without it a
+   *  failed first read left the builder on "Looking for lsfg-vk…" forever. */
+  lsfgStatusError = $state<string | null>(null);
 
   /** (Re-)read lsfg-vk's state. Cheap and read-only, so it runs on every open
    *  of the builder and on window focus while it's open — profiles are edited
@@ -1532,8 +1535,10 @@ class AppStore {
     this.lsfgStatusLoading = true;
     try {
       this.lsfgStatus = await ipc.lsfgStatus();
+      this.lsfgStatusError = null;
     } catch (e) {
       console.error("lsfgStatus failed", e);
+      this.lsfgStatusError = String(e);
     } finally {
       this.lsfgStatusLoading = false;
     }

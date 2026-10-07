@@ -142,8 +142,12 @@
         <ArrowClockwise size={11} class={app.lsfgStatusLoading ? "animate-spin" : ""} /> Refresh
       </button>
     </div>
-    {#if !st}
-      <p class="flex items-center gap-1.5 text-xs text-muted">
+    {#if !st && app.lsfgStatusError}
+      <p class="rounded-lg border border-red/40 bg-red/5 px-3 py-2 text-xs text-red" role="alert">
+        Couldn't read lsfg-vk's state: {app.lsfgStatusError}. Use Refresh to try again.
+      </p>
+    {:else if !st}
+      <p class="flex items-center gap-1.5 text-xs text-muted" aria-live="polite">
         <ArrowClockwise size={12} class="animate-spin" /> Looking for lsfg-vk…
       </p>
     {:else}
