@@ -8,6 +8,8 @@
   import { app, type LibrarySort } from "$lib/state.svelte";
   import { autofocus, focusByName, focusTarget } from "$lib/actions";
   import GameTile from "./GameTile.svelte";
+  import SelectField from "./SelectField.svelte";
+  import { toast } from "$lib/toast.svelte";
   import type { GameDto } from "$lib/types";
   import { groupGames } from "$lib/util";
   import { fuzzy } from "$lib/fuzzy";
@@ -21,6 +23,7 @@
     CircleDashed,
     Circle,
     CaretRight,
+    CheckSquare,
   } from "phosphor-svelte";
 
   let query = $state("");
@@ -190,6 +193,29 @@
    *  entries said "5 games" over 4 tiles when one title is on two stores. */
   let tileCount = $derived(groupGames(app.games).length);
 
+  // ---- batch apply (Select mode) ----
+  let batchPreset = $state("");
+  let presetOptions = $derived(app.store.presets.map((p) => ({ value: p.name, label: p.name })));
+  $effect(() => {
+    if (app.selectMode && !presetOptions.some((o) => o.value === batchPreset)) {
+      batchPreset = presetOptions[0]?.value ?? "";
+    }
+  });
+
+  function selectAllShown() {
+    for (const g of installedGroups) app.selectedForBatch.add(g.entries[0].app_id);
+  }
+
+  function applyBatch() {
+    const ids = [...app.selectedForBatch];
+    if (!batchPreset || ids.length === 0) return;
+    const { count, undo } = app.applyPresetToGames(batchPreset, ids);
+    app.setSelectMode(false);
+    toast.success(`Applied “${batchPreset}” to ${count} game${count === 1 ? "" : "s"}`, {
+      action: { label: "Undo", onClick: undo },
+    });
+  }
+
   /** Any status badge on screen at all — no point explaining glyphs the user
    *  cannot see, which is what a fresh install would get. */
   let showLegend = $derived(
@@ -354,6 +380,16 @@
         />
       </div>
       <button
+        onclick={() => app.setSelectMode(!app.selectMode)}
+        aria-pressed={app.selectMode}
+        title="Select several games to apply a preset to all of them"
+        class="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition {app.selectMode
+          ? 'border-accent bg-accent/15 text-text'
+          : 'border-border bg-surface-2/50 text-subtext hover:border-accent/60'}"
+      >
+        <CheckSquare size={15} /> Select
+      </button>
+      <button
         onclick={() => app.openGeneric()}
         class="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-2/50 px-3 py-2 text-sm text-subtext transition hover:border-accent/60"
       >
@@ -361,6 +397,36 @@
       </button>
     </div>
   </div>
+
+  {#if app.selectMode}
+    <!-- Batch bar: one preset onto every selected game's saved tuning. -->
+    <div
+      class="sticky top-0 z-50 flex flex-wrap items-center gap-2 rounded-xl border border-accent/40 bg-surface-solid px-3 py-2 text-sm"
+      role="region"
+      aria-label="Apply a preset to selected games"
+    >
+      <span class="text-subtext" aria-live="polite">{app.selectedForBatch.size} selected</span>
+      <button onclick={selectAllShown} class="text-xs text-accent hover:opacity-80">Select all shown</button>
+      {#if app.selectedForBatch.size}
+        <button onclick={() => app.selectedForBatch.clear()} class="text-xs text-muted hover:text-text">Clear</button>
+      {/if}
+      <span class="ml-auto flex items-center gap-2">
+        {#if presetOptions.length}
+          <span class="text-xs text-muted">Preset</span>
+          <SelectField label="Preset to apply" value={batchPreset} options={presetOptions} onValueChange={(v) => (batchPreset = v)} width="w-44" />
+          <button
+            onclick={applyBatch}
+            disabled={!app.selectedForBatch.size || !batchPreset}
+            class="rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95 disabled:opacity-40"
+            style="background: var(--accent); color: var(--on-accent)">Apply to selected</button
+          >
+        {:else}
+          <span class="text-xs text-muted">Save a preset in the builder first.</span>
+        {/if}
+        <button onclick={() => app.setSelectMode(false)} class="text-xs text-muted hover:text-text">Done</button>
+      </span>
+    </div>
+  {/if}
 
   <!-- Sort + filters -->
   <div class="flex flex-wrap items-center gap-x-4 gap-y-2">

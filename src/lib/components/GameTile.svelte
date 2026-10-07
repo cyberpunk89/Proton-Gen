@@ -259,7 +259,36 @@
   <!-- The title carries the status too, so hovering anywhere on the tile explains
        the badge — a better mouse target than the 20px glyph, which stays
        pointer-events-none so it can't swallow a click meant to open the game. -->
-  {#if multi}
+  {#if app.selectMode}
+    <!-- Batch selection (Library's "Select"): the tile toggles membership
+         instead of opening. Picks the primary entry, the one whose tuning
+         the tile's badges already describe. -->
+    <button
+      onclick={() =>
+        app.selectedForBatch.has(game.app_id)
+          ? app.selectedForBatch.delete(game.app_id)
+          : app.selectedForBatch.add(game.app_id)}
+      onfocus={() => onactivate(index)}
+      tabindex={active ? 0 : -1}
+      data-tile={index}
+      role="checkbox"
+      aria-checked={app.selectedForBatch.has(game.app_id)}
+      aria-label="Select {game.name}"
+      class="absolute inset-0 z-40 cursor-pointer text-left focus-visible:outline-none {app.selectedForBatch.has(
+        game.app_id,
+      )
+        ? 'ring-2 ring-inset ring-accent'
+        : ''}"
+    >
+      <span
+        class="absolute right-2 top-2 grid size-5 place-items-center rounded-md border-2 text-[11px] font-bold {app.selectedForBatch.has(
+          game.app_id,
+        )
+          ? 'border-accent bg-accent text-on-accent'
+          : 'border-white/70 bg-black/40 text-transparent'}">✓</span
+      >
+    </button>
+  {:else if multi}
     <!-- More than one way to launch this title (e.g. Steam + a Heroic
          sideload): the open target reveals an in-card picker instead of
          navigating straight away, so the user chooses which one. -->

@@ -1,5 +1,5 @@
 import { untrack } from "svelte";
-import { SvelteMap } from "svelte/reactivity";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { ipc } from "./ipc";
 import { toast } from "./toast.svelte";
 import { history } from "./history.svelte";
@@ -1524,6 +1524,76 @@ class AppStore {
     this.activePresetName = name;
     this.presetBaselines.set(name, JSON.stringify(withoutLaunchTarget(this.toConfig())));
     this.mark(`load preset "${name}"`);
+  }
+
+  /** Library multi-select, for applying one preset to many games. */
+  selectMode = $state(false);
+  selectedForBatch = new SvelteSet<number>();
+
+  setSelectMode(on: boolean) {
+    this.selectMode = on;
+    if (!on) this.selectedForBatch.clear();
+  }
+
+  /**
+   * Apply preset `name` to every game in `appIds` at once: each game's saved
+   * tuning becomes the preset's, while its own launch target (umu mode, exe,
+   * prefix, game id) is kept — or, for a game with nothing saved, set to what
+   * opening it fresh would give. App state only; nothing is written to Steam,
+   * Heroic or Nexus. Returns how many changed and an undo that puts every
+   * touched entry back exactly (the builder's undo stack only covers the
+   * open game).
+   */
+  applyPresetToGames(name: string, appIds: number[]): { count: number; undo: () => void } {
+    const p = this.store.presets.find((x) => x.name === name);
+    if (!p) return { count: 0, undo: () => {} };
+    // Fold the open game's live edits into memory first, so they're what the
+    // undo restores rather than a stale copy.
+    if (this.selectedAppId != null) this.rememberCurrent();
+
+    const before = new Map<string, Config | undefined>();
+    const preset = $state.snapshot(p.config) as Config;
+    for (const id of appIds) {
+      const game = this.games.find((g) => g.app_id === id);
+      if (!game) continue;
+      const key = String(id);
+      const prev = this.store.game_memory[key];
+      before.set(key, prev ? ($state.snapshot(prev) as Config) : undefined);
+      const fresh = this.freshLaunch(game);
+      this.store.game_memory[key] = {
+        ...structuredClone(preset),
+        umu: prev ? prev.umu : fresh.umu,
+        umu_exe: prev ? prev.umu_exe : fresh.exe,
+        umu_wineprefix: prev ? prev.umu_wineprefix : fresh.prefix,
+        umu_gameid: prev ? prev.umu_gameid : "",
+        runtime: preset.runtime ?? prev?.runtime ?? fresh.runtime?.internal_name ?? null,
+      };
+    }
+
+    const reloadOpen = () => {
+      const open = this.selectedAppId;
+      if (open == null || !before.has(String(open))) return;
+      const cfg = this.store.game_memory[String(open)];
+      if (cfg) this.loadConfig(cfg);
+      else this.resetLaunchFields(this.selectedGame);
+      this.mark(`apply preset "${name}" to ${before.size} games`);
+    };
+    reloadOpen();
+    this.persistStore();
+    this.refreshLaunchStatuses();
+
+    return {
+      count: before.size,
+      undo: () => {
+        for (const [key, cfg] of before) {
+          if (cfg) this.store.game_memory[key] = cfg;
+          else delete this.store.game_memory[key];
+        }
+        reloadOpen();
+        this.persistStore();
+        this.refreshLaunchStatuses();
+      },
+    };
   }
 
   /** Rename a preset. Returns why it couldn't, or null on success. */

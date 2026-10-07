@@ -617,7 +617,16 @@ export const mockBootstrap: Bootstrap = {
   },
   store: {
     theme: "mocha",
-    presets: [],
+    // One saved preset, so the library's batch "apply to selected" has
+    // something to apply under `pnpm dev`.
+    presets: [
+      {
+        name: "Async shaders",
+        game_appid: null,
+        game_name: null,
+        config: { ...emptyMockConfig(), env: [["DXVK_ASYNC", "1"]] },
+      },
+    ],
     // Seeded so the library grid's per-game sync badges have something to show
     // under `pnpm dev`: 1245620 matches its launch options exactly (in-sync),
     // 553850 does not (drifted), 275850 has none set at all (not-applied).
