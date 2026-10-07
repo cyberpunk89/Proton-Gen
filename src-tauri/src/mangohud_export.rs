@@ -23,11 +23,7 @@ use std::path::PathBuf;
 /// `$XDG_CONFIG_HOME/MangoHud` (or `~/.config/MangoHud`). Mirrors
 /// [`crate::params::config_dir`] but for MangoHud's config tree, not protongen's.
 fn config_dir() -> Option<PathBuf> {
-    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(xdg).join("MangoHud"));
-    }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".config/MangoHud"))
+    crate::fsutil::config_home().map(|d| d.join("MangoHud"))
 }
 
 /// Every key protongen's overlay builder (`src/lib/mangohud.ts`'s `METRICS` /
@@ -67,15 +63,6 @@ const MANAGED_KEYS: &[&str] = &[
 /// where absence means "turned off"); one that does replaces it in place.
 const SET_ONLY_KEYS: &[&str] = &["toggle_hud", "toggle_fps_limit", "toggle_logging"];
 
-/// The key a `MangoHud.conf` line sets, or `None` for a blank line or `#` comment.
-fn line_key(line: &str) -> Option<&str> {
-    let t = line.trim();
-    if t.is_empty() || t.starts_with('#') {
-        return None;
-    }
-    Some(t.split('=').next().unwrap_or(t).trim())
-}
-
 /// Turn a `MANGOHUD_CONFIG`-style comma-separated string (e.g.
 /// `"fps,frame_timing,font_size=14"`, the same shape `buildConfig()` in
 /// `mangohud.ts` produces) into one `MangoHud.conf` line per token.
@@ -99,106 +86,74 @@ fn config_to_lines(config: &str) -> Vec<String> {
     out
 }
 
-/// The result of merging a new overlay config into an existing file's text.
-/// **Pure** — the tested core.
-pub struct MergeOutcome {
-    pub text: String,
-    /// Managed keys the new config sets (added or updated).
-    pub changed_keys: Vec<String>,
-    /// Managed keys present in `existing` but absent from the new config —
-    /// i.e. settings this write clears because they're no longer selected.
-    pub cleared_keys: Vec<String>,
-}
+pub use crate::conf_merge::{ExportResult, MergeOutcome};
 
-/// Merge `new_config` into `existing` (the current file's text, empty if the
-/// file doesn't exist yet). Every managed line `existing` has is dropped, and so
-/// is a [`SET_ONLY_KEYS`] line the new config sets again; every
-/// line this module doesn't recognize (comments, blanks, a custom font/keybind/
-/// blacklist/unmanaged color) is preserved verbatim, in place. The new managed
-/// lines are spliced in at the position of the first managed line found there
-/// (or appended, after a separating blank line, if there wasn't one).
+/// Merge `new_config` (a `MANGOHUD_CONFIG` string) into `existing` (the
+/// current file's text, empty if there is none): every [`MANAGED_KEYS`] line
+/// is replaced, a [`SET_ONLY_KEYS`] line only when the new config sets it
+/// again; everything else stays, in place (see [`crate::conf_merge::merge`]).
 pub fn merge(existing: &str, new_config: &str) -> MergeOutcome {
-    let new_lines = config_to_lines(new_config);
-    let new_keys: Vec<&str> = new_lines.iter().filter_map(|l| line_key(l)).collect();
-
-    if existing.trim().is_empty() {
-        return MergeOutcome {
-            text: format!("{}\n", new_lines.join("\n")),
-            changed_keys: new_keys.into_iter().map(str::to_string).collect(),
-            cleared_keys: Vec::new(),
-        };
-    }
-
-    let mut out: Vec<String> = Vec::new();
-    let mut cleared: Vec<String> = Vec::new();
-    let mut spliced = false;
-    for line in existing.lines() {
-        let replaced = |k: &&str| MANAGED_KEYS.contains(k) || (SET_ONLY_KEYS.contains(k) && new_keys.contains(k));
-        if let Some(k) = line_key(line).filter(replaced) {
-            if MANAGED_KEYS.contains(&k) && !new_keys.contains(&k) && !cleared.iter().any(|c| c == k) {
-                cleared.push(k.to_string());
-            }
-            if !spliced {
-                out.extend(new_lines.iter().cloned());
-                spliced = true;
-            }
-            continue; // drop the old managed line either way
-        }
-        out.push(line.to_string());
-    }
-    if !spliced {
-        if out.last().is_some_and(|l| !l.trim().is_empty()) {
-            out.push(String::new());
-        }
-        out.extend(new_lines.iter().cloned());
-    }
-
-    MergeOutcome {
-        text: format!("{}\n", out.join("\n")),
-        changed_keys: new_keys.into_iter().map(str::to_string).collect(),
-        cleared_keys: cleared,
-    }
+    crate::conf_merge::merge(existing, &config_to_lines(new_config), MANAGED_KEYS, |k| SET_ONLY_KEYS.contains(&k))
 }
 
-/// What a successful [`write_system_config`] wrote, for the confirm dialog / toast.
-#[derive(Clone, Debug, serde::Serialize)]
-pub struct ExportResult {
-    pub config_path: String,
-    /// `None` when there was no pre-existing file to back up.
-    pub backup_path: Option<String>,
-    pub changed_keys: Vec<String>,
-    pub cleared_keys: Vec<String>,
-}
-
-/// Write `config` (a `MANGOHUD_CONFIG`-style string) into the real, system-wide
-/// `MangoHud.conf`, merging with whatever's already there. Backs the file up
-/// first if it existed, then writes atomically. Impure; thin.
+/// Merge `config` into the real `MangoHud.conf` — backed up first, written
+/// atomically. Only ever called from the confirm dialog's Apply.
 pub fn write_system_config(config: &str) -> Result<ExportResult, String> {
     let dir = config_dir().ok_or_else(|| "no config directory available (is $HOME set?)".to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
-    let path = dir.join("MangoHud.conf");
-
-    let existing = crate::fsutil::read_existing(&path)?;
-    let backup_path = match &existing {
-        Some(text) => Some(crate::fsutil::write_backup(&path, "protongen", text.as_bytes())?.display().to_string()),
-        None => None,
-    };
-    let existing = existing.unwrap_or_default();
-
-    let merged = merge(&existing, config);
-    crate::fsutil::write_atomic(&path, merged.text.as_bytes())?;
-
-    Ok(ExportResult {
-        config_path: path.display().to_string(),
-        backup_path,
-        changed_keys: merged.changed_keys,
-        cleared_keys: merged.cleared_keys,
-    })
+    crate::conf_merge::write_merged(&dir.join("MangoHud.conf"), |existing| merge(existing, config))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every config key the TS builder can emit: `token: "<key>"` entries,
+    /// plus string/template literals in its build function that start with a
+    /// word followed by one of `ends` (`"` for a bare MangoHud token, `=` or
+    /// ` =` for an assignment). A tiny scanner rather than a regex dependency.
+    fn ts_emitted_keys(ts: &str, build_fn: &str, ends: &[&str]) -> Vec<String> {
+        let mut keys = Vec::new();
+        let mut rest = ts;
+        while let Some(i) = rest.find("token: \"") {
+            rest = &rest[i + 8..];
+            if let Some(end) = rest.find('"') {
+                keys.push(rest[..end].to_string());
+            }
+        }
+        let start = ts.find(&format!("export function {build_fn}(")).expect("build fn");
+        let body = &ts[start..start + ts[start..].find("\n}\n").expect("fn end")];
+        let word = |s: &str| s.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect::<String>();
+        for (i, c) in body.char_indices() {
+            if c == '"' || c == '`' {
+                let w = word(&body[i + 1..]);
+                let after = &body[i + 1 + w.len()..];
+                let is_key = w.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                    && ends.iter().any(|e| after.starts_with(e));
+                if is_key {
+                    keys.push(w);
+                }
+            }
+        }
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
+    /// `MANAGED_KEYS` repeats what `src/lib/mangohud.ts` can emit. A metric
+    /// added there but not here would never be cleared by the system-wide
+    /// export when the user unchecks it.
+    #[test]
+    fn managed_keys_cover_everything_the_ts_builder_emits() {
+        let ts = include_str!("../../src/lib/mangohud.ts");
+        let keys = ts_emitted_keys(ts, "buildConfig", &["\"", "="]);
+        assert!(keys.len() > 15, "{keys:?}");
+        for k in &keys {
+            assert!(
+                MANAGED_KEYS.contains(&k.as_str()) || SET_ONLY_KEYS.contains(&k.as_str()),
+                "mangohud.ts emits `{k}`, which mangohud_export.rs doesn't own"
+            );
+        }
+    }
 
     #[test]
     fn gpu_list_stays_one_line_and_is_replaced() {

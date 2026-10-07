@@ -23,11 +23,7 @@ use std::path::PathBuf;
 /// [`crate::mangohud_export::config_dir`]'s shape but for vkBasalt's own
 /// config tree.
 fn config_dir() -> Option<PathBuf> {
-    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(xdg).join("vkBasalt"));
-    }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".config/vkBasalt"))
+    crate::fsutil::config_home().map(|d| d.join("vkBasalt"))
 }
 
 /// Every key protongen's effect-chain builder (`src/lib/vkbasalt.ts`) can
@@ -52,18 +48,6 @@ const MANAGED_KEYS: &[&str] = &[
     "enableOnLaunch",
 ];
 
-/// The key a `vkBasalt.conf` line sets, or `None` for a blank line or `#`
-/// comment. vkBasalt keys are case-sensitive camelCase, unlike MangoHud's
-/// lowercase-only keys, so callers must match `MANAGED_KEYS` exactly rather
-/// than case-folding.
-fn line_key(line: &str) -> Option<&str> {
-    let t = line.trim();
-    if t.is_empty() || t.starts_with('#') {
-        return None;
-    }
-    Some(t.split('=').next().unwrap_or(t).trim())
-}
-
 /// Turn the builder's newline-delimited `key = value` block (the shape
 /// `buildVkBasalt()` in `vkbasalt.ts` produces) into one line per entry.
 fn config_to_lines(config: &str) -> Vec<String> {
@@ -75,79 +59,14 @@ fn config_to_lines(config: &str) -> Vec<String> {
         .collect()
 }
 
-/// The result of merging a new effect chain into an existing file's text.
-/// **Pure** — the tested core. Identical shape to
-/// [`crate::mangohud_export::MergeOutcome`].
-pub struct MergeOutcome {
-    pub text: String,
-    /// Managed keys the new config sets (added or updated).
-    pub changed_keys: Vec<String>,
-    /// Managed keys present in `existing` but absent from the new config —
-    /// i.e. settings this write clears because they're no longer selected.
-    pub cleared_keys: Vec<String>,
-}
+pub use crate::conf_merge::{ExportResult, MergeOutcome};
 
-/// Merge `new_config` into `existing` (the current file's text, empty if the
-/// file doesn't exist yet). Every managed line `existing` has is dropped;
-/// every line this module doesn't recognize (comments, blanks, `lutFile`,
-/// `deband*`, ReShade paths, a hand-added custom-effect shader path) is
-/// preserved verbatim, in place. The new managed lines are spliced in at the
-/// position of the first managed line found there (or appended, after a
-/// separating blank line, if there wasn't one).
+/// Merge `new_config` (the builder's `key = value` lines) into `existing`:
+/// every [`MANAGED_KEYS`] line is replaced, and so is any other line whose key
+/// the new config sets (an effect's own shader-path line); everything else
+/// stays, in place (see [`crate::conf_merge::merge`]).
 pub fn merge(existing: &str, new_config: &str) -> MergeOutcome {
-    let new_lines = config_to_lines(new_config);
-    let new_keys: Vec<&str> = new_lines.iter().filter_map(|l| line_key(l)).collect();
-
-    if existing.trim().is_empty() {
-        return MergeOutcome {
-            text: format!("{}\n", new_lines.join("\n")),
-            changed_keys: new_keys.into_iter().map(str::to_string).collect(),
-            cleared_keys: Vec::new(),
-        };
-    }
-
-    let mut out: Vec<String> = Vec::new();
-    let mut cleared: Vec<String> = Vec::new();
-    let mut spliced = false;
-    for line in existing.lines() {
-        // The new block wins for every key it sets, managed or not: the
-        // builder seeds its passthrough from this very file and re-emits it,
-        // so keeping the old copy too would duplicate it on every Apply.
-        if let Some(k) = line_key(line).filter(|k| MANAGED_KEYS.contains(k) || new_keys.contains(k)) {
-            if MANAGED_KEYS.contains(&k) && !new_keys.contains(&k) && !cleared.iter().any(|c| c == k) {
-                cleared.push(k.to_string());
-            }
-            if !spliced {
-                out.extend(new_lines.iter().cloned());
-                spliced = true;
-            }
-            continue; // drop the old managed line either way
-        }
-        out.push(line.to_string());
-    }
-    if !spliced {
-        if out.last().is_some_and(|l| !l.trim().is_empty()) {
-            out.push(String::new());
-        }
-        out.extend(new_lines.iter().cloned());
-    }
-
-    MergeOutcome {
-        text: format!("{}\n", out.join("\n")),
-        changed_keys: new_keys.into_iter().map(str::to_string).collect(),
-        cleared_keys: cleared,
-    }
-}
-
-/// What a successful [`write_system_config`] wrote, for the confirm dialog /
-/// toast. Identical shape to [`crate::mangohud_export::ExportResult`].
-#[derive(Clone, Debug, serde::Serialize)]
-pub struct ExportResult {
-    pub config_path: String,
-    /// `None` when there was no pre-existing file to back up.
-    pub backup_path: Option<String>,
-    pub changed_keys: Vec<String>,
-    pub cleared_keys: Vec<String>,
+    crate::conf_merge::merge(existing, &config_to_lines(new_config), MANAGED_KEYS, |_| true)
 }
 
 /// Read the real `vkBasalt.conf`'s current text, so the builder dialog can
@@ -164,35 +83,60 @@ pub fn read_current_config() -> Result<String, String> {
     }
 }
 
-/// Write `config` (a newline-delimited `key = value` block) into the real,
-/// system-wide `vkBasalt.conf`, merging with whatever's already there. Backs
-/// the file up first if it existed, then writes atomically. Impure; thin.
+/// Merge `config` into the real `vkBasalt.conf` — backed up first, written
+/// atomically. Only ever called from the confirm dialog's Apply.
 pub fn write_system_config(config: &str) -> Result<ExportResult, String> {
     let dir = config_dir().ok_or_else(|| "no config directory available (is $HOME set?)".to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
-    let path = dir.join("vkBasalt.conf");
-
-    let existing = crate::fsutil::read_existing(&path)?;
-    let backup_path = match &existing {
-        Some(text) => Some(crate::fsutil::write_backup(&path, "protongen", text.as_bytes())?.display().to_string()),
-        None => None,
-    };
-    let existing = existing.unwrap_or_default();
-
-    let merged = merge(&existing, config);
-    crate::fsutil::write_atomic(&path, merged.text.as_bytes())?;
-
-    Ok(ExportResult {
-        config_path: path.display().to_string(),
-        backup_path,
-        changed_keys: merged.changed_keys,
-        cleared_keys: merged.cleared_keys,
-    })
+    crate::conf_merge::write_merged(&dir.join("vkBasalt.conf"), |existing| merge(existing, config))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every config key the TS builder can emit: `token: "<key>"` entries,
+    /// plus string/template literals in its build function that start with a
+    /// word followed by one of `ends` (`"` for a bare MangoHud token, `=` or
+    /// ` =` for an assignment). A tiny scanner rather than a regex dependency.
+    fn ts_emitted_keys(ts: &str, build_fn: &str, ends: &[&str]) -> Vec<String> {
+        let mut keys = Vec::new();
+        let mut rest = ts;
+        while let Some(i) = rest.find("token: \"") {
+            rest = &rest[i + 8..];
+            if let Some(end) = rest.find('"') {
+                keys.push(rest[..end].to_string());
+            }
+        }
+        let start = ts.find(&format!("export function {build_fn}(")).expect("build fn");
+        let body = &ts[start..start + ts[start..].find("\n}\n").expect("fn end")];
+        let word = |s: &str| s.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect::<String>();
+        for (i, c) in body.char_indices() {
+            if c == '"' || c == '`' {
+                let w = word(&body[i + 1..]);
+                let after = &body[i + 1 + w.len()..];
+                let is_key = w.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                    && ends.iter().any(|e| after.starts_with(e));
+                if is_key {
+                    keys.push(w);
+                }
+            }
+        }
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
+    /// Same guard as MangoHud's: every key `src/lib/vkbasalt.ts` writes must
+    /// be one this export owns, or unchecking it would never clear it.
+    #[test]
+    fn managed_keys_cover_everything_the_ts_builder_emits() {
+        let ts = include_str!("../../src/lib/vkbasalt.ts");
+        let keys = ts_emitted_keys(ts, "buildVkBasalt", &[" ="]);
+        assert!(keys.len() > 10, "{keys:?}");
+        for k in &keys {
+            assert!(MANAGED_KEYS.contains(&k.as_str()), "vkbasalt.ts emits `{k}`, which vkbasalt_export.rs doesn't own");
+        }
+    }
 
     #[test]
     fn preserves_unknown_lines() {

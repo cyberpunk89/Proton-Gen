@@ -33,6 +33,7 @@ mod art;
 mod builder;
 pub mod cli;
 mod compose;
+mod conf_merge;
 mod diff;
 mod explain;
 mod folders;

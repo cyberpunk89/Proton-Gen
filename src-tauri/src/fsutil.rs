@@ -4,6 +4,16 @@
 use std::io::Write;
 use std::path::Path;
 
+/// `$XDG_CONFIG_HOME` (when set and non-empty), else `~/.config` — the root
+/// every config path here hangs off (protongen's own, Heroic's, MangoHud's,
+/// vkBasalt's).
+pub fn config_home() -> Option<std::path::PathBuf> {
+    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
+        return Some(std::path::PathBuf::from(xdg));
+    }
+    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
+}
+
 /// Replace `path` with `bytes` without ever leaving a half-written file: write
 /// a temp file in the same directory (so the rename can't cross filesystems),
 /// fsync it, then rename over the target. A crash mid-write leaves the old

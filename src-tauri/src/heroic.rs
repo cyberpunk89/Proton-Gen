@@ -21,11 +21,7 @@ use crate::builder::{Bins, Wrapper};
 /// `$XDG_CONFIG_HOME/heroic` (or `~/.config/heroic`). Mirrors
 /// [`crate::params::config_dir`] but for Heroic's config tree, not protongen's.
 fn config_dir() -> Option<PathBuf> {
-    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(xdg).join("heroic"));
-    }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".config/heroic"))
+    crate::fsutil::config_home().map(|d| d.join("heroic"))
 }
 
 /// `GamesConfig/<app_name>.json` under the Heroic config dir. `None` for an

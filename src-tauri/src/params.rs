@@ -224,11 +224,7 @@ impl Catalog {
 
 /// `$XDG_CONFIG_HOME/protongen` (or `~/.config/protongen`).
 pub fn config_dir() -> Option<PathBuf> {
-    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(xdg).join("protongen"));
-    }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".config/protongen"))
+    crate::fsutil::config_home().map(|d| d.join("protongen"))
 }
 
 /// What kind of user input a [`ConfigWarning`] is about. The UI needs this to
