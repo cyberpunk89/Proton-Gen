@@ -20,6 +20,7 @@
     ClipboardText,
     GearSix,
     FloppyDisk,
+    ArrowsLeftRight,
     ArrowsClockwise,
     GlobeHemisphereWest,
     FileText,
@@ -216,6 +217,12 @@
           class="mt-1 flex w-full items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs text-subtext hover:bg-surface-2"
         >
           <FloppyDisk size={13} /> Save current…
+        </button>
+        <button
+          onclick={() => (app.compareOpen = true)}
+          class="flex w-full items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs text-subtext hover:bg-surface-2"
+        >
+          <ArrowsLeftRight size={13} /> Compare…
         </button>
       </div>
     </Popover>

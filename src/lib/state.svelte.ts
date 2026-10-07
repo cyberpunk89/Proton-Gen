@@ -1957,6 +1957,8 @@ class AppStore {
   gamescopeBuilderOpen = $state(false);
   /** The WINEDLLOVERRIDES editor (`DllOverrides`, root-mounted in OverlayBuilders). */
   dllBuilderOpen = $state(false);
+  /** The Compare dialog (`CompareDialog`, root-mounted in App.svelte). */
+  compareOpen = $state(false);
   lsfgBuilderOpen = $state(false);
 
   /**

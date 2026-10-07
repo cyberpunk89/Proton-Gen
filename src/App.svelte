@@ -18,6 +18,7 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
   import NexusConfirm from "$lib/components/NexusConfirm.svelte";
+  import CompareDialog from "$lib/components/CompareDialog.svelte";
   import MangoHudSystemConfirm from "$lib/components/MangoHudSystemConfirm.svelte";
   import VkBasaltSystemConfirm from "$lib/components/VkBasaltSystemConfirm.svelte";
   import OverlayBuilders from "$lib/components/OverlayBuilders.svelte";
@@ -245,6 +246,7 @@
      section change can't unmount an open bits-ui modal — see HeroicConfirm. -->
 <HeroicConfirm />
 <NexusConfirm />
+<CompareDialog />
 <!-- Same rationale, one level up: its trigger lives inside the MangoHud
      dialog, which the user can close mid-flow. -->
 <MangoHudSystemConfirm />
