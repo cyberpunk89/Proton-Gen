@@ -301,6 +301,9 @@ In `ipc::parse_command`, parsed env is split: catalog-known keys enable their to
 | `runtime.rs` | `compatibilitytool.vdf` in system (`/usr/share/steam/compatibilitytools.d`) + user dirs, and Valve-bundled `steamapps/common/Proton*` | A sorted `Vec<Runtime>` (internal name, display name, `System`/`User`/`Bundled` kind, install path). |
 | `games.rs` | App manifests across libraries + `shortcuts.vdf` (via steamlocate) | Sorted, de-duplicated games + non-Steam shortcuts, with runtime/redistributable apps filtered out (`HIDDEN_APP_IDS` + name heuristics). |
 | `steamcfg.rs` | `userdata/*/config/localconfig.vdf` + the compat-tool mapping | `appid → current LaunchOptions` and `appid → mapped compat tool`. |
+| `nexus.rs` | `~/.local/share/nexus/games.json` (Nexus, the user's launcher; lenient — a bad entry is skipped, a missing file is an empty list) | One `GameSource::Nexus` entry per repack that **replaces** its Steam-shortcut and Heroic-sideload mirrors (`absorb`, matched by recorded id or same exe), keyed by the shortcut appid → Heroic hash → slug hash (what Nexus's own `protongen_id` resolves to), carrying its slug, prefix, pinned Proton and the absorbed ids (`alias_ids`) the frontend carries saved tuning over from. See §6.3. |
+| `folders.rs` | A game's `compatdata/<id>/pfx` (or a Nexus game's own `pfx`) and `shadercache/<id>` | Their paths and sizes (symlinks not followed), for the Game & runtime panel; "Open" re-derives the path in Rust. |
+| `logs.rs` | `steam-<id>.log` (Steam appid, or umu's game id) in `$HOME` or `PROTON_LOG_DIR`, Nexus's `<slug>-last-launch.log`, DXVK's `<exe>_<api>.log`, `VKD3D_LOG_FILE` | The candidate log sources for a game + its config, stat'ed, newest first; the viewer names a source id, never a path. |
 | `lsfg.rs` | Vulkan `implicit_layer.d` manifests, `~/.config/lsfg-vk/conf.toml` (or `/etc/lsfg-vk/conf.toml`), Lossless Scaling's install folder (appid 993090, from `games.rs`) | `LsfgStatus`: whether the lsfg-vk 2.x layer is installed, the conf.toml profiles (for the `LSFGVK_PROFILE` pick list), and a `Lossless.dll` plus whether it's outside lsfg-vk's default search roots — per-game (`LSFGVK_ENV=1`) mode then needs `LSFGVK_DLL_PATH`. Read fresh on every `lsfg_status` call; profiles are edited in lsfg-vk's own `lsfg-vk-ui`, never here. |
 
 Notable details:
@@ -312,6 +315,11 @@ Notable details:
 - Non-Steam shortcuts surface their `executable`, which **prefills umu mode**.
 
 ### 4.7 `hardware.rs` — capability detection & relevance
+
+Also detects connected **monitors** (`/sys/class/drm/*/{status,modes,edid}`): the native
+mode from `modes`, and the highest refresh at that mode from the EDID's detailed timings —
+base block *and* CTA-861 extensions, since the base block often only lists 60 Hz. The
+gamescope builder offers them as one-click output sizes.
 
 Best-effort, never-blocking detection:
 
@@ -374,23 +382,49 @@ field. All saves are best-effort (failures are swallowed; the app keeps working)
   the `protondb_auto` setting.
 - **`art.rs`** resolves game artwork (portrait/hero/header) with a strict priority:
   local Steam cache (`appcache/librarycache`, or per-user `config/grid` for non-Steam
-  shortcuts) → previously downloaded cache (`$XDG_CACHE_HOME/protongen/art`) → optional
-  Steam CDN fallback (Steam apps only, when `online`). Returns a base64 `data:` URL so
-  the WebView needs no asset-protocol capability. Includes a hand-rolled base64 encoder
-  (tested against the RFC vectors) to avoid a crate dependency for a few images.
+  shortcuts; a Heroic file hint; a Nexus game's artwork folder) → previously downloaded
+  cache (`$XDG_CACHE_HOME/protongen/art`) → optional Steam CDN / Heroic URL fallback (when
+  `online`). It returns the image **file**: `ipc::game_art` adds exactly that file to the
+  asset-protocol scope (which starts empty in `tauri.conf.json`) and the frontend loads it
+  via `convertFileSrc`. Downloads are cached atomically under their real extension (by
+  magic number — an HTML error page is never cached as art), with a 10 s timeout, and a
+  remote 4xx is remembered for a week in a `.miss` sidecar.
+- **`anticheat.rs`** — opt-in (`anticheat_check`): AreWeAntiCheatYet's community
+  `games.json`, downloaded once, cached for three days (a failed refresh falls back to the
+  stale copy), matched by Steam appid or normalized title.
 
 ### 4.11 `which.rs`
 
-Minimal `$PATH` lookup (`is_installed`). Drives the green "installed" / red "missing"
+Minimal `$PATH` lookup (`is_installed`, `find`). Drives the green "installed" / red "missing"
 badges via `compute_requires_status`, and feeds GPU detection.
+
+### 4.12 `cli.rs` — the machine-readable command line
+
+`protongen --list --json`, `--game-config <id> [--umu]` and `--catalog --json` print
+versioned JSON (`"schema": 1`) from the same discovery, store and builder the app uses —
+the contract Nexus reads instead of re-deriving protongen's schema in Python (§6.3).
+`--list` without `--json` is the human dump (`lib::dump`). `--game <id>` is the GUI's:
+with `tauri-plugin-single-instance`, running it again forwards the id to the open window
+(`open-game` event) instead of starting a second one, and an id protongen doesn't know is
+reported with a Rescan action rather than ignored.
+
+### 4.13 `conf_merge.rs`
+
+The shared core of the MangoHud.conf and vkBasalt.conf exports: merge a builder's lines
+into a hand-editable flat config (managed keys replaced or cleared, everything else kept in
+place), back up, write atomically. Each export only supplies its managed keys, its
+line-splitting, and which extra keys it may replace. A test scans `mangohud.ts` /
+`vkbasalt.ts` and fails if the TS builder can emit a key its Rust export doesn't own.
 
 ---
 
 ## 5. Frontend design (`src/`)
 
 A single-page Svelte 5 app. The shell (`App.svelte`) shows a spinner until `app.init()`
-resolves, then renders `Header → StaleBanner → Hero → Notices → Recipes → Parameters`
-inside a scrollable, centered column, plus a global `Toast`.
+resolves, then renders the `Header` over either the **Library** (cover-art grid) or the
+**builder** — `NavRail` + `MainPanel` in Advanced mode, `SimplePanel` in Simple — with
+`CommandPreview` pinned below. Every dialog (palette, builders, confirms, log viewer,
+troubleshooter, compare) is mounted once at the root (the #63 rule, §11).
 
 ### 5.1 `state.svelte.ts` — the single source of truth
 
@@ -404,8 +438,10 @@ inside a scrollable, centered column, plus a global `Toast`.
 - **Derived/live** (`command`, `notices`) recomputed by a root `$effect` that serializes
   to a `Config` and calls the backend, **debounced ~60 ms** so rapid typing collapses
   into one round-trip.
-- **Game art** is lazy, cached by `${source}:${appId}:${kind}` (undefined = not loaded,
-  null = none found, string = data URL), de-duplicated via an `artRequested` set.
+- **Game art** (`art.svelte.ts`) and the **ProtonDB / anti-cheat lookups**
+  (`lookups.svelte.ts`) live in their own rune modules — neither touches builder state.
+  Art is lazy, concurrency-bounded and cached by `${source}:${appId}:${kind}` (undefined =
+  not loaded, null = none found, string = asset-protocol URL).
 
 Key behaviors: `selectGame()` persists the outgoing game's config into `game_memory` and
 restores the incoming game's remembered config (or resets), prefilling the umu exe for
@@ -423,20 +459,23 @@ designed and iterated without launching the Rust backend.
 
 ### 5.3 `types.ts`
 
-TypeScript interfaces that **mirror the serde DTOs** in `ipc.rs` one-to-one. This is the
-hand-maintained contract between the two languages; `svelte-check` enforces it on the
-frontend side.
+TypeScript interfaces that **mirror the serde DTOs** in `ipc.rs` & co. They stay
+hand-written (docs, and narrower types like `GpuGen` the Rust side can't express), but the
+mirror is now **enforced**: each IPC struct derives `ts_rs::TS` under `cfg(test)` (ts-rs is a
+dev-dependency only), `cargo test` writes their shapes to `src/lib/generated/`, and
+`src/lib/contract.ts` makes `pnpm check` fail when an interface gains, loses or renames a
+field, or an enum's string values differ. CI checks the generated files are committed fresh.
 
 ### 5.4 Components (`src/lib/components/`)
 
 | Area | Components | Role |
 | --- | --- | --- |
 | Shell | `Header`, `UiModeToggle`, `PresetRow`, `NavRail`, `StaleBanner`, `UpdateBanner`, `Toast`, `ResizeGrips` | Top bar (back to library, preset picker, Simple⇄Advanced, import/save, log viewer, troubleshooter, rescan, settings, window controls), the Advanced-mode category rail, banners, transient toasts, CSD resize edges. |
-| Library | `Library`, `GameTile` | Game grid (Steam, shortcuts, Heroic) with local filters; picking a game or "Generic" enters the builder. |
-| Builder | `MainPanel` (Advanced), `SimplePanel` (Simple), `GameRuntimePanel`, `CurrentGameCard`, `RuntimePicker`, `ModeToggle`, `UmuFields`, `ProtonDbChip`, `ActiveOptions` | Advanced = full categorised catalog; Simple = curated toggle grid over the same keys (a view, not a second store). Both share the game/runtime panel (Proton dropdown, Steam⇄umu toggle, umu fields, ProtonDB chip) and the "what's on" summary. |
+| Library | `Library`, `GameTile` | Game grid (Steam, shortcuts, Heroic, Nexus) with local filters; picking a game or "Generic" enters the builder. *Select* mode applies one preset to many games (`applyPresetToGames`, one undo for all). |
+| Builder | `MainPanel` (Advanced), `SimplePanel` (Simple), `GameRuntimePanel`, `CurrentGameCard`, `RuntimePicker` (type-to-filter Combobox), `ModeToggle`, `UmuFields`, `ProtonDbChip`, `AntiCheatNote`, `GameFolders`, `ActiveOptions` | Advanced = full categorised catalog; Simple = curated toggle grid over the same keys (a view, not a second store). Both share the game/runtime panel (Proton dropdown, Steam⇄umu toggle, umu fields, ProtonDB chip) and the "what's on" summary. |
 | Command bar | `CommandPreview`, `CommandBody`, `LauncherAction`, `OpenInSteam`, `SyncPill` | Pinned live preview with Copy, tokenised/annotated via `explain.rs`; the one "get it into your launcher" slot (Open in Steam, or Heroic inject); Steam-sync status from `diff.rs`. |
 | Discovery | `Recipes`, `RecipePreview`, `OptionRow`, `InfoPopover`, `Badges`, `CommandPalette` | Recipe cards (profiles + troubleshooter) with an apply preview, per-row toggle/value with ⓘ popover and installed/missing badges, Ctrl+K palette over games/parameters/recipes/presets/actions. |
-| Builders & dialogs | `OverlayBuilders` (`MangoHud`, `VkBasalt`, `OptiScaler`, `LosslessScaling`), `HeroicConfirm`, `MangoHudSystemConfirm`, `VkBasaltSystemConfirm`, `LogViewer`, `Troubleshooter`, `Markdown`, `SettingsDrawer`, `DefaultProfilePrompt`, `IntroTour`, `ShortcutsSheet` | Root-mounted: overlay/OptiScaler/Lossless Scaling builders (MangoHud's string↔struct logic in `lib/mangohud.ts`; lsfg-vk's four modes — auto / profile / per-game / off — in `lib/lsfg.ts`, with an OptiScaler pairing panel that keeps OptiScaler to upscaling so frames aren't generated twice), the confirm dialogs gating every §11 write, Proton log viewer + LLM coach, AI troubleshooter, settings drawer (theme/relevance/HDR/GPU generation/paths/LLM/ProtonDB), first-run prompts. |
+| Builders & dialogs | `OverlayBuilders` (`MangoHud`, `VkBasalt`, `OptiScaler`, `LosslessScaling`, `GamescopeBuilder`, `DllOverrides`), `HeroicConfirm`, `NexusConfirm`, `CompareDialog`, `MangoHudSystemConfirm`, `VkBasaltSystemConfirm`, `LogViewer`, `Troubleshooter`, `Markdown`, `SettingsDrawer`, `DefaultProfilePrompt`, `IntroTour`, `ShortcutsSheet` | Root-mounted: overlay/OptiScaler/Lossless Scaling builders (MangoHud's string↔struct logic in `lib/mangohud.ts`; lsfg-vk's four modes — auto / profile / per-game / off — in `lib/lsfg.ts`, with an OptiScaler pairing panel that keeps OptiScaler to upscaling so frames aren't generated twice), the confirm dialogs gating every §11 write, Proton log viewer + LLM coach, AI troubleshooter, settings drawer (theme/relevance/HDR/GPU generation/paths/LLM/ProtonDB), first-run prompts. |
 | Primitives | `Notices`, `Switch`, `Dialog`, `Popover` | Conflict notices and shared primitives. |
 
 ### 5.5 Theming (`app.css` + `themes.ts`)
@@ -479,7 +518,24 @@ Three round-trips keep the system consistent and are all tested:
 | `$XDG_CONFIG_HOME/protongen/state.toml` | theme, presets, per-game memory, settings, discovery paths, dismissals | `store.rs` (only file protongen writes for state) |
 | `$XDG_CONFIG_HOME/protongen/params.toml` | optional user catalog override | user / skill (read-only to app) |
 | `$XDG_CONFIG_HOME/protongen/recipes.toml` | optional user recipes override | user (read-only to app) |
-| `$XDG_CACHE_HOME/protongen/art/` | downloaded artwork cache | `art.rs` |
+| `$XDG_CACHE_HOME/protongen/art/` | downloaded artwork cache (+ `.miss` markers) | `art.rs` |
+| `$XDG_CACHE_HOME/protongen/anticheat.json` | AreWeAntiCheatYet list, 3-day cache | `anticheat.rs` |
+
+### 6.3 Nexus integration contract
+
+Nexus (the user's own launcher, a separate Python/PyQt6 project) **launches**; protongen
+**tunes**. protongen never launches a game. The coupling, in both directions:
+
+| Direction | Mechanism |
+| --- | --- |
+| Nexus → protongen | `protongen --game <id>` ("Tune in protongen"; single-instance handoff); `protongen --list --json` / `--game-config <id>` / `--catalog --json` (`cli.rs`, `"schema": 1`) instead of reading `state.toml` and re-implementing the FNV id, share-code decoding and wrapper order. |
+| protongen → Nexus (read) | `~/.local/share/nexus/games.json` (`nexus.rs`): one entry per repack, prefix + pinned Proton prefilled into umu mode, Nexus's `<slug>-last-launch.log` in the log viewer. |
+| protongen → Nexus (write) | **Apply to Nexus**: `nexus-cli --set-launch <slug> protongen:v1:…` — the fifth §11 exception. |
+
+Ids: a Nexus game keeps the id Nexus already passes (shortcut appid → Heroic hash), so
+existing `game_memory` and favourites carry over; tuning saved under an absorbed mirror is
+copied (not moved — Nexus still reads the old slots) to that id on load, preferring the
+mirror Nexus's profile says it last imported from.
 
 ---
 
@@ -508,19 +564,24 @@ Three round-trips keep the system consistent and are all tested:
 The architecture is deliberately shaped so the **valuable logic is pure and unit-tested
 without a running app or a real Steam install**:
 
-- `builder.rs` — every ordering/quoting/`%command%` rule (10 tests).
-- `parser.rs` — Steam + umu round-trip, quoted values, no-arg gamescope.
-- `params.rs` — bundled catalog parses, has entries, every entry has full info,
-  categories ordered/unique, `to_spec` ordering.
-- `recipes.rs` — both kinds present, every fix has a symptom, `apply` enables only listed
-  keys.
-- `store.rs` — TOML round-trip, options apply→capture stability.
-- `steamcfg.rs`, `runtime.rs`, `art.rs`, `which.rs` — VDF parsing (with comments), build-
-  date extraction, candidate path construction, base64 vectors.
-- `lint.rs` — representative conflict rules fire/clear with hardware.
+- **Rust** (`cd src-tauri && cargo test`, ~300 tests): builder ordering/quoting, parser
+  round trips, catalog/recipes invariants, store round trips, lint rules, diff/explain,
+  discovery parsers (VDF, Heroic, Nexus `games.json`, EDID), log-source selection, the
+  config merges, OptiScaler extraction, the JSON CLI, and the `ipc` glue (via pure
+  `*_with` helpers). One network test is `#[ignore]`d (`cargo test -- --ignored live_list`).
+- **Frontend** (`pnpm test`, vitest): the pure modules — shell quoting, preset codes,
+  MangoHud/vkBasalt/gamescope/DLL-override round trips, markdown safety, fuzzy, compare,
+  util, and the browser mocks.
+- **Shared fixtures**: `src-tauri/testdata/shell.json` drives both `builder::sh_quote` /
+  `parser::tokenize` and their TS twins, so the two can't drift.
+- **Contract**: `pnpm check` runs svelte-check (incl. `contract.ts`, §5.3) and the
+  props-spread guard.
+- **CI** (`.github/workflows/ci.yml`, every push/PR, same Arch container as releases):
+  `pnpm check`, `pnpm test`, the frontend build, `cargo test --locked`, and a check that the
+  generated bindings are committed.
 
-Discovery against the real filesystem and the WebView UI are validated manually / via
-`--list`. The browser-mock path keeps frontend iteration decoupled from the backend.
+Discovery against the real filesystem is validated with `--list`; the UI with the
+browser-mock path (`pnpm dev`) and the Preview tools.
 
 ---
 
@@ -529,17 +590,24 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 - **Read-only against Steam.** protongen never mutates Steam config; it only reads, and
   its sole instruction to the user is "paste this string yourself."
 - **No telemetry.** The outbound network calls are the **opt-in** ProtonDB tier
-  summaries (compatibility stats only, no commands) and Steam-CDN artwork fallback; the
+  summaries (compatibility stats only, no commands), the opt-in AreWeAntiCheatYet list,
+  and Steam-CDN artwork fallback; the
   launch-time self-update check against GitHub Releases (`update.rs`); the confirm-gated
   OptiScaler fetch (§11); and — only once enabled in Settings — the local-LLM
   coach/troubleshooter (`llm.rs`), which sends the Proton log or symptom text, the built
   command and detected hardware to the user-configured endpoint. All run off-thread and
   degrade silently when offline.
-- **Least privilege.** Minimal Tauri capabilities; no shell execution, no arbitrary FS
-  plugin. `decorations: false` means the client-side titlebar owns move, minimize,
+- **Least privilege.** Minimal Tauri capabilities; no shell, no arbitrary FS plugin. The
+  one process protongen starts is the user's own `nexus-cli`, for Apply to Nexus, with
+  arguments passed straight to `execve` (no shell) and a slug taken from discovery. `decorations: false` means the client-side titlebar owns move, minimize,
   maximize, close *and* resize (`ResizeGrips.svelte`), so the window permission set is
-  four narrow verbs rather than a general window capability. Artwork is delivered as in-memory `data:` URLs rather than exposing a file
-  asset protocol.
+  four narrow verbs rather than a general window capability. The asset protocol is on with an **empty static scope**; each art file is added at runtime,
+  one file at a time, only after `art.rs` chose it. "Open folder" re-derives its path in
+  Rust and uses the opener's Rust API, so no filesystem-wide open-path capability exists.
+- **Content-Security-Policy** (`tauri.conf.json`): `default-src 'self'`, images from
+  self/`data:`/`asset:`, IPC only for connections — a backstop behind `markdown.ts`'s
+  no-`{@html}` rule for LLM output and release notes. `style-src` keeps `'unsafe-inline'`
+  (Svelte styles) and is excluded from Tauri's nonce injection, which would disable it.
 - **Local-only state.** Everything persistent lives under the user's XDG dirs.
 
 ---
@@ -584,12 +652,13 @@ Discovery against the real filesystem and the WebView UI are validated manually 
 | Single `bootstrap()` payload | One round-trip; discovery cached in `AppState` | Startup does all discovery eagerly (acceptable: it's fast and read-only). |
 | Read-only / paste-yourself | Safety, trust, no risk of corrupting Steam config | Slightly less convenient than auto-applying. |
 | Native Steam only (no Flatpak) | Predictable paths; CachyOS target | Flatpak Steam users unsupported by design. |
-| `data:` URL artwork + hand-rolled base64 | No asset-protocol capability; one fewer crate | Larger IPC payloads for images (mitigated by lazy load + cache). |
+| Artwork over the asset protocol, scoped per file | No base64 over IPC, nothing held as strings in the webview | The asset protocol is enabled; its scope must only ever grow through `game_art`. |
 | Debounced live recompute | Smooth typing, fewer IPC calls | ~60 ms latency between edit and preview. |
 | Svelte 5 runes single store | Minimal boilerplate, fine-grained reactivity | All state centralized in one class (intentional). |
 | OptiScaler-upgrade fetch writes into a game's folder | The one place read-only/paste-yourself has a named exception — see below | Introduces a network+filesystem write path that has to stay explicit-confirm-only forever, or the invariant is gone. |
 | MangoHud system-wide export merges into a real config file outside `state.toml` | User-requested; follows the same backup-first, preserve-what-we-don't-own shape as the other two exceptions — see below | A third precedent-setting write path; the read-only invariant now rests on all three staying confirm-gated forever. |
 | vkBasalt system-wide export merges into a real config file outside `state.toml` | Same shape again — vkBasalt has no inline env-var carrier at all, so this is its *only* apply path, not a second one alongside a command-apply button | A fourth precedent-setting write path; the read-only invariant now rests on all four staying confirm-gated forever. |
+| Apply to Nexus runs `nexus-cli --set-launch` | Nexus keeps each repack's Steam shortcut and Heroic entry in step itself, so a direct Heroic write would be undone by its next apply — asking Nexus is the only write that sticks | A fifth exception, and the first that runs a program (the user's own launcher, never a shell); confirm-gated like the rest. |
 
 **The OptiScaler-upgrade exception.** `optiscaler_upgrade.rs` fetches the
 latest `optiscaler/OptiScaler` GitHub release (or, when the user picks the
@@ -628,6 +697,15 @@ keys are replaced wholesale to match the current build exactly, including
 dropping a key the user has since unchecked (`ExportResult.cleared_keys`
 reports these, so the confirm dialog and toast can name them).
 
+**The Nexus apply exception.** `nexus::set_launch` runs `nexus-cli --set-launch <slug>
+<code>` — the fifth action outside `state.toml`, and the mildest: protongen writes no file
+itself; it asks the user's own launcher to do what its own `--set-launch` already does
+(save the profile and re-apply it to launch.sh, the desktop entry and its Steam/Heroic
+entries). Explicit-confirm only (`NexusConfirm`). The slug comes from discovery, never the
+webview; the code must be share-code shaped (`protongen:v1:` + base64, ≤ 32 KiB); arguments
+go straight to `execve`; a run is killed after a minute. Launching games stays out of scope
+— that is Nexus's job.
+
 **The vkBasalt system-wide export exception.** `vkbasalt_export.rs` merges the
 effect chain built in protongen's vkBasalt dialog into the real, system-wide
 `~/.config/vkBasalt/vkBasalt.conf` — the fourth write outside `state.toml`,
@@ -662,7 +740,11 @@ Proton-gui/
 │       ├── ipc.ts · mock.ts   typed invoke + browser fallback
 │       ├── types.ts           DTOs mirroring the Rust serde structs
 │       ├── themes.ts · toast.svelte.ts · actions.ts · util.ts
+│       ├── art.svelte.ts · lookups.svelte.ts   art cache; ProtonDB/anti-cheat lookups
+│       ├── contract.ts · generated/   types.ts ↔ Rust check (ts-rs output from cargo test)
 │       ├── mangohud.ts        MANGOHUD_CONFIG parse/build (pure)
+│       ├── gamescope.ts · dlloverrides.ts · compare.ts   builder/compare logic (pure)
+│       ├── *.test.ts          vitest unit tests
 │       ├── lsfg.ts            LSFGVK_* env ↔ Lossless Scaling builder state (pure)
 │       └── components/*.svelte library · builder panels · command bar · dialogs · …
 └── src-tauri/                 BACKEND (Rust / Tauri)
@@ -672,7 +754,8 @@ Proton-gui/
     ├── icons/
     └── src/
         ├── lib.rs              wiring: run() + dump(); registers commands
-        ├── main.rs            binary entry (--list dump mode)
+        ├── main.rs            binary entry (CLI routing → cli.rs, else the GUI)
+        ├── cli.rs             --list/--game-config/--catalog JSON for scripts and Nexus
         ├── ipc.rs             Tauri command surface + AppState + DTOs
         ├── builder.rs         pure command assembly (Steam + umu)
         ├── compose.rs         Config → launch string pipeline (params::to_spec + builder)
@@ -686,6 +769,10 @@ Proton-gui/
         ├── fsutil.rs          write_atomic / write_backup / read_existing (store, Heroic, exports)
         ├── steam.rs runtime.rs games.rs steamcfg.rs   read-only discovery
         ├── heroic.rs          Heroic game discovery + confirm-gated per-game config inject
+        ├── nexus.rs           Nexus library discovery + confirm-gated nexus-cli --set-launch
+        ├── logs.rs · folders.rs   log sources for the viewer; prefix/shader-cache sizes
+        ├── conf_merge.rs      shared merge+write for the MangoHud/vkBasalt exports
+        ├── anticheat.rs       opt-in AreWeAntiCheatYet lookup
         ├── lsfg.rs            lsfg-vk (Lossless Scaling FG) layer / profiles / DLL discovery
         ├── hardware.rs        GPU/session/ntsync detection + relevance
         ├── which.rs           $PATH lookup (installed/missing badges)
@@ -695,7 +782,7 @@ Proton-gui/
         ├── mangohud_export.rs merge the MangoHud builder into the system MangoHud.conf
         ├── vkbasalt_export.rs merge the vkBasalt builder into the system vkBasalt.conf
         ├── llm.rs             opt-in local-LLM log coach + troubleshooter (OpenAI-compatible)
-        └── art.rs             local→cache→CDN artwork as data: URLs
+        └── art.rs             local→cache→CDN artwork, served via the asset protocol
 ```
 
 ---

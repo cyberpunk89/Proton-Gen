@@ -18,7 +18,7 @@ command for you as you toggle things. For Steam, and for
 ![Platform: Linux](https://img.shields.io/badge/platform-Linux-1793d1?style=flat-square)
 ![Latest release](https://img.shields.io/github/v/release/cyberpunk89/Proton-Gen?style=flat-square&color=b4befe)
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-f5c2e7?style=flat-square)
-![Catalog: Proton 11.0 / proton-cachyos 20260703](https://img.shields.io/badge/catalog-Proton%2011.0%20%C2%B7%20cachyos%2020260703-a6e3a1?style=flat-square)
+![Catalog: Proton 11.0 / proton-cachyos 20261005](https://img.shields.io/badge/catalog-Proton%2011.0%20%C2%B7%20cachyos%2020261005-a6e3a1?style=flat-square)
 
 <img src="docs/screenshots/builder.webp" alt="protongen building a Steam launch command: a category of NVIDIA options with three toggled on, and the finished command pinned at the bottom of the window">
 
@@ -36,7 +36,7 @@ CachyOS wiki, DXVK/VKD3D docs and forum threads.
 
 protongen puts all of it in one window:
 
-- **117 environment variables and 6 wrappers**, in 14 categories — each with a plain-English
+- **137 environment variables and 6 wrappers**, in 15 categories — each with a plain-English
   explanation, its default, accepted values, an example and a link to the upstream docs.
 - **20 one-click recipes** — 12 curated profiles and 8 symptom-based troubleshooter fixes.
 - **Live command preview**, pinned to the bottom of the window. One click copies it, and
@@ -45,8 +45,8 @@ protongen puts all of it in one window:
   categorised catalogue. Both drive the same selection, so switching never loses anything.
 - **Hardware-aware**: it detects your GPU vendor, Wayland, KDE and `/dev/ntsync`, and hides
   options that can't apply to you (always revealable with *Show all*).
-- **Steam, Heroic and umu** — Steam games and shortcuts, Heroic games (sideloaded plus
-  Epic/GOG/Amazon), or a standalone `umu-run` command.
+- **Steam, Heroic, Nexus and umu** — Steam games and shortcuts, Heroic games (sideloaded plus
+  Epic/GOG/Amazon), games in [Nexus](#works-with-nexus), or a standalone `umu-run` command.
 
 ### It never touches your Steam configuration
 
@@ -55,7 +55,7 @@ any of them**. The only output is a string of text — nothing changes until *yo
 Steam yourself. Its own files are settings in `~/.config/protongen/` and downloaded cover art in
 `~/.cache/protongen/`.
 
-Four features do write elsewhere, and each one only runs when you click through a confirm step
+Five features do write elsewhere, and each one only runs when you click through a confirm step
 that names exactly what it will touch:
 
 - **Heroic** — writes the env vars and wrappers into that game's Heroic per-game config
@@ -65,6 +65,9 @@ that names exactly what it will touch:
 - **MangoHud / vkBasalt export** — merges the overlay or effect chain you built into your
   system-wide `~/.config/MangoHud/MangoHud.conf` or `~/.config/vkBasalt/vkBasalt.conf`
   (backed up first; lines protongen doesn't manage are preserved).
+- **Nexus** — hands a game's tuning to Nexus with `nexus-cli --set-launch`; Nexus then updates
+  the launch script, Steam shortcut and Heroic entry it keeps for that game. protongen writes
+  none of those files itself.
 
 ## Install
 
@@ -216,7 +219,10 @@ EAC/BattlEye title, HDR without Wayland or gamescope, two different DXVK forks a
 
 ### Logs, and an optional AI coach
 
-The **log viewer** reads the tail of a game's `PROTON_LOG=1` log without leaving the app. If
+The **log viewer** reads the tail of a game's logs without leaving the app — Proton's
+`PROTON_LOG=1` log (following `PROTON_LOG_DIR`, and umu's naming for umu-run games), DXVK's and
+VKD3D-Proton's own logs, and Nexus's per-launch output for its games — newest first, with a
+switcher when there's more than one. If
 you point **Settings** at a local OpenAI-compatible server (LM Studio, Ollama, llama.cpp), an
 opt-in **log coach** suggests tuning from that log, and the **troubleshooter** diagnoses a
 problem you describe in your own words — both offer changes you apply with a click, never
@@ -229,9 +235,33 @@ automatically.
 
 ### Builders for the fiddly ones
 
-MangoHud, vkBasalt and OptiScaler each get a dialog builder instead of a hand-written config
-string. The OptiScaler builder composes `OptiScaler.ini` settings into
-`PROTON_OPTISCALER_CONFIG`, and can fetch the latest OptiScaler build into the game's folder.
+MangoHud, vkBasalt, OptiScaler, gamescope and `WINEDLLOVERRIDES` each get a dialog builder
+instead of a hand-written string. The gamescope builder offers your monitor's native mode and
+refresh rate (read from its EDID) as a one-click output size; the OptiScaler builder composes
+`OptiScaler.ini` settings into `PROTON_OPTISCALER_CONFIG`, and can fetch the latest OptiScaler
+build into the game's folder.
+
+### Across games
+
+Select several games in the library and apply one preset to all of them; **Compare** shows what
+differs between the current builder, any preset and any game's saved tuning. The Game & runtime
+panel shows each game's Wine prefix and shader-cache size with a button to open the folder, and
+— opt-in, from [AreWeAntiCheatYet](https://areweanticheatyet.com) — whether its anti-cheat runs
+on Linux at all.
+
+### Works with Nexus
+
+Nexus — a launcher for repacks, Steam and Heroic games — launches the
+games; protongen tunes them. A Nexus game shows up once (not as its Steam shortcut *and* its
+Heroic sideload), opens on its own prefix and the Proton build Nexus runs it with, and **Apply to
+Nexus** sends the tuning back. Nexus's *Tune in protongen* opens the game here — again in the
+same window if protongen is already open — and scripts can read protongen's data as JSON:
+
+```bash
+protongen --list --json                # runtimes and games (ids, sources, Nexus slugs)
+protongen --game-config <id> [--umu]   # a game's saved tuning and its built command
+protongen --catalog --json             # wrappers in command order, env keys
+```
 
 ### Ten themes
 
@@ -276,6 +306,7 @@ Wiki pages are generated from [`docs/wiki/`](docs/wiki) — edit those, not the 
 - **Not a Proton installer or version manager.** It discovers runtimes you already have. The one
   exception is indirect: choosing *GE-Proton (latest)* in umu mode makes **umu** download it.
 - **Not a Steam configuration tool.** It never writes Steam files; you paste the result.
+- **Not a launcher.** It builds the command; Steam, Heroic, umu or Nexus runs the game.
 - **Not Flatpak-aware.** Flatpak Steam is excluded by design.
 - **Linux only.**
 
@@ -289,8 +320,9 @@ bridge.
 pnpm install
 pnpm dev              # UI only, in a browser, with mock data
 pnpm tauri dev        # the full app
-pnpm check            # type-check the TS ↔ Rust contract
-cd src-tauri && cargo test
+pnpm check            # type-check, incl. types.ts against the Rust structs (src/lib/contract.ts)
+pnpm test             # frontend unit tests (vitest)
+cd src-tauri && cargo test   # Rust tests; also regenerates src/lib/generated/
 cargo run -- --list   # discovery sanity check from the terminal
 ```
 
