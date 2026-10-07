@@ -1,0 +1,26 @@
+{
+  "_comment": "Shared by builder.rs/parser.rs tests and src/lib/shell.test.ts so builder::sh_quote / parser::tokenize and their TS twins (shQuote / tokenizeEnv) can't drift. Add a case here, not to one side.",
+  "quote": [
+    ["1", "1"],
+    ["dxgi=n,b", "dxgi=n,b"],
+    ["/opt/proton-cachyos", "/opt/proton-cachyos"],
+    ["$HOME/.cache/dxvk", "$HOME/.cache/dxvk"],
+    ["a;b", "\"a;b\""],
+    ["a b", "\"a b\""],
+    ["$HOME/my games", "\"$HOME/my games\""],
+    ["~/my games", "~/\"my games\""],
+    ["say \"hi\"", "\"say \\\"hi\\\"\""],
+    ["a`b", "\"a\\`b\""],
+    ["back\\slash", "\"back\\\\slash\""],
+    ["it's", "\"it's\""],
+    ["", "\"\""]
+  ],
+  "tokenize": [
+    ["A=\"x\\\"y\" B='it\\s' C=a\\ b D=\"\\q\"", ["A=x\"y", "B=it\\s", "C=a b", "D=\\q"]],
+    ["E=\"\\$HOME\" F=\"a\\\\b\"", ["E=$HOME", "F=a\\b"]],
+    ["A=\"x y", ["A=x y"]],
+    ["  FOO=1   BAR=\"two words\"  ", ["FOO=1", "BAR=two words"]],
+    ["X='single \"inner\"'", ["X=single \"inner\""]],
+    ["", []]
+  ]
+}

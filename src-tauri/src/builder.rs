@@ -487,23 +487,18 @@ mod tests {
         );
     }
 
+    /// Cases shared with `src/lib/shell.test.ts` (the TS twin `shQuote`).
+    fn shell_fixture() -> serde_json::Value {
+        serde_json::from_str(include_str!("../testdata/shell.json")).unwrap()
+    }
+
     #[test]
     fn sh_quote_leaves_plain_words_bare_and_quotes_the_rest() {
-        for (input, want) in [
-            ("1", "1"),
-            ("dxgi=n,b", "dxgi=n,b"),
-            ("/opt/proton-cachyos", "/opt/proton-cachyos"),
-            ("$HOME/.cache/dxvk", "$HOME/.cache/dxvk"),
-            ("a;b", "\"a;b\""),
-            ("a b", "\"a b\""),
-            ("$HOME/my games", "\"$HOME/my games\""),
-            ("~/my games", "~/\"my games\""),
-            ("say \"hi\"", "\"say \\\"hi\\\"\""),
-            ("a`b", "\"a\\`b\""),
-            ("back\\slash", "\"back\\\\slash\""),
-            ("it's", "\"it's\""),
-            ("", "\"\""),
-        ] {
+        let fx = shell_fixture();
+        let cases = fx["quote"].as_array().unwrap();
+        assert!(cases.len() > 10);
+        for case in cases {
+            let (input, want) = (case[0].as_str().unwrap(), case[1].as_str().unwrap());
             assert_eq!(sh_quote(input), want, "sh_quote({input:?})");
         }
     }

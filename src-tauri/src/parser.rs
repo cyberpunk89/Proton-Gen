@@ -461,14 +461,19 @@ mod tests {
         assert_eq!(p.unknown, vec!["gamescope-git", "-f", "--"]);
     }
 
+    /// Cases shared with `src/lib/shell.test.ts` (the TS twin `tokenizeEnv`).
+    /// Includes the unclosed-quote case: it swallows the rest rather than
+    /// inventing a split.
     #[test]
     fn tokenizer_follows_posix_quoting() {
-        assert_eq!(tokenize(r#"A="x\"y" B='it\s' C=a\ b D="\q""#), vec![
-            "A=x\"y", "B=it\\s", "C=a b", "D=\\q"
-        ]);
-        assert_eq!(tokenize(r#"E="\$HOME" F="a\\b""#), vec!["E=$HOME", "F=a\\b"]);
-        // An unclosed quote swallows the rest rather than inventing a split.
-        assert_eq!(tokenize("A=\"x y"), vec!["A=x y"]);
+        let fx: serde_json::Value =
+            serde_json::from_str(include_str!("../testdata/shell.json")).unwrap();
+        for case in fx["tokenize"].as_array().unwrap() {
+            let input = case[0].as_str().unwrap();
+            let want: Vec<&str> =
+                case[1].as_array().unwrap().iter().map(|t| t.as_str().unwrap()).collect();
+            assert_eq!(tokenize(input), want, "tokenize({input:?})");
+        }
     }
 
     #[test]
