@@ -1,0 +1,50 @@
+name: CI
+
+# The gates that otherwise only run when someone remembers: the Rust unit tests
+# (the pure builder/parser/lint core), svelte-check + the props-spread guard
+# (#63), and the frontend unit tests. Release builds (release.yml) run none of
+# these — `tauri build` only type-checks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # Same Arch container as release.yml, so a green run means the same
+    # webkit2gtk/glibc the shipped binary links against.
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel git rust nodejs npm \
+            webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl
+          npm install -g pnpm@10
+
+      - uses: actions/checkout@v4
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check + props-spread guard
+        run: pnpm check
+
+      - name: Frontend unit tests
+        run: pnpm test
+
+      # Also produces ../dist, which tauri's generate_context! wants to exist.
+      - name: Frontend build
+        run: ./node_modules/.bin/vite build
+
+      - name: Rust unit tests
+        working-directory: src-tauri
+        run: cargo test --locked
