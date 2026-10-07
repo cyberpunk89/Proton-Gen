@@ -1,3 +1,9 @@
+<script lang="ts" module>
+  import type { GameFolder as Measured } from "$lib/types";
+  /** Session cache shared by every mount: appid -> measured folders. */
+  const measured = new Map<number, Measured[]>();
+</script>
+
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { ipc } from "$lib/ipc";
@@ -18,10 +24,20 @@
     const id = app.selectedAppId;
     folders = null;
     if (id == null) return;
+    // Measured once per game per session: a prefix walk is real disk work,
+    // and switching back and forth between games shouldn't repeat it.
+    const hit = measured.get(id);
+    if (hit) {
+      folders = hit;
+      return;
+    }
     const mine = ++seq;
     ipc
       .gameFolders(id)
-      .then((f) => mine === seq && (folders = f))
+      .then((f) => {
+        measured.set(id, f);
+        if (mine === seq) folders = f;
+      })
       .catch(() => mine === seq && (folders = []));
   });
 
