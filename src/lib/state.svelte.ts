@@ -1885,6 +1885,8 @@ class AppStore {
   vkBuilderOpen = $state(false);
   /** The gamescope builder (`GamescopeBuilder`, root-mounted in OverlayBuilders). */
   gamescopeBuilderOpen = $state(false);
+  /** The WINEDLLOVERRIDES editor (`DllOverrides`, root-mounted in OverlayBuilders). */
+  dllBuilderOpen = $state(false);
   lsfgBuilderOpen = $state(false);
 
   /**

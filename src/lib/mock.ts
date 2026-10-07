@@ -130,6 +130,22 @@ export const mockBootstrap: Bootstrap = {
     ],
     envs: [
       {
+        key: "WINEDLLOVERRIDES",
+        category: "Wine / Overrides",
+        default_value: "",
+        values: [],
+        requires: null,
+        pkg: null,
+        help: "Override DLL load mode, e.g. 'winmm=n,b' (native then builtin).",
+        details: null,
+        example: "WINEDLLOVERRIDES='mscoree=d;mshtml=d' %command%",
+        url: null,
+        gpu: null,
+        needs: [],
+        tier: "advanced",
+        recommended_for: [],
+      },
+      {
         key: "PROTON_NO_NTSYNC",
         category: "Performance / Sync",
         default_value: "1",

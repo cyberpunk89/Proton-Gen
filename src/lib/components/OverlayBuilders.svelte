@@ -6,6 +6,7 @@
   import VkBasalt from "./VkBasalt.svelte";
   import LosslessScaling from "./LosslessScaling.svelte";
   import GamescopeBuilder from "./GamescopeBuilder.svelte";
+  import DllOverrides from "./DllOverrides.svelte";
 
   /**
    * The MangoHud, OptiScaler, vkBasalt and Lossless Scaling builders, mounted once at
@@ -66,4 +67,13 @@
   width="50rem"
 >
   <GamescopeBuilder onapply={() => (app.gamescopeBuilderOpen = false)} />
+</Dialog>
+
+<Dialog
+  bind:open={app.dllBuilderOpen}
+  title="DLL overrides"
+  subtitle="Choose which DLLs Wine loads from the game folder, from Wine, or not at all."
+  width="40rem"
+>
+  <DllOverrides onapply={() => (app.dllBuilderOpen = false)} />
 </Dialog>

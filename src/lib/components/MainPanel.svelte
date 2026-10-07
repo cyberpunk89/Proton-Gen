@@ -445,6 +445,16 @@
   </button>
 {/snippet}
 
+{#snippet configureDllOverrides()}
+  <button
+    type="button"
+    onclick={() => (app.dllBuilderOpen = true)}
+    class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+  >
+    <Faders size={13} /> Edit overrides…
+  </button>
+{/snippet}
+
 {#snippet configureLsfg()}
   <button
     type="button"
@@ -541,7 +551,9 @@
             ? configureVkBasalt
             : LSFG_MODE_KEYS.has(e.key)
               ? configureLsfg
-              : null}
+              : e.key === "WINEDLLOVERRIDES"
+                ? configureDllOverrides
+                : null}
       onToggle={() => app.toggleEnv(e.key)}
       onValue={(v) => app.setEnvValue(e.key, v)}
     />
