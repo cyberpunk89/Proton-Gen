@@ -116,6 +116,7 @@ class AppStore {
     ram_gb: 0,
     cpu_model: "",
     gpu_gen_detected: null,
+    monitors: [],
   });
   requiresStatus = $state<Record<string, boolean>>({});
   launchOptions = $state<Record<string, string>>({});
@@ -593,6 +594,18 @@ class AppStore {
     s.value = value;
     this.disownParam(key);
     history.note(`set ${key}`);
+  }
+
+  /** Apply the gamescope builder's arguments: turn the wrapper on with them,
+   *  as one undo step. Empty args fall back to `-f`, the catalog default — a
+   *  bare `gamescope --` would open a 1280x720 window. */
+  applyGamescope(args: string) {
+    const s = this.wrap["gamescope"];
+    if (!s) return;
+    s.enabled = true;
+    s.value = args.trim() || "-f";
+    this.disownParam("gamescope");
+    this.mark("configure gamescope");
   }
 
   /** Whether the free-text game-arguments field carries `token` as a whole
@@ -1870,6 +1883,8 @@ class AppStore {
   mangoBuilderOpen = $state(false);
   optiBuilderOpen = $state(false);
   vkBuilderOpen = $state(false);
+  /** The gamescope builder (`GamescopeBuilder`, root-mounted in OverlayBuilders). */
+  gamescopeBuilderOpen = $state(false);
   lsfgBuilderOpen = $state(false);
 
   /**

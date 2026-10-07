@@ -111,6 +111,17 @@ export interface Hardware {
    * always wins. Reconciled by `app.effectiveGpuGen`.
    */
   gpu_gen_detected: string | null;
+  /** Connected displays and their native mode (gamescope builder presets). */
+  monitors: Monitor[];
+}
+
+/** Mirrors hardware::Monitor. */
+export interface Monitor {
+  connector: string;
+  width: number;
+  height: number;
+  /** Highest refresh the EDID advertises at that resolution; null if unknown. */
+  refresh_hz: number | null;
 }
 
 /** The AMD generation the user declared in Settings; "" when unset or not AMD.

@@ -174,7 +174,12 @@ pub fn dump() -> Result<()> {
         );
     }
 
-    println!("\nDetected hardware: {}", hardware::detect().summary());
+    let hw = hardware::detect();
+    println!("\nDetected hardware: {}", hw.summary());
+    for m in &hw.monitors {
+        let hz = m.refresh_hz.map(|r| format!(" @ {r} Hz")).unwrap_or_default();
+        println!("  display {}: {}x{}{hz}", m.connector, m.width, m.height);
+    }
 
     let app_cfgs = steamcfg::current_app_cfgs(&dir, &mut warnings);
     let current = steamcfg::launch_options(&app_cfgs);

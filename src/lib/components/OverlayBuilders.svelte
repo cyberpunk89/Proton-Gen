@@ -5,6 +5,7 @@
   import OptiScaler from "./OptiScaler.svelte";
   import VkBasalt from "./VkBasalt.svelte";
   import LosslessScaling from "./LosslessScaling.svelte";
+  import GamescopeBuilder from "./GamescopeBuilder.svelte";
 
   /**
    * The MangoHud, OptiScaler, vkBasalt and Lossless Scaling builders, mounted once at
@@ -56,4 +57,13 @@
   width="46rem"
 >
   <LosslessScaling onapply={() => (app.lsfgBuilderOpen = false)} />
+</Dialog>
+
+<Dialog
+  bind:open={app.gamescopeBuilderOpen}
+  title="gamescope"
+  subtitle="Pick output and render sizes, upscaling and display options for the gamescope wrapper."
+  width="50rem"
+>
+  <GamescopeBuilder onapply={() => (app.gamescopeBuilderOpen = false)} />
 </Dialog>

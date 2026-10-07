@@ -597,6 +597,7 @@ export const mockBootstrap: Bootstrap = {
     // Left undetected on purpose: the mock has no /sys, and this is the path
     // where the Settings selector is the only source of a generation.
     gpu_gen_detected: null,
+    monitors: [{ connector: "DP-2", width: 2560, height: 1440, refresh_hz: 165 }],
   },
   store: {
     theme: "mocha",

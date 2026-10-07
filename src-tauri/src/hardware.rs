@@ -46,6 +46,21 @@ pub struct Hardware {
     /// needs hwdata's `pci.ids` on disk and a `Navi <n>` codename in the entry —
     /// which is exactly why it must not overrule an explicit choice.
     pub gpu_gen_detected: Option<String>,
+    /// Connected displays and their native mode, for the gamescope builder's
+    /// output-size presets. Empty when sysfs has nothing (a VM, no KMS).
+    pub monitors: Vec<Monitor>,
+}
+
+/// One connected display, from `/sys/class/drm/<card>-<connector>/`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Monitor {
+    /// The DRM connector, e.g. `DP-2`.
+    pub connector: String,
+    pub width: u32,
+    pub height: u32,
+    /// Highest refresh the EDID advertises at that resolution, rounded.
+    /// `None` when the EDID is missing or has no timing for it.
+    pub refresh_hz: Option<u32>,
 }
 
 /// AMD's PCI vendor id, as sysfs spells it.
@@ -243,7 +258,85 @@ pub fn detect() -> Hardware {
         ram_gb: read_ram_gb(),
         cpu_model: read_cpu_model(),
         gpu_gen_detected: detect_gpu_gen(),
+        monitors: detect_monitors(Path::new("/sys/class/drm")),
     }
+}
+
+/// `(width, height, refresh Hz)` from one 18-byte EDID detailed timing
+/// descriptor, or `None` for a non-timing descriptor (pixel clock 0).
+fn edid_timing(d: &[u8]) -> Option<(u32, u32, f64)> {
+    if d.len() < 18 {
+        return None;
+    }
+    let clock = u32::from(u16::from_le_bytes([d[0], d[1]])) * 10_000;
+    if clock == 0 {
+        return None;
+    }
+    let h_active = u32::from(d[2]) | (u32::from(d[4] & 0xF0) << 4);
+    let h_blank = u32::from(d[3]) | (u32::from(d[4] & 0x0F) << 8);
+    let v_active = u32::from(d[5]) | (u32::from(d[7] & 0xF0) << 4);
+    let v_blank = u32::from(d[6]) | (u32::from(d[7] & 0x0F) << 8);
+    let total = (h_active + h_blank) * (v_active + v_blank);
+    (total > 0).then(|| (h_active, v_active, f64::from(clock) / f64::from(total)))
+}
+
+/// Every detailed timing in an EDID: the four in the base block, plus those
+/// in CTA-861 extension blocks (where high-refresh modes usually live — the
+/// base block's preferred timing is often just 60 Hz).
+fn edid_timings(edid: &[u8]) -> Vec<(u32, u32, f64)> {
+    let mut out = Vec::new();
+    if edid.len() >= 128 {
+        for off in [54, 72, 90, 108] {
+            out.extend(edid_timing(&edid[off..off + 18]));
+        }
+    }
+    for ext in edid.chunks(128).skip(1) {
+        if ext.len() < 128 || ext[0] != 0x02 {
+            continue;
+        }
+        let mut off = usize::from(ext[2]);
+        while off >= 4 && off + 18 <= 127 {
+            match edid_timing(&ext[off..off + 18]) {
+                Some(t) => out.push(t),
+                None => break,
+            }
+            off += 18;
+        }
+    }
+    out
+}
+
+/// Connected displays under `drm` (normally `/sys/class/drm`): the native
+/// mode is the first line of `modes`; its refresh comes from the EDID.
+fn detect_monitors(drm: &Path) -> Vec<Monitor> {
+    let Ok(entries) = std::fs::read_dir(drm) else {
+        return Vec::new();
+    };
+    let mut out: Vec<Monitor> = entries
+        .flatten()
+        .filter_map(|e| {
+            let dir = e.path();
+            let name = e.file_name().to_string_lossy().into_owned();
+            // `card1-DP-2` → `DP-2`; skip `card1`, `renderD128`, `version`.
+            let connector = name.split_once('-').map(|(_, c)| c.to_string())?;
+            if std::fs::read_to_string(dir.join("status")).ok()?.trim() != "connected" {
+                return None;
+            }
+            let mode = std::fs::read_to_string(dir.join("modes")).ok()?;
+            let (w, h) = mode.lines().next()?.trim().split_once('x')?;
+            let (width, height) = (w.parse::<u32>().ok()?, h.trim_end_matches('i').parse::<u32>().ok()?);
+            let edid = std::fs::read(dir.join("edid")).unwrap_or_default();
+            let refresh_hz = edid_timings(&edid)
+                .into_iter()
+                .filter(|&(tw, th, _)| tw == width && th == height)
+                .map(|(_, _, hz)| hz)
+                .fold(None, |best: Option<f64>, hz| Some(best.map_or(hz, |b| b.max(hz))))
+                .map(|hz| hz.round() as u32);
+            Some(Monitor { connector, width, height, refresh_hz })
+        })
+        .collect();
+    out.sort_by(|a, b| a.connector.cmp(&b.connector));
+    out
 }
 
 impl Hardware {
@@ -370,6 +463,53 @@ mod tests {
     fn llm_context_includes_summary_and_omits_empty_fields() {
         let hw = Hardware { amd: true, wayland: true, ..Default::default() };
         assert_eq!(hw.llm_context(), hw.summary());
+    }
+
+    /// An 18-byte detailed timing for `w`x`h` at `clock_10khz`, with the
+    /// given blanking — the inverse of `edid_timing`.
+    fn dtd(clock_10khz: u16, w: u32, hb: u32, h: u32, vb: u32) -> [u8; 18] {
+        let mut d = [0u8; 18];
+        d[0..2].copy_from_slice(&clock_10khz.to_le_bytes());
+        d[2] = (w & 0xFF) as u8;
+        d[3] = (hb & 0xFF) as u8;
+        d[4] = (((w >> 8) as u8) << 4) | ((hb >> 8) as u8 & 0x0F);
+        d[5] = (h & 0xFF) as u8;
+        d[6] = (vb & 0xFF) as u8;
+        d[7] = (((h >> 8) as u8) << 4) | ((vb >> 8) as u8 & 0x0F);
+        d
+    }
+
+    #[test]
+    fn edid_timing_decodes_a_real_descriptor() {
+        // A real 2560x1440 monitor's base-block preferred timing.
+        let (w, h, hz) = edid_timing(&dtd(24150, 2560, 160, 1440, 41)).unwrap();
+        assert_eq!((w, h), (2560, 1440));
+        assert_eq!(hz.round() as u32, 60);
+        assert!(edid_timing(&[0u8; 18]).is_none(), "a display descriptor, not a timing");
+    }
+
+    #[test]
+    fn monitors_take_the_highest_refresh_at_the_native_mode() {
+        let root = std::env::temp_dir().join(format!("protongen-drm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let conn = root.join("card1-DP-2");
+        std::fs::create_dir_all(&conn).unwrap();
+        std::fs::create_dir_all(root.join("card1-HDMI-A-1")).unwrap();
+        std::fs::write(root.join("card1-HDMI-A-1/status"), "disconnected\n").unwrap();
+        std::fs::write(conn.join("status"), "connected\n").unwrap();
+        std::fs::write(conn.join("modes"), "2560x1440\n1920x1080\n").unwrap();
+        let mut edid = vec![0u8; 256];
+        edid[54..72].copy_from_slice(&dtd(24150, 2560, 160, 1440, 41)); // 60 Hz
+        edid[128] = 0x02;
+        edid[130] = 4;
+        edid[132..150].copy_from_slice(&dtd(48300, 2560, 160, 1440, 41)); // ~120 Hz
+        edid[150..168].copy_from_slice(&dtd(29700, 1920, 280, 1080, 45)); // other mode
+        std::fs::write(conn.join("edid"), &edid).unwrap();
+
+        let m = detect_monitors(&root);
+        assert_eq!(m, vec![Monitor { connector: "DP-2".into(), width: 2560, height: 1440, refresh_hz: Some(120) }]);
+        assert!(detect_monitors(&root.join("nope")).is_empty());
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

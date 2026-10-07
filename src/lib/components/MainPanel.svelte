@@ -9,7 +9,7 @@
   import Recipes from "./Recipes.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
   import ActiveOptions from "./ActiveOptions.svelte";
-  import { MagnifyingGlass, Faders, FilmStrip, Gauge, Sparkle } from "phosphor-svelte";
+  import { MagnifyingGlass, Faders, FilmStrip, Gauge, Monitor, Sparkle } from "phosphor-svelte";
   import type { EnvDef, WrapperDef } from "$lib/types";
 
   let showAll = $derived(app.store.show_irrelevant);
@@ -433,6 +433,18 @@
 
 <!-- Wired to the rows that pick a mode (profile / per-game / off): the
      builder owns all three and keeps them from contradicting each other. -->
+<!-- The gamescope row: its free-text args field stays for hand edits; the
+     builder covers the common flags and keeps the rest. -->
+{#snippet configureGamescope()}
+  <button
+    type="button"
+    onclick={() => (app.gamescopeBuilderOpen = true)}
+    class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+  >
+    <Monitor size={13} /> Configure gamescope…
+  </button>
+{/snippet}
+
 {#snippet configureLsfg()}
   <button
     type="button"
@@ -489,7 +501,11 @@
       appliedBy={app.recipeOrigin[h.key] ?? null}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
-      action={w.key === "mangohud" ? configureOverlay : null}
+      action={w.key === "mangohud"
+        ? configureOverlay
+        : w.kind === "gamescope"
+          ? configureGamescope
+          : null}
       onToggle={() => app.toggleWrap(w.key)}
       onValue={(v) => app.setWrapValue(w.key, v)}
     />
