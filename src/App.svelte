@@ -30,6 +30,18 @@
   import { inTauri } from "$lib/ipc";
 
   onMount(() => {
+    // `protongen --game <id>` run again while this window is open: the
+    // single-instance plugin focuses us and forwards the id. Registered before
+    // init() so a request that races the first bootstrap isn't dropped (the
+    // backend also parks it for bootstrap to pick up).
+    let unlistenOpen: (() => void) | undefined;
+    if (inTauri) {
+      void import("@tauri-apps/api/event").then(({ listen }) =>
+        listen<{ app_id: number | null }>("open-game", ({ payload }) => {
+          if (payload.app_id != null && app.ready) app.openRequestedGame(payload.app_id);
+        }).then((fn) => (unlistenOpen = fn)),
+      );
+    }
     app.init();
     // WebKitGTK doesn't always fire DOM focus when the OS window is re-focused
     // (alt-tab back from Steam), so also listen to Tauri's own window event.
@@ -44,7 +56,10 @@
           .then((fn) => (unlisten = fn)),
       );
     }
-    return () => unlisten?.();
+    return () => {
+      unlisten?.();
+      unlistenOpen?.();
+    };
   });
 </script>
 

@@ -54,6 +54,26 @@ mod vkbasalt_export;
 mod which;
 
 use anyhow::Result;
+use tauri::{Emitter, Manager};
+
+/// Event the running window gets when `protongen --game <id>` is run again.
+pub const OPEN_GAME_EVENT: &str = "open-game";
+
+/// Payload of [`OPEN_GAME_EVENT`]; `app_id` is `None` for a bare `protongen`.
+#[derive(Clone, serde::Serialize)]
+struct OpenGame {
+    app_id: Option<u32>,
+}
+
+/// The `--game <appid>` argument (a Steam appid, or protongen's hashed id for a
+/// Heroic game — what Nexus's "Tune in protongen" passes). Shared by startup
+/// and the single-instance handoff so both read the same flag the same way.
+pub fn game_arg(args: &[String]) -> Option<u32> {
+    args.iter()
+        .position(|a| a == "--game")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|v| v.trim().parse::<u32>().ok())
+}
 
 /// Launch the Tauri application.
 pub fn run() {
@@ -63,6 +83,21 @@ pub fn run() {
 /// Launch the Tauri application, optionally opening on one game (`--game`).
 pub fn run_with(initial_game: Option<u32>) {
     tauri::Builder::default()
+        // Must be the first plugin. A second launch (Nexus's "Tune in
+        // protongen" clicked again) hands its argv to this process and exits,
+        // instead of opening a second window with its own copy of the store.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+            let app_id = game_arg(&argv);
+            if let Some(id) = app_id {
+                app.state::<ipc::AppState>().request_game(id);
+            }
+            let _ = app.emit(OPEN_GAME_EVENT, OpenGame { app_id });
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -215,4 +250,27 @@ pub fn dump() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::game_arg;
+
+    fn argv(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn game_arg_reads_the_value_after_the_flag() {
+        assert_eq!(game_arg(&argv(&["protongen", "--game", "1245620"])), Some(1245620));
+        assert_eq!(game_arg(&argv(&["protongen", "--game", "2147483905"])), Some(2147483905));
+    }
+
+    #[test]
+    fn game_arg_ignores_a_missing_or_bad_value() {
+        assert_eq!(game_arg(&argv(&["protongen"])), None);
+        assert_eq!(game_arg(&argv(&["protongen", "--game"])), None);
+        assert_eq!(game_arg(&argv(&["protongen", "--game", "half-life"])), None);
+        assert_eq!(game_arg(&argv(&["protongen", "--game", "-1"])), None);
+    }
 }

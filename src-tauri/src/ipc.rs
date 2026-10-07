@@ -364,6 +364,13 @@ impl AppState {
         *self.initial_game.locked() = appid;
         self
     }
+
+    /// A second `protongen --game <id>` arrived while this one runs. Parked in
+    /// the same slot as the startup request, so one that lands before the UI
+    /// has bootstrapped (and before it listens for `open-game`) still opens.
+    pub fn request_game(&self, appid: u32) {
+        *self.initial_game.locked() = Some(appid);
+    }
 }
 
 fn runtime_dto(r: &runtime::Runtime) -> RuntimeDto {

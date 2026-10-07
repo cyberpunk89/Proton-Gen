@@ -306,10 +306,7 @@ class AppStore {
 
     // Opened as `protongen --game <id>` (Nexus's "Tune in protongen"): start on
     // that game instead of the restored one.
-    if (b.initial_game_appid != null) {
-      const g = this.games.find((x) => x.app_id === b.initial_game_appid);
-      if (g) this.selectGame(g);
-    }
+    if (b.initial_game_appid != null) this.openRequestedGame(b.initial_game_appid);
 
     // Seed the undo baseline with the state the user is actually looking at, so
     // restoring a session isn't itself the first undo entry.
@@ -948,6 +945,36 @@ class AppStore {
   openGame(game: GameDto) {
     this.selectGame(game);
     this.view = "builder";
+  }
+
+  /** A game asked for from outside — `protongen --game <id>` at startup, or the
+   *  same command run again while this window is open (single-instance
+   *  handoff). Opens it in the builder; an id protongen doesn't know is said
+   *  out loud rather than silently leaving the last game up, since the caller
+   *  (Nexus's "Tune in protongen") has no other way to learn it missed. */
+  openRequestedGame(appid: number) {
+    const g = this.games.find((x) => x.app_id === appid);
+    if (g) {
+      this.openGame(g);
+      return;
+    }
+    // Rescan re-asks for this same id once the fresh scan lands, so a game
+    // added after startup opens without a second trip through Nexus.
+    toast.error(`Game ${appid} isn't in protongen's library`, {
+      ms: 8000,
+      action: {
+        label: "Rescan",
+        onClick: () =>
+          void this.refresh().then((r) => r === "ok" && this.openKnownGame(appid)),
+      },
+    });
+  }
+
+  /** `openRequestedGame` without the not-found toast — the retry after a rescan
+   *  shouldn't nag twice. */
+  private openKnownGame(appid: number) {
+    const g = this.games.find((x) => x.app_id === appid);
+    if (g) this.openGame(g);
   }
 
   /** Build a command with no game attached (generic path). */
