@@ -572,19 +572,20 @@ pub fn build_command(
     compose::assemble(&state.catalog, &config, proton_path.as_deref(), &bins)
 }
 
-/// A game's Wine prefix and shader cache, with their sizes (see
-/// [`crate::folders`]). Walks the folders, so it's off the UI thread and only
-/// called for the selected game.
+/// A game's Wine prefix and shader cache (see [`crate::folders`]); with
+/// `sizes`, also walks them for their size — off the UI thread, and only
+/// when the user asks.
 #[tauri::command]
 pub async fn game_folders(
     state: State<'_, AppState>,
     app_id: u32,
+    sizes: bool,
 ) -> Result<Vec<crate::folders::Folder>, String> {
     let Some(game) = state.game(app_id) else {
         return Ok(Vec::new());
     };
     let root = state.steam_root().map(std::path::PathBuf::from);
-    tauri::async_runtime::spawn_blocking(move || crate::folders::measure(&game, root.as_deref()))
+    tauri::async_runtime::spawn_blocking(move || crate::folders::measure(&game, root.as_deref(), sizes))
         .await
         .map_err(|e| e.to_string())
 }

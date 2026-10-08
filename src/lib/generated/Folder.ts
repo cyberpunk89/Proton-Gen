@@ -9,6 +9,7 @@ export type Folder = {
  */
 kind: string, path: string, exists: boolean, 
 /**
- * Bytes on disk (apparent size), `None` when it doesn't exist.
+ * Bytes on disk (apparent size); `None` when it doesn't exist or sizes
+ * weren't asked for.
  */
 bytes: bigint | null, };

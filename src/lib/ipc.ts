@@ -88,13 +88,13 @@ export const ipc = {
             : null,
         ),
 
-  /** The selected game's Wine prefix and shader cache, measured. */
-  gameFolders: (appId: number) =>
+  /** The selected game's Wine prefix and shader cache; `sizes` walks them. */
+  gameFolders: (appId: number, sizes: boolean) =>
     inTauri
-      ? invoke<GameFolder[]>("game_folders", { appId })
+      ? invoke<GameFolder[]>("game_folders", { appId, sizes })
       : Promise.resolve<GameFolder[]>([
-          { kind: "prefix", path: `~/.local/share/Steam/steamapps/compatdata/${appId}/pfx`, exists: true, bytes: 1_342_177_280 },
-          { kind: "shadercache", path: `~/.local/share/Steam/steamapps/shadercache/${appId}`, exists: true, bytes: 356_515_840 },
+          { kind: "prefix", path: `~/.local/share/Steam/steamapps/compatdata/${appId}/pfx`, exists: true, bytes: sizes ? 1_342_177_280 : null },
+          { kind: "shadercache", path: `~/.local/share/Steam/steamapps/shadercache/${appId}`, exists: true, bytes: sizes ? 356_515_840 : null },
         ]),
 
   /** Open one of those in the file manager; the backend recomputes the path. */

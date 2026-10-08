@@ -18,14 +18,16 @@
    * library); the latest request wins if the user switches games mid-walk.
    */
   let folders = $state<GameFolder[] | null>(null);
+  let measuring = $state(false);
   let seq = 0;
 
+  // Listing the folders is a few stats; sizes are a walk of the whole prefix,
+  // so they're measured only on request, then remembered for the session.
   $effect(() => {
     const id = app.selectedAppId;
     folders = null;
+    measuring = false;
     if (id == null) return;
-    // Measured once per game per session: a prefix walk is real disk work,
-    // and switching back and forth between games shouldn't repeat it.
     const hit = measured.get(id);
     if (hit) {
       folders = hit;
@@ -33,13 +35,28 @@
     }
     const mine = ++seq;
     ipc
-      .gameFolders(id)
-      .then((f) => {
-        measured.set(id, f);
-        if (mine === seq) folders = f;
-      })
+      .gameFolders(id, false)
+      .then((f) => mine === seq && (folders = f))
       .catch(() => mine === seq && (folders = []));
   });
+
+  async function measure() {
+    const id = app.selectedAppId;
+    if (id == null || measuring) return;
+    measuring = true;
+    const mine = ++seq;
+    try {
+      const f = await ipc.gameFolders(id, true);
+      measured.set(id, f);
+      if (mine === seq) folders = f;
+    } catch (e) {
+      toast.error(`Couldn't measure: ${e}`);
+    } finally {
+      if (mine === seq) measuring = false;
+    }
+  }
+
+  let unmeasured = $derived(!!folders?.some((f) => f.exists && f.bytes == null));
 
   const LABEL: Record<GameFolder["kind"], string> = {
     prefix: "Wine prefix",
@@ -63,11 +80,20 @@
   }
 </script>
 
-{#if folders === null && app.selectedAppId != null}
-  <p class="text-xs text-muted" aria-live="polite">Measuring prefix…</p>
-{:else if folders && folders.length}
+{#if folders && folders.length}
   <div class="space-y-1.5 rounded-xl border border-border/60 bg-surface-2/40 p-3">
-    <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Prefix &amp; caches</p>
+    <div class="flex items-center justify-between gap-2">
+      <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Prefix &amp; caches</p>
+      {#if unmeasured}
+        <button
+          onclick={measure}
+          disabled={measuring}
+          aria-live="polite"
+          class="text-[11px] text-accent transition hover:opacity-80 disabled:opacity-60"
+          >{measuring ? "Measuring…" : "Show sizes"}</button
+        >
+      {/if}
+    </div>
     {#each folders as f (f.kind)}
       <div class="flex items-center gap-2 text-xs">
         <span class="w-24 shrink-0 text-subtext">{LABEL[f.kind]}</span>

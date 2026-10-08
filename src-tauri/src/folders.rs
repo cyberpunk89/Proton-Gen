@@ -20,7 +20,8 @@ pub struct Folder {
     pub kind: &'static str,
     pub path: String,
     pub exists: bool,
-    /// Bytes on disk (apparent size), `None` when it doesn't exist.
+    /// Bytes on disk (apparent size); `None` when it doesn't exist or sizes
+    /// weren't asked for.
     pub bytes: Option<u64>,
 }
 
@@ -85,8 +86,10 @@ pub fn dir_size(dir: &Path) -> u64 {
     total
 }
 
-/// [`locate`], stat'ed and measured.
-pub fn measure(game: &GameDto, steam_root: Option<&Path>) -> Vec<Folder> {
+/// [`locate`], stat'ed — and, only when asked (`sizes`), measured. Walking a
+/// prefix is tens of thousands of stats, so the panel lists the folders for
+/// free and measures on a click rather than on every game it opens.
+pub fn measure(game: &GameDto, steam_root: Option<&Path>, sizes: bool) -> Vec<Folder> {
     locate(game, steam_root)
         .into_iter()
         .map(|(kind, path)| {
@@ -95,7 +98,7 @@ pub fn measure(game: &GameDto, steam_root: Option<&Path>) -> Vec<Folder> {
                 kind,
                 path: path.display().to_string(),
                 exists,
-                bytes: exists.then(|| dir_size(&path)),
+                bytes: (exists && sizes).then(|| dir_size(&path)),
             }
         })
         .collect()
@@ -158,8 +161,9 @@ mod tests {
         std::fs::write(d.join("a/b/y"), [0u8; 50]).unwrap();
         std::os::unix::fs::symlink("/usr", d.join("link")).unwrap();
         assert_eq!(dir_size(&d), 150);
-        let m = measure(&game("nexus", 1, None, Some(d.to_str().unwrap())), None);
+        let m = measure(&game("nexus", 1, None, Some(d.to_str().unwrap())), None, true);
         assert_eq!(m[0].bytes, Some(150));
+        assert_eq!(measure(&game("nexus", 1, None, Some(d.to_str().unwrap())), None, false)[0].bytes, None);
         assert!(m[0].exists);
         std::fs::remove_dir_all(&d).ok();
     }
