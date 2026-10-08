@@ -49,26 +49,51 @@ fn local_candidates(steam_root: &Path, app_id: u32, source: &str, kind: &str) ->
         return v;
     }
 
-    // Steam games: appcache/librarycache — flat (older) + per-appid subdir (newer).
+    // Steam games: appcache/librarycache — flat (older), per-appid subdir
+    // (newer), and per-appid/<content hash>/ (current clients), where the
+    // portrait is often only a 300×450 `library_capsule`. Names are in priority
+    // order: a 600×900 anywhere beats a capsule anywhere.
     let cache = steam_root.join("appcache/librarycache");
-    let (flat, sub): (&[&str], &[&str]) = match kind {
+    let (flat, names): (&[&str], &[&str]) = match kind {
         "portrait" => (
             &["_library_600x900.jpg"],
-            &["library_600x900.jpg", "library_600x900.png"],
+            &["library_600x900.jpg", "library_600x900.png", "library_capsule.jpg", "library_capsule.png"],
         ),
         "hero" => (
             &["_library_hero.jpg"],
             &["library_hero.jpg", "library_hero.png"],
         ),
-        _ => (&["_header.jpg"], &["header.jpg", "header.png"]),
+        _ => (
+            &["_header.jpg"],
+            &["header.jpg", "header.png", "library_header.jpg", "library_header.png"],
+        ),
     };
     for f in flat {
         v.push(cache.join(format!("{app_id}{f}")));
     }
-    for s in sub {
-        v.push(cache.join(app_id.to_string()).join(s));
+    let dir = cache.join(app_id.to_string());
+    let hashed = hash_dirs(&dir);
+    for name in names {
+        v.push(dir.join(name));
+        v.extend(hashed.iter().map(|h| h.join(name)));
     }
     v
+}
+
+/// The content-hash subdirectories of a Steam librarycache app dir, newest
+/// first — an updated asset gets a new hash dir and the old one can linger.
+fn hash_dirs(dir: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut dirs: Vec<(std::time::SystemTime, PathBuf)> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| {
+            let mtime = e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+            (mtime, e.path())
+        })
+        .collect();
+    dirs.sort_by(|a, b| b.0.cmp(&a.0));
+    dirs.into_iter().map(|(_, p)| p).collect()
 }
 
 /// Steam CDN URL for a Steam app's art (no art exists there for shortcuts).
@@ -307,6 +332,48 @@ mod tests {
         let c = local_candidates(root, 553850, "steam", "portrait");
         assert!(c.contains(&root.join("appcache/librarycache/553850_library_600x900.jpg")));
         assert!(c.contains(&root.join("appcache/librarycache/553850/library_600x900.jpg")));
+    }
+
+    /// A Steam root with `librarycache/<app_id>/<hash>/<file>` for each entry.
+    fn hashed_cache(tag: &str, app_id: u32, files: &[(&str, &str)]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("protongen-art-{tag}-{}", std::process::id()));
+        for (hash, file) in files {
+            let d = root.join(format!("appcache/librarycache/{app_id}/{hash}"));
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join(file), b"\xFF\xD8\xFFjpeg").unwrap();
+        }
+        root
+    }
+
+    #[test]
+    fn steam_art_in_a_hash_subdir_is_found_and_600x900_beats_capsule() {
+        let root = hashed_cache("hashed", 4_100_000_001, &[("aaa", "library_capsule.jpg")]);
+        let base = root.join("appcache/librarycache/4100000001");
+        let found = fetch(Some(root.display().to_string()), 4_100_000_001, "steam", "portrait", false, None);
+        assert_eq!(found, Some(base.join("aaa/library_capsule.jpg")));
+
+        let d = base.join("bbb");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("library_600x900.jpg"), b"\xFF\xD8\xFFjpeg").unwrap();
+        let found = fetch(Some(root.display().to_string()), 4_100_000_001, "steam", "portrait", false, None);
+        assert_eq!(found, Some(d.join("library_600x900.jpg")));
+        assert_eq!(
+            fetch(Some(root.display().to_string()), 4_100_000_001, "steam", "hero", false, None),
+            None,
+            "a capsule is not a hero"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn the_newest_hash_dir_wins() {
+        let root = hashed_cache("newest", 4_100_000_002, &[("old", "library_hero.jpg"), ("new", "library_hero.jpg")]);
+        let base = root.join("appcache/librarycache/4100000002");
+        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        std::fs::File::open(base.join("old")).unwrap().set_modified(then).unwrap();
+        let found = fetch(Some(root.display().to_string()), 4_100_000_002, "steam", "hero", false, None);
+        assert_eq!(found, Some(base.join("new/library_hero.jpg")));
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
