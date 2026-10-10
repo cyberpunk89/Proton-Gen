@@ -188,11 +188,13 @@
           <button
             onclick={() => {
               app.applyGlobalProfile();
-              toast.success("Global profile applied");
+              toast.success("Default profile applied", {
+                action: { label: "Undo", onClick: () => app.undo() },
+              });
             }}
             class="flex w-full items-center gap-1.5 rounded-lg border border-accent/40 px-2 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
           >
-            <GlobeHemisphereWest size={13} /> Apply global profile
+            <GlobeHemisphereWest size={13} /> Apply default profile
           </button>
           <div class="my-1 border-t border-border/60"></div>
         {/if}

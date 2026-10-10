@@ -97,7 +97,7 @@
   const TABS: { id: Tab; label: string }[] = [
     { id: "all", label: "All" },
     { id: "profile", label: "Profiles" },
-    { id: "fix", label: "Troubleshooter" },
+    { id: "fix", label: "Fixes" },
   ];
 
   function apply(i: number) {
@@ -197,7 +197,7 @@
         <p class="py-8 text-center text-sm text-muted">No recipes match this filter.</p>
       {:else if activeTab === "all"}
         {@render group("Profiles", profiles)}
-        {@render group("Troubleshooter", fixes)}
+        {@render group("Fixes", fixes)}
       {:else}
         {@render group(null, shown)}
       {/if}

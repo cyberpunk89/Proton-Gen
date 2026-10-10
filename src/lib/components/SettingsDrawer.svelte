@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { app } from "$lib/state.svelte";
+  import { toast } from "$lib/toast.svelte";
   import { keys } from "$lib/keys.svelte";
   import { THEMES, SYSTEM_THEME } from "$lib/themes";
   import { prefersReducedMotion } from "$lib/motion.svelte";
@@ -526,13 +527,13 @@
   </div>
 {/snippet}
 
-<!-- Global profile: a reusable selection saved from the current build and
-     applied to any game on demand via the builder's "Apply global profile"
-     button. -->
+<!-- Default profile (store: global_profile): a reusable selection saved from
+     the current build and applied to any game on demand via the builder's
+     "Apply default profile" button, or offered when a fresh game opens. -->
 {#snippet globalProfile()}
   {@const gp = app.store.global_profile}
   <div class="rounded-lg px-1 py-1.5">
-    <p class="text-sm text-subtext">Global profile</p>
+    <p class="text-sm text-subtext">Default profile</p>
     <p class="mb-1.5 text-[11px] leading-snug text-muted">
       {#if gp}
         Saved: {gp.env.length} env · {gp.wrappers.length} wrappers{gp.runtime
@@ -544,14 +545,24 @@
     </p>
     <div class="flex gap-1">
       <button
-        onclick={() => app.setGlobalProfileFromCurrent()}
+        onclick={() => {
+          const prev = app.setGlobalProfileFromCurrent();
+          toast.success(prev ? "Default profile replaced" : "Default profile saved", {
+            action: { label: "Undo", onClick: () => app.restoreGlobalProfile(prev) },
+          });
+        }}
         class="rounded-lg border border-border px-2 py-1 text-[11px] text-subtext transition hover:border-accent/50 hover:text-text"
       >
         Set from current build
       </button>
       {#if gp}
         <button
-          onclick={() => app.clearGlobalProfile()}
+          onclick={() => {
+            const prev = app.clearGlobalProfile();
+            toast.success("Default profile cleared", {
+              action: { label: "Undo", onClick: () => app.restoreGlobalProfile(prev) },
+            });
+          }}
           class="rounded-lg border border-border px-2 py-1 text-[11px] text-muted transition hover:border-red/50 hover:text-red"
         >
           Clear

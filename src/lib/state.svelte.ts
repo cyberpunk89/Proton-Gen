@@ -1597,16 +1597,29 @@ class AppStore {
     this.persistStore();
   }
 
-  // --------------------------- global profile -------------------------------
+  // -------------------- default profile (store: global_profile) -------------
 
-  /** Save the current build as the reusable global profile (Settings). */
-  setGlobalProfileFromCurrent() {
+  /** Save the current build as the reusable default profile (Settings).
+   *  Returns what it replaced, for the caller's Undo — the profile lives in the
+   *  store, not the builder history, so Ctrl+Z can't bring it back. */
+  setGlobalProfileFromCurrent(): Config | null {
+    const prev = $state.snapshot(this.store.global_profile);
     this.store.global_profile = withoutLaunchTarget(this.toConfig());
     this.persistStore();
+    return prev;
   }
 
-  clearGlobalProfile() {
+  /** Clear the default profile; returns it for the caller's Undo. */
+  clearGlobalProfile(): Config | null {
+    const prev = $state.snapshot(this.store.global_profile);
     this.store.global_profile = null;
+    this.persistStore();
+    return prev;
+  }
+
+  /** Put back a profile returned by one of the two above. */
+  restoreGlobalProfile(prev: Config | null) {
+    this.store.global_profile = prev;
     this.persistStore();
   }
 
@@ -1616,7 +1629,7 @@ class AppStore {
     const gp = this.store.global_profile;
     if (!gp) return;
     this.loadConfig(gp, { keepLaunchTarget: true });
-    this.mark("apply global profile");
+    this.mark("apply default profile");
   }
 
   // ------------------------------- import -----------------------------------

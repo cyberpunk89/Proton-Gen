@@ -207,7 +207,7 @@ export const recipesAction: AppCommand = {
   id: "recipes",
   label: "Browse recipes",
   icon: Sparkle,
-  keywords: ["profiles", "troubleshooter"],
+  keywords: ["profiles", "fixes", "troubleshooter"],
   run: () => app.setSection("recipes"),
 };
 
@@ -304,7 +304,7 @@ export const troubleshootAction: AppCommand = {
   keywords: ["fix", "crash", "stutter", "black screen", "help", "symptom"],
   run: () => {
     // Without the AI coach there is still a symptom → fix list: the recipes
-    // section's troubleshooter tab.
+    // section's Fixes tab.
     if (app.store.llm_enabled) app.showTroubleshooter = true;
     else app.setSection("recipes");
   },
