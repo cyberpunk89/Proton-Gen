@@ -96,6 +96,22 @@ impl Ctx<'_> {
             .any(|(d, s)| s.enabled && d.key == key)
     }
 
+    /// An enabled wrapper's argument string (gamescope's args); `None` when off.
+    fn wrap_value(&self, key: &str) -> Option<&str> {
+        self.catalog
+            .wrappers
+            .iter()
+            .zip(&self.options.wrappers)
+            .find(|(d, s)| s.enabled && d.key == key)
+            .map(|(_, s)| s.value.as_str())
+    }
+
+    /// Whether gamescope is on and its args carry `flag` as a whole word.
+    fn gamescope_has(&self, flag: &str) -> bool {
+        self.wrap_value("gamescope")
+            .is_some_and(|args| args.split_whitespace().any(|a| a == flag || a.starts_with(&format!("{flag}="))))
+    }
+
     /// Which of `keys` are currently enabled, in the given order.
     fn envs_on(&self, keys: &[&str]) -> Vec<String> {
         keys.iter()
@@ -192,6 +208,18 @@ const LSFG_ENV_ONLY_KEYS_AND_ENV: &[&str] = &[
     "LSFGVK_LOG_LEVEL",
     "LSFGVK_LOG_FILE",
     "LSFGVK_ENV",
+];
+
+/// The env vars `prime-run` sets for you.
+const PRIME_ENV_KEYS: &[&str] =
+    &["__NV_PRIME_RENDER_OFFLOAD", "__GLX_VENDOR_LIBRARY_NAME", "__VK_LAYER_NV_optimus"];
+
+/// [`PRIME_ENV_KEYS`] plus the wrapper its rule reports.
+const PRIME_KEYS_AND_WRAPPER: &[&str] = &[
+    "prime-run",
+    "__NV_PRIME_RENDER_OFFLOAD",
+    "__GLX_VENDOR_LIBRARY_NAME",
+    "__VK_LAYER_NV_optimus",
 ];
 
 /// Implicit Vulkan layers that pace the CPU against the GPU to cut latency.
@@ -704,6 +732,103 @@ const RULES: &[Rule] = &[
             })
         },
     },
+    // Both switch power profile / CPU governor for the game's lifetime, and
+    // restore their own idea of "before" on exit — stacked, they fight.
+    Rule {
+        id: "game-performance-with-gamemode",
+        keys: &["game-performance", "gamemoderun"],
+        prefixes: &[],
+        check: |c| {
+            if !(c.wrap_on("game-performance") && c.wrap_on("gamemoderun")) {
+                return None;
+            }
+            Some(Notice {
+                id: "game-performance-with-gamemode".to_string(),
+                severity: Severity::Warning,
+                message: "game-performance and gamemoderun both switch the power profile for the game — they undo each other on exit. Keep one; on CachyOS, game-performance."
+                    .to_string(),
+                keys: vec!["game-performance".to_string(), "gamemoderun".to_string()],
+                fix: Some(Fix {
+                    label: "Disable gamemoderun".to_string(),
+                    disable: vec!["gamemoderun".to_string()],
+                    enable: Vec::new(),
+                }),
+            })
+        },
+    },
+    // prime-run is a script that exports exactly these. Harmless, but noise.
+    Rule {
+        id: "prime-run-with-prime-env",
+        keys: PRIME_KEYS_AND_WRAPPER,
+        prefixes: &[],
+        check: |c| {
+            let manual = c.envs_on(PRIME_ENV_KEYS);
+            if !c.wrap_on("prime-run") || manual.is_empty() {
+                return None;
+            }
+            Some(Notice {
+                id: "prime-run-with-prime-env".to_string(),
+                severity: Severity::Info,
+                message: "prime-run already sets the PRIME offload variables — the manual ones are redundant.".to_string(),
+                keys: std::iter::once("prime-run".to_string()).chain(manual.clone()).collect(),
+                fix: Some(Fix {
+                    label: "Drop the manual PRIME variables".to_string(),
+                    disable: manual,
+                    enable: Vec::new(),
+                }),
+            })
+        },
+    },
+    // The mangohud wrapper is an LD_PRELOAD layer *inside* the nested session;
+    // gamescope draws its own overlay via --mangoapp, which is the supported way.
+    Rule {
+        id: "mangohud-inside-gamescope",
+        keys: &["mangohud", "gamescope"],
+        prefixes: &[],
+        check: |c| {
+            if !(c.wrap_on("mangohud") && c.wrap_on("gamescope")) {
+                return None;
+            }
+            let both = c.gamescope_has("--mangoapp");
+            Some(Notice {
+                id: "mangohud-inside-gamescope".to_string(),
+                severity: Severity::Warning,
+                message: if both {
+                    "gamescope's --mangoapp already draws MangoHud — the mangohud wrapper adds a second overlay."
+                } else {
+                    "Inside gamescope, MangoHud works better as gamescope's --mangoapp flag than as the mangohud wrapper."
+                }
+                .to_string(),
+                keys: vec!["mangohud".to_string(), "gamescope".to_string()],
+                // Only safe to automate when --mangoapp is already there:
+                // otherwise disabling the wrapper just loses the overlay.
+                fix: both.then(|| Fix {
+                    label: "Disable the mangohud wrapper".to_string(),
+                    disable: vec!["mangohud".to_string()],
+                    enable: Vec::new(),
+                }),
+            })
+        },
+    },
+    // DXVK_HDR under gamescope only reaches the display with --hdr-enabled.
+    Rule {
+        id: "gamescope-hdr-flag",
+        keys: &["DXVK_HDR", "gamescope"],
+        prefixes: &[],
+        check: |c| {
+            if !c.env_on("DXVK_HDR") || !c.wrap_on("gamescope") || c.gamescope_has("--hdr-enabled") {
+                return None;
+            }
+            Some(Notice {
+                id: "gamescope-hdr-flag".to_string(),
+                severity: Severity::Warning,
+                message: "DXVK_HDR under gamescope needs --hdr-enabled in gamescope's arguments, or the game stays SDR."
+                    .to_string(),
+                keys: vec!["DXVK_HDR".to_string(), "gamescope".to_string()],
+                fix: None,
+            })
+        },
+    },
     // Two different DXVK forks. No fix: which one to keep is the user's call.
     Rule {
         id: "dxvk-fork-conflict",
@@ -760,6 +885,55 @@ pub fn invalid_custom_env(tokens: &[String]) -> Option<Notice> {
         ),
         keys: Vec::new(),
         fix: None,
+    })
+}
+
+/// Enabled rows whose program isn't installed. A missing *wrapper* stops the
+/// game launching at all — Steam runs `mangohud %command%`, the shell can't
+/// find `mangohud`, and the game silently never starts — so this is an error,
+/// not a hint. `installed` answers for a `requires` name (the caller resolves
+/// Settings → Paths overrides).
+///
+/// Lives outside [`RULES`] because the keys it reports are whatever the
+/// catalog marks `requires`, not a fixed list a rule could declare.
+pub fn missing_programs(
+    catalog: &Catalog,
+    options: &Options,
+    installed: impl Fn(&str) -> bool,
+) -> Option<Notice> {
+    let wrappers = catalog.wrappers.iter().zip(&options.wrappers).map(|(d, s)| (s.enabled, &d.key, &d.requires, &d.pkg));
+    let envs = catalog.envs.iter().zip(&options.envs).map(|(d, s)| (s.enabled, &d.key, &d.requires, &d.pkg));
+    let missing: Vec<(&String, &String, &Option<String>)> = wrappers
+        .chain(envs)
+        .filter_map(|(on, key, req, pkg)| {
+            let req = req.as_ref()?;
+            (on && !installed(req)).then_some((key, req, pkg))
+        })
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let programs: Vec<&str> = missing.iter().map(|(_, r, _)| r.as_str()).collect();
+    let mut pkgs: Vec<&str> = missing.iter().filter_map(|(_, _, p)| p.as_deref()).collect();
+    pkgs.sort_unstable();
+    pkgs.dedup();
+    let keys: Vec<String> = missing.iter().map(|(k, _, _)| (*k).clone()).collect();
+    Some(Notice {
+        id: "program-not-installed".to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "{} {} not installed — the game won't start with {} in the command.{}",
+            programs.join(", "),
+            if programs.len() == 1 { "is" } else { "are" },
+            if programs.len() == 1 { "it" } else { "them" },
+            if pkgs.is_empty() { String::new() } else { format!(" Install: sudo pacman -S {}", pkgs.join(" ")) },
+        ),
+        fix: Some(Fix {
+            label: if keys.len() == 1 { format!("Disable {}", keys[0]) } else { "Disable them".to_string() },
+            disable: keys.clone(),
+            enable: Vec::new(),
+        }),
+        keys,
     })
 }
 
@@ -1175,6 +1349,67 @@ mod tests {
         assert_eq!(notice.severity, Severity::Error);
         // Which fork to keep is the user's call.
         assert!(notice.fix.is_none());
+    }
+
+    fn lint_wrap(keys: &[(&str, &str)]) -> Vec<Notice> {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        for (k, v) in keys {
+            enable(&cat, &mut opts, k, v);
+        }
+        warnings(&cat, &opts, &Hardware::default(), "", &[])
+    }
+
+    #[test]
+    fn flags_game_performance_stacked_with_gamemode() {
+        let n = lint_wrap(&[("game-performance", ""), ("gamemoderun", "")]);
+        let notice = find(&n, "game-performance-with-gamemode").expect("fires");
+        assert_eq!(notice.fix.as_ref().unwrap().disable, vec!["gamemoderun"]);
+        assert!(find(&lint_wrap(&[("gamemoderun", "")]), "game-performance-with-gamemode").is_none());
+    }
+
+    #[test]
+    fn flags_manual_prime_vars_under_prime_run() {
+        let n = lint_wrap(&[("prime-run", ""), ("__NV_PRIME_RENDER_OFFLOAD", "1")]);
+        let notice = find(&n, "prime-run-with-prime-env").expect("fires");
+        assert_eq!(notice.fix.as_ref().unwrap().disable, vec!["__NV_PRIME_RENDER_OFFLOAD"]);
+        assert!(find(&lint_wrap(&[("__NV_PRIME_RENDER_OFFLOAD", "1")]), "prime-run-with-prime-env").is_none());
+    }
+
+    #[test]
+    fn mangohud_wrapper_inside_gamescope_suggests_mangoapp() {
+        let n = lint_wrap(&[("mangohud", ""), ("gamescope", "-f")]);
+        let notice = find(&n, "mangohud-inside-gamescope").expect("fires");
+        assert!(notice.message.contains("--mangoapp"));
+        assert!(notice.fix.is_none(), "no fix without --mangoapp: it would just drop the overlay");
+
+        let n = lint_wrap(&[("mangohud", ""), ("gamescope", "-f --mangoapp")]);
+        let notice = find(&n, "mangohud-inside-gamescope").expect("fires");
+        assert!(notice.fix.is_some(), "double overlay: dropping the wrapper is safe");
+    }
+
+    #[test]
+    fn gamescope_hdr_needs_the_flag() {
+        assert!(find(&lint_wrap(&[("DXVK_HDR", "1"), ("gamescope", "-f")]), "gamescope-hdr-flag").is_some());
+        assert!(
+            find(&lint_wrap(&[("DXVK_HDR", "1"), ("gamescope", "-f --hdr-enabled")]), "gamescope-hdr-flag").is_none()
+        );
+        assert!(find(&lint_wrap(&[("gamescope", "-f")]), "gamescope-hdr-flag").is_none());
+    }
+
+    #[test]
+    fn missing_program_is_an_error_with_install_hint() {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        enable(&cat, &mut opts, "mangohud", "");
+        enable(&cat, &mut opts, "gamemoderun", "");
+        let n = missing_programs(&cat, &opts, |p| p != "mangohud").expect("fires");
+        assert_eq!(n.severity, Severity::Error);
+        assert_eq!(n.keys, vec!["mangohud"]);
+        assert!(n.message.contains("pacman -S mangohud"), "{}", n.message);
+        assert!(missing_programs(&cat, &opts, |_| true).is_none());
+        // Disabled rows don't count, installed or not.
+        assert!(missing_programs(&cat, &Options::from_catalog(&cat), |_| false).is_none());
     }
 
     #[test]

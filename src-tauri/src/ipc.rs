@@ -919,6 +919,14 @@ async fn lint_notices(
     let mut notices =
         lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen, &game_files);
     notices.extend(lint::invalid_custom_env(&compose::invalid_extra_env(&config.extra_env)));
+    // A PATH lookup per enabled `requires` row — a handful of stats, cheap
+    // enough for the debounced edit path, and live rather than the scan-time
+    // `requires_status` (installing the package mid-session clears it).
+    let bins = state.bins();
+    notices.extend(lint::missing_programs(&state.catalog, &options, |name| {
+        let program = bins.pairs().iter().find(|(n, _)| *n == name).map_or(bins.program(name), |(_, p)| *p);
+        crate::which::is_installed(program)
+    }));
     Ok(notices)
 }
 
