@@ -17,6 +17,7 @@ import type {
   OptiscalerStatus,
   ParsedCommand,
   Recompute,
+  Scan,
   ProtonLog,
   TroubleshootRequest,
   TroubleshootResult,
@@ -55,8 +56,8 @@ export const ipc = {
     inTauri ? invoke<Bootstrap>("bootstrap") : Promise.resolve(mockBootstrap),
 
   // Re-scan the library (games, runtimes, shortcuts) without restarting the app.
-  rescan: () =>
-    inTauri ? invoke<Bootstrap>("rescan") : Promise.resolve(mockBootstrap),
+  // Only the scan-dependent fields come back; catalog/recipes/store don't change.
+  rescan: () => (inTauri ? invoke<Scan>("rescan") : Promise.resolve<Scan>(mockBootstrap)),
 
   // One edit's command, tokens, lint notices and (given Steam's current launch
   // options) sync verdict, in a single round trip. `appId` lets lint check that

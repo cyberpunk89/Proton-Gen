@@ -143,6 +143,26 @@ pub struct Bootstrap {
     pub initial_game_appid: Option<u32>,
 }
 
+/// What a `rescan` sends back: only the fields a filesystem scan can change.
+/// The catalog, recipes, hardware and store are static for the session (or
+/// owned by the frontend), so re-sending them — the catalog alone is ~100 KB
+/// of JSON — on every rescan, which fires on a debounce while a Settings path
+/// is being typed, was pure serialization overhead.
+#[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
+pub struct Scan {
+    pub steam_root: Option<String>,
+    pub load_error: Option<String>,
+    pub runtime_warning: Option<String>,
+    pub runtimes: Vec<RuntimeDto>,
+    pub games: Vec<GameDto>,
+    pub launch_options: HashMap<String, String>,
+    pub compat_tools: HashMap<String, String>,
+    pub requires_status: HashMap<String, bool>,
+    pub stale: Option<StaleInfo>,
+    pub config_warnings: Vec<ConfigWarning>,
+}
+
 /// Shared application state: the cheap, always-available bits (catalog,
 /// recipes, hardware, store) plus a lazily-filled filesystem discovery.
 ///
@@ -236,6 +256,29 @@ impl AppState {
                 .chain(d.path_warnings.iter().cloned())
                 .collect(),
             initial_game_appid: None,
+        }
+    }
+}
+
+impl AppState {
+    /// The rescan payload: [`Self::bootstrap_from`] minus the static parts.
+    fn scan_from(&self, d: &Discovery) -> Scan {
+        Scan {
+            steam_root: d.steam_root.clone(),
+            load_error: d.load_error.clone(),
+            runtime_warning: d.runtime_warning.clone(),
+            runtimes: d.runtimes.clone(),
+            games: d.games.clone(),
+            launch_options: d.launch_options.clone(),
+            compat_tools: d.compat_tools.clone(),
+            requires_status: d.requires_status.clone(),
+            stale: d.stale.clone(),
+            config_warnings: self
+                .config_warnings
+                .iter()
+                .cloned()
+                .chain(d.path_warnings.iter().cloned())
+                .collect(),
         }
     }
 }
@@ -549,17 +592,17 @@ pub async fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap, String> 
 /// `game_art` and the OptiScaler commands read it, so leaving it stale would
 /// point them at a library the user just corrected.
 #[tauri::command]
-pub async fn rescan(state: State<'_, AppState>) -> Result<Bootstrap, String> {
-    let store = { state.store.locked().clone() };
+pub async fn rescan(state: State<'_, AppState>) -> Result<Scan, String> {
     let catalog = Arc::clone(&state.catalog);
-    let paths = store.paths.clone();
+    let paths = state.store.locked().paths.clone();
 
     let d = tauri::async_runtime::spawn_blocking(move || scan_discovery(&catalog, &paths))
         .await
         .map_err(|e| e.to_string())?;
 
-    *state.discovery.locked() = Some(d.clone());
-    Ok(state.bootstrap_from(&d, store))
+    let scan = state.scan_from(&d);
+    *state.discovery.locked() = Some(d);
+    Ok(scan)
 }
 
 /// Everything the command bar shows for one edit, from one round trip: the

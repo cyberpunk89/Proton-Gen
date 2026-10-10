@@ -619,6 +619,21 @@ export interface Bootstrap {
   initial_game_appid?: number | null;
 }
 
+/** What `rescan` returns: only the scan-dependent half of `Bootstrap`. */
+export type Scan = Pick<
+  Bootstrap,
+  | "steam_root"
+  | "load_error"
+  | "runtime_warning"
+  | "runtimes"
+  | "games"
+  | "launch_options"
+  | "compat_tools"
+  | "requires_status"
+  | "stale"
+  | "config_warnings"
+>;
+
 /** `cfg` with its launch target — umu mode, exe, prefix, game id — reset.
  *  Those belong to the game a config was built on, not to its tuning, so
  *  presets, the global profile and share codes are stored without them. */

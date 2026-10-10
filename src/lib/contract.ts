@@ -53,6 +53,7 @@ import type { RecipeKind as R_RecipeKind } from "./generated/RecipeKind";
 import type { Recompute as R_Recompute } from "./generated/Recompute";
 import type { RuntimeDto as R_RuntimeDto } from "./generated/RuntimeDto";
 import type { RuntimeUpdate as R_RuntimeUpdate } from "./generated/RuntimeUpdate";
+import type { Scan as R_Scan } from "./generated/Scan";
 import type { Severity as R_Severity } from "./generated/Severity";
 import type { StaleInfo as R_StaleInfo } from "./generated/StaleInfo";
 import type { SteamUserConfig as R_SteamUserConfig } from "./generated/SteamUserConfig";
@@ -119,6 +120,7 @@ export type _Contract = [
   Same<Keys<T.ConfigWarning, R_ConfigWarning>>,
   Same<Keys<T.SteamUserConfig, R_SteamUserConfig>>,
   Same<Keys<T.Bootstrap, R_Bootstrap>>,
+  Same<Keys<T.Scan, R_Scan>>,
   Same<Keys<T.GameFolder, R_Folder>>,
   Same<Keys<T.AntiCheat, R_AntiCheat>>,
   Same<Union<T.WrapperKind, R_WrapperKind>>,
