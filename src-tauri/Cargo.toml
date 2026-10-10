@@ -33,3 +33,11 @@ tauri-plugin-single-instance = "2"
 
 [dev-dependencies]
 ts-rs = { version = "10", features = ["serde-compat", "no-serde-warnings"] }
+
+# Smaller, faster shipped binary. Not `panic = "abort"`: spawn_blocking tasks
+# and the poisoned-mutex recovery rely on unwinding to turn a panic into an
+# error instead of taking the whole app down.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
