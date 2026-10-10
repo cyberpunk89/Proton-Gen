@@ -467,8 +467,6 @@ class AppStore {
   /** A `refresh` arrived while one was running; run once more when it ends. */
   private rescanPending = false;
 
-  /** Preferred default runtime: an installed proton-cachyos, else the first
-   *  real (non-synthetic) runtime, else the GE-Proton-auto entry. */
   /** The runtime a Nexus game is pinned to (Nexus names it by folder), or
    *  null when it isn't one protongen found. */
   private runtimeNamed(name: string | null): RuntimeDto | null {
@@ -491,10 +489,31 @@ class AppStore {
       umu: game?.source === "heroic" || nexus,
       exe: game?.executable ?? "",
       prefix: (nexus && game?.wine_prefix) || "",
-      runtime: (nexus && this.runtimeNamed(game?.pinned_proton ?? null)) || this.defaultRuntime(),
+      runtime:
+        (nexus && this.runtimeNamed(game?.pinned_proton ?? null)) ||
+        this.steamMappedRuntime(game) ||
+        this.defaultRuntime(),
     };
   }
 
+  /** The runtime Steam's Proton dropdown already has for `game`, when it is
+   *  one protongen found. Starting a fresh game there means the command and
+   *  Steam agree from the first frame, instead of every untouched game opening
+   *  on a "change Steam's Proton to proton-cachyos" correction. Valve and auto
+   *  runtimes carry placeholder internal names, so they can never match. */
+  private steamMappedRuntime(game: GameDto | null): RuntimeDto | null {
+    if (game?.source !== "steam") return null;
+    const tool = this.compatTools[String(game.app_id)];
+    if (!tool) return null;
+    return (
+      this.runtimes.find(
+        (r) => r.kind !== "valve" && r.kind !== "auto" && r.internal_name === tool,
+      ) ?? null
+    );
+  }
+
+  /** Preferred default runtime: an installed proton-cachyos, else the first
+   *  real (non-synthetic) runtime, else the GE-Proton-auto entry. */
   private defaultRuntime(): RuntimeDto | null {
     return (
       this.runtimes.find((r) => r.display_name.toLowerCase().includes("cachyos")) ??
