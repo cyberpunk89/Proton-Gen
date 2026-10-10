@@ -50,6 +50,7 @@ import type { ProtonLog as R_ProtonLog } from "./generated/ProtonLog";
 import type { Recipe as R_Recipe } from "./generated/Recipe";
 import type { RecipeChange as R_RecipeChange } from "./generated/RecipeChange";
 import type { RecipeKind as R_RecipeKind } from "./generated/RecipeKind";
+import type { Recompute as R_Recompute } from "./generated/Recompute";
 import type { RuntimeDto as R_RuntimeDto } from "./generated/RuntimeDto";
 import type { RuntimeUpdate as R_RuntimeUpdate } from "./generated/RuntimeUpdate";
 import type { Severity as R_Severity } from "./generated/Severity";
@@ -113,6 +114,7 @@ export type _Contract = [
   Same<Keys<T.RecipeChange, R_RecipeChange>>,
   Same<Keys<T.Change, R_Change>>,
   Same<Keys<T.LaunchDiff, R_LaunchDiff>>,
+  Same<Keys<T.Recompute, R_Recompute>>,
   Same<Keys<T.Tier, R_Tier>>,
   Same<Keys<T.ConfigWarning, R_ConfigWarning>>,
   Same<Keys<T.SteamUserConfig, R_SteamUserConfig>>,

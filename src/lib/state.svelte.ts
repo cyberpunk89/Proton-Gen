@@ -31,6 +31,7 @@ import type {
   OptiscalerStatus,
   Preset,
   Recipe,
+  Recompute,
   RuntimeDto,
   ConfigWarning,
   StaleInfo,
@@ -881,80 +882,39 @@ class AppStore {
     const seq = ++this.recomputeSeq;
     this.recomputeTimer = setTimeout(async () => {
       const path = this.protonPath();
-
-      // Separate try/catch per call: a lint rejection must not blank an
-      // otherwise-valid command, and vice versa.
-      let built: string | null = null;
-      try {
-        const command = await ipc.buildCommand(cfg, path);
-        built = command;
-        // Two awaits race freely, so a slower earlier invocation can resolve
-        // after a newer one. Without this guard it would overwrite the fresh
-        // command with a stale value.
-        if (seq === this.recomputeSeq) {
-          this.command = command;
-          this.buildError = null;
-        }
-      } catch (e) {
-        if (seq === this.recomputeSeq) {
-          // Surfaced inline in the command bar, never toasted: this fires on
-          // every keystroke while broken, and a toast storm would bury it.
-          this.buildError = String(e);
-        }
-      }
-
-      // Tokenize for the coloured preview. Only meaningful if the build worked;
-      // on failure the old tokens are left alone, matching how the stale command
-      // string stays visible with a warning rather than blanking.
-      if (built !== null) {
-        try {
-          const tokens = await ipc.explainCommand(built);
-          if (seq === this.recomputeSeq) this.tokens = tokens;
-        } catch (e) {
-          console.error("explainCommand failed", e);
-          // Fall back to one opaque token so the body still renders the exact
-          // command rather than going blank.
-          if (seq === this.recomputeSeq) {
-            this.tokens = [{ text: built, kind: "unknown", key: null }];
-          }
-        }
-      }
-
-      try {
-        const notices = await ipc.lint(cfg, this.selectedAppId);
-        if (seq === this.recomputeSeq) this.notices = notices;
-      } catch (e) {
-        console.error("lint failed", e);
-        // Drop the previous config's notices: their one-click fixes were
-        // computed against a selection that no longer exists.
-        if (seq === this.recomputeSeq) this.notices = [];
-      }
-
-      // Third await in the existing debounce rather than a timer of its own.
-      // Skipped entirely when there is nothing to compare against, which is the
-      // common case (generic builds, shortcuts, umu).
+      // Skipped when there is nothing to compare against, which is the common
+      // case (generic builds, shortcuts, umu): no current → no diff.
       const current = this.currentLaunchOptions;
-      if (built !== null && current !== null) {
-        try {
-          const diff = await ipc.launchDiff(built, current);
-          if (seq === this.recomputeSeq) {
-            this.launchDiff = diff;
-            if (this.announceApplied) {
-              this.announceApplied = false;
-              if (diff.status === "in-sync") {
-                this.awaitingPasteUntil = 0;
-                toast.success("Applied in Steam");
-              }
-            }
-          }
-        } catch (e) {
-          console.error("launchDiff failed", e);
-          // Better to show no pill than a stale verdict about whether the user's
-          // Steam config matches.
-          if (seq === this.recomputeSeq) this.launchDiff = null;
+
+      let r: Recompute;
+      try {
+        r = await ipc.recompute(cfg, path, this.selectedAppId, current);
+      } catch (e) {
+        // Surfaced inline in the command bar, never toasted: this fires on
+        // every keystroke while broken, and a toast storm would bury it. The
+        // old command, tokens and verdict stay as they were — visibly stale
+        // with a warning beats blanking.
+        if (seq === this.recomputeSeq) this.buildError = String(e);
+        return;
+      }
+      // Invocations race freely, so a slower earlier one can resolve after a
+      // newer one. Without this guard it would overwrite fresh state.
+      if (seq !== this.recomputeSeq) return;
+
+      this.command = r.command;
+      this.buildError = null;
+      this.tokens = r.tokens;
+      // A lint failure drops the previous config's notices: their one-click
+      // fixes were computed against a selection that no longer exists.
+      if (r.lint_error) console.error("lint failed", r.lint_error);
+      this.notices = r.notices;
+      this.launchDiff = r.diff;
+      if (r.diff && this.announceApplied) {
+        this.announceApplied = false;
+        if (r.diff.status === "in-sync") {
+          this.awaitingPasteUntil = 0;
+          toast.success("Applied in Steam");
         }
-      } else if (seq === this.recomputeSeq) {
-        this.launchDiff = null;
       }
     }, 60);
   }

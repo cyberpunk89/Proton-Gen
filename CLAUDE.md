@@ -122,7 +122,8 @@ extra `--` into cargo).
   `pnpm check`, and commit the regenerated files (CI checks they're fresh). A new IPC struct
   needs the `cfg_attr(test, derive(ts_rs::TS), ts(export, …))` line and a `contract.ts` row.
 - **One store, debounced recompute.** `state.svelte.ts` holds all selection; a root
-  `$effect` serializes to a `Config` and (debounced ~60 ms) calls `build_command` + `lint`.
+  `$effect` serializes to a `Config` and (debounced ~60 ms) calls `recompute` (command +
+  tokens + lint + sync diff in one IPC).
 - **Shell quoting has one rule, in two languages.** `builder::sh_quote` leaves a value bare
   when it is shell-safe, else double-quotes it (escaping only `"` `\` `` ` ``) so `$VAR`
   still expands; `game_args` and gamescope args are emitted verbatim (they *are* shell).

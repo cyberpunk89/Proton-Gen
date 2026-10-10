@@ -557,19 +557,53 @@ pub async fn rescan(state: State<'_, AppState>) -> Result<Bootstrap, String> {
     Ok(state.bootstrap_from(&d, store))
 }
 
-/// Assemble the launch command for the given config. `proton_path` is the
-/// selected runtime's install dir (used as PROTONPATH in umu mode).
+/// Everything the command bar shows for one edit, from one round trip: the
+/// command, its annotated tokens, the lint notices, and — when there is a Steam
+/// entry to compare against — the sync verdict. These used to be four
+/// sequential IPC calls per keystroke; each reran the same catalog lookups and
+/// paid its own WebKit↔Rust hop.
+#[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
+pub struct Recompute {
+    pub command: String,
+    pub tokens: Vec<Token>,
+    pub notices: Vec<lint::Notice>,
+    /// Set when lint itself failed; the command and tokens are still good, so
+    /// a lint failure must never blank them.
+    pub lint_error: Option<String>,
+    /// `None` when `current` was not given (no game, shortcut, umu, generic).
+    pub diff: Option<LaunchDiff>,
+}
+
+/// Assemble the launch command for the given config, tokenize it, lint it, and
+/// diff it against `current` (Steam's launch options, when there are any).
+/// `proton_path` is the selected runtime's install dir (PROTONPATH in umu
+/// mode); `app_id` is the selected game, see [`lint_notices`].
+///
+/// The diff is *contextual* only through `current`: the frontend already holds
+/// `selectedAppId`, `game.source` and `app.umu`, and decides whether there is
+/// anything to compare, which keeps `diff::compare` a pure function.
 #[tauri::command]
-pub fn build_command(
+pub async fn recompute(
     state: State<'_, AppState>,
     config: Config,
     proton_path: Option<String>,
-) -> String {
+    app_id: Option<u32>,
+    current: Option<String>,
+) -> Result<Recompute, String> {
     // Built per call rather than cached on AppState: `save_store` can replace
     // the store mid-session, and a cached copy would stay stale until restart.
     // Cheap — this command is already debounced ~60 ms on the frontend.
     let bins = state.bins();
-    compose::assemble(&state.catalog, &config, proton_path.as_deref(), &bins)
+    let command = compose::assemble(&state.catalog, &config, proton_path.as_deref(), &bins);
+    let plain = state.catalog.plain_wrappers();
+    let tokens = explain::explain(&command, &plain);
+    let diff = current.map(|current| diff::compare(&command, &current, &plain));
+    let (notices, lint_error) = match lint_notices(&state, &config, app_id).await {
+        Ok(n) => (n, None),
+        Err(e) => (Vec::new(), Some(e)),
+    };
+    Ok(Recompute { command, tokens, notices, lint_error, diff })
 }
 
 /// A game's Wine prefix and shader cache (see [`crate::folders`]); with
@@ -736,14 +770,6 @@ pub struct ParsedCommand {
     pub dropped: Vec<String>,
 }
 
-/// Tokenize a launch command for the annotated preview. Tokens carry only a
-/// catalog `key`, which the frontend resolves against the already-loaded
-/// catalog; the state is read only for the catalog's plain wrappers.
-#[tauri::command]
-pub fn explain_command(state: State<'_, AppState>, command: String) -> Vec<Token> {
-    explain::explain(&command, &state.catalog.plain_wrappers())
-}
-
 /// Steam's per-game launch options and compat-tool mapping, freshly read.
 #[derive(Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
@@ -777,18 +803,6 @@ pub async fn steam_user_config(
         d.compat_tools = cfg.compat_tools.clone();
     }
     Ok(fresh)
-}
-
-/// Compare a built launch command against the one Steam currently has set.
-/// Stateless and pure — see `diff.rs` for what is deliberately normalised away.
-///
-/// The *contextual* states (no game selected, non-Steam shortcut, generic
-/// command) stay out of the DTO: the frontend already holds `selectedAppId`,
-/// `game.source` and `app.umu`, and pushing them here would drag game/mode
-/// state through an otherwise trivially pure function.
-#[tauri::command]
-pub fn launch_diff(state: State<'_, AppState>, built: String, current: String) -> LaunchDiff {
-    diff::compare(&built, &current, &state.catalog.plain_wrappers())
 }
 
 /// Applied / drifted / not-applied for every remembered game in one call, so
@@ -865,10 +879,9 @@ pub fn preview_recipe(
 /// game, whose folder is checked for a manual OptiScaler install that would
 /// stack under Proton's injected one — a few `read_dir`s, off the UI thread,
 /// and only while injection is on.
-#[tauri::command]
-pub async fn lint(
-    state: State<'_, AppState>,
-    config: Config,
+async fn lint_notices(
+    state: &AppState,
+    config: &Config,
     app_id: Option<u32>,
 ) -> Result<Vec<lint::Notice>, String> {
     let value = |key: &str| config.env.iter().find(|(k, _)| k == key).map(|(_, v)| v.trim());

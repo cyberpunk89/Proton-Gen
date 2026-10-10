@@ -160,7 +160,8 @@ current launch options/compat tools, the `requires` install-status map, and a po
 
 **Live recompute (on every edit).** Whenever any builder input changes, a Svelte
 `$effect` serializes the UI selection into a `Config` and (debounced ~60 ms) calls
-`build_command()` and `lint()`. The command preview and notices update reactively. The
+`recompute()`, which returns the command, its annotated tokens, the lint notices and the
+Steam sync verdict in one round trip. The command preview and notices update reactively. The
 *assembly* is always done in Rust so the Tauri build and a unit test produce byte-
 identical output.
 
@@ -190,10 +191,9 @@ The only module that knows about Tauri. Responsibilities:
 | Command | Signature (→ return) | Purpose |
 | --- | --- | --- |
 | `bootstrap` | `() → Bootstrap` | One-shot startup payload. |
-| `build_command` | `(Config, proton_path?) → String` | Assemble the Steam/umu command. |
+| `recompute` | `(Config, proton_path?, app_id?, current?) → Recompute` | Command + tokens + lint notices + sync diff, one call per edit. |
 | `parse_command` | `(input) → Config` | Inverse: import a pasted command. |
 | `apply_recipe` | `(index, Config) → Config` | Merge a recipe onto the current config. |
-| `lint` | `(Config) → Vec<String>` | Conflict / footgun notices. |
 | `protondb_url` | `(appid) → String` | The community page URL. |
 | `protondb_fetch` | `(appid) → Result<Tier>` | Tier summary (async, off-thread). |
 | `game_art` | `(app_id, source, kind, online) → Option<String>` | Artwork as a `data:` URL (async). |

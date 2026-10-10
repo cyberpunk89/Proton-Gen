@@ -556,6 +556,17 @@ export interface LaunchDiff {
   game_args: Change | null;
 }
 
+/** One edit's worth of command-bar data from a single `recompute` call. */
+export interface Recompute {
+  command: string;
+  tokens: Token[];
+  notices: Notice[];
+  /** Lint failed; command and tokens are still valid. */
+  lint_error: string | null;
+  /** Null when no Steam launch options were passed to compare against. */
+  diff: LaunchDiff | null;
+}
+
 export interface Tier {
   tier: string;
   total: number;

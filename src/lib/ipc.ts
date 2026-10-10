@@ -6,18 +6,17 @@ import type {
   GameFolder,
   DiffStatus,
   HeroicInjectResult,
-  LaunchDiff,
   LlmRequest,
   LlmSuggestion,
   LsfgStatus,
   MangohudExportResult,
-  Notice,
   OptiscalerExtractResult,
   OptiscalerChannel,
   RuntimeUpdate,
   OptiscalerRelease,
   OptiscalerStatus,
   ParsedCommand,
+  Recompute,
   ProtonLog,
   TroubleshootRequest,
   TroubleshootResult,
@@ -25,7 +24,6 @@ import type {
   Store,
   SteamUserConfig,
   Tier,
-  Token,
   UpdateInfo,
   VkBasaltExportResult,
 } from "./types";
@@ -60,10 +58,25 @@ export const ipc = {
   rescan: () =>
     inTauri ? invoke<Bootstrap>("rescan") : Promise.resolve(mockBootstrap),
 
-  buildCommand: (config: Config, protonPath: string | null) =>
-    inTauri
-      ? invoke<string>("build_command", { config, protonPath })
-      : Promise.resolve(mockBuildCommand(config, protonPath)),
+  // One edit's command, tokens, lint notices and (given Steam's current launch
+  // options) sync verdict, in a single round trip. `appId` lets lint check that
+  // game's folder for a manual OptiScaler install stacked under the injected one.
+  recompute: (
+    config: Config,
+    protonPath: string | null,
+    appId: number | null,
+    current: string | null,
+  ) => {
+    if (inTauri) return invoke<Recompute>("recompute", { config, protonPath, appId, current });
+    const command = mockBuildCommand(config, protonPath);
+    return Promise.resolve<Recompute>({
+      command,
+      tokens: mockExplain(command),
+      notices: mockNotices,
+      lint_error: null,
+      diff: current === null ? null : mockLaunchDiff(command, current),
+    });
+  },
 
   // Write the config's env vars + wrappers into a Heroic game's per-game config.
   // `appName` is the game's `heroic_id`.
@@ -119,21 +132,6 @@ export const ipc = {
       ? invoke<ParsedCommand>("parse_command", { input })
       : Promise.resolve<ParsedCommand>(mockParseCommand(input)),
 
-  // Tokenize the preview for colouring/annotation. Tokens carry only a catalog
-  // `key`; look help/details/url up in the already-loaded catalog.
-  explainCommand: (command: string) =>
-    inTauri
-      ? invoke<Token[]>("explain_command", { command })
-      : Promise.resolve(mockExplain(command)),
-
-  // Semantic comparison of the built command against Steam's current launch
-  // options. Both sides are re-parsed, so ordering/quoting differences don't
-  // register as drift.
-  launchDiff: (built: string, current: string) =>
-    inTauri
-      ? invoke<LaunchDiff>("launch_diff", { built, current })
-      : Promise.resolve(mockLaunchDiff(built, current)),
-
   // Re-read only Steam's launch options + compat tools (no full scan), for the
   // window-focus refresh after the user pastes into Steam. `null` = no Steam.
   steamUserConfig: () =>
@@ -162,11 +160,6 @@ export const ipc = {
     inTauri
       ? invoke<RecipeChange[]>("preview_recipe", { index, config })
       : Promise.resolve(mockPreviewRecipe(index, config)),
-
-  // `appId` lets the backend check that game's folder for a manual OptiScaler
-  // install stacked under the injected one; null for no game selected.
-  lint: (config: Config, appId: number | null) =>
-    inTauri ? invoke<Notice[]>("lint", { config, appId }) : Promise.resolve(mockNotices),
 
   protondbUrl: (appid: number) =>
     inTauri
