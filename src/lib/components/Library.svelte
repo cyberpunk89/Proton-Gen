@@ -202,8 +202,17 @@
     }
   });
 
+  /** Everything visible, including the Not-installed shelf when it is open —
+   *  a preset written to a game that isn't on disk right now is still kept
+   *  (and applies when it comes back), so skipping it surprised users. */
   function selectAllShown() {
-    for (const g of installedGroups) app.selectedForBatch.add(g.entries[0].app_id);
+    for (const g of groups) app.selectedForBatch.add(g.entries[0].app_id);
+  }
+
+  function clearFilters() {
+    query = "";
+    tunedOnly = false;
+    favoritesOnly = false;
   }
 
   function applyBatch() {
@@ -503,6 +512,13 @@
             onclick={() => app.openSettings("paths")}>Settings → Paths</button
           > for extra Steam library folders.
         </p>
+      {:else}
+        <button
+          onclick={clearFilters}
+          class="mt-1 rounded-lg border border-border px-3 py-1.5 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+        >
+          Clear filters
+        </button>
       {/if}
     </div>
   {:else}
