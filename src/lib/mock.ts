@@ -415,6 +415,7 @@ export const mockBootstrap: Bootstrap = {
   recipes: [
     {
       name: "NVIDIA: DLSS + Reflex",
+      // (mock) shows as "suggested" on HELLDIVERS 2, whose mock scan ships DLSS.
       kind: "profile",
       description: "Expose NVAPI to DXVK, auto-upgrade DLSS, enable Reflex low-latency.",
       symptom: null,
@@ -424,6 +425,7 @@ export const mockBootstrap: Bootstrap = {
       accent: "#76b900",
       tags: ["DLSS", "Reflex"],
       protondb_tiers: [],
+      when: ["dlss"],
       env: [["DXVK_ENABLE_NVAPI", "1"]],
       wrappers: [],
     },
@@ -438,6 +440,7 @@ export const mockBootstrap: Bootstrap = {
       accent: "#7aa2f7",
       tags: ["low-latency", "GameMode"],
       protondb_tiers: [],
+      when: [],
       env: [],
       wrappers: [["gamemoderun", ""], ["mangohud", ""]],
     },
@@ -452,6 +455,7 @@ export const mockBootstrap: Bootstrap = {
       accent: "#f5bde6",
       tags: ["HDR", "Wayland"],
       protondb_tiers: [],
+      when: [],
       env: [["PROTON_ENABLE_WAYLAND", "1"]],
       wrappers: [],
     },
@@ -469,6 +473,7 @@ export const mockBootstrap: Bootstrap = {
       // real example to exercise, even though ipc.ts's mock tier is a fixed
       // "gold" and so never actually surfaces this suggestion under `pnpm dev`.
       protondb_tiers: ["borked", "bronze"],
+      when: [],
       env: [["DXVK_ASYNC", "1"]],
       wrappers: [],
     },

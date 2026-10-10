@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { lookups } from "$lib/lookups.svelte";
-  import { irrelevance, matchesTier } from "$lib/util";
+  import { irrelevance, matchesTier, matchesWhen } from "$lib/util";
   import {
     Sparkle,
     Lightning,
@@ -52,10 +52,24 @@
     app.selectedAppId == null ? undefined : lookups.tierFor(app.selectedAppId),
   );
 
-  /** Recipes explicitly tagged for the selected game's current tier — a
+  /** The selected game's folder scan tags (game_scan.rs), once scanned. */
+  let scanTags = $derived(lookups.scanFor(app.selectedAppId)?.tags);
+
+  /** Recipes explicitly tagged for the selected game — its ProtonDB tier, or
+   *  what its folder ships (`when`) — and relevant to this hardware. A
    *  nudge, not a filter; every other list below is unaffected. */
   let suggested = $derived(
-    indexed.filter((x) => x.r.protondb_tiers.length && matchesTier(x.r.protondb_tiers, currentTier)),
+    indexed.filter(
+      (x) =>
+        !recipeIrrelevant(x.r) &&
+        ((x.r.protondb_tiers.length && matchesTier(x.r.protondb_tiers, currentTier)) ||
+          matchesWhen(x.r.when, scanTags)),
+    ),
+  );
+  let suggestedWhy = $derived(
+    [currentTier?.tier && `ProtonDB: ${currentTier.tier}`, scanTags?.length && "game folder"]
+      .filter(Boolean)
+      .join(", "),
   );
 
   /** Recipes that pass the hardware-relevance gate (or all, when "Show all"). */
@@ -124,15 +138,15 @@
       class="mt-3 flex w-full items-center gap-2 rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-left text-xs text-accent transition hover:bg-accent/10"
     >
       <Trophy size={14} class="shrink-0" />
-      {suggested.length} recipe{suggested.length === 1 ? "" : "s"} suggested for this game's
-      ProtonDB rating ({currentTier?.tier}) — tap to view
+      {suggested.length} recipe{suggested.length === 1 ? "" : "s"} suggested for this game
+      ({suggestedWhy}) — tap to view
     </button>
   {/if}
 
   {#if !app.recipesCollapsed}
     <div id="recipes-body" class="mt-4 space-y-4">
       {#if suggested.length}
-        {@render group(`Suggested for this game (${currentTier?.tier})`, suggested)}
+        {@render group(`Suggested for this game (${suggestedWhy})`, suggested)}
       {/if}
 
       <!-- Type tabs -->

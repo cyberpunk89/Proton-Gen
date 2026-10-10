@@ -53,6 +53,8 @@ src-tauri/               BACKEND (Rust / Tauri)
   src/discovery_cache.rs last scan on disk, painted at launch while a rescan runs behind it
   src/logs.rs            log sources (Proton/umu/PROTON_LOG_DIR, Nexus, DXVK, VKD3D) for the viewer
   src/folders.rs         a game's prefix + shader cache (paths, sizes, open)
+  src/game_scan.rs       bounded read-only walk of a game's folder: bundled DLSS/FSR/XeSS,
+                         anti-cheat, engine → tags that recipes.toml `when = [...]` matches
   src/conf_merge.rs      shared merge+write core of the MangoHud/vkBasalt exports
   src/anticheat.rs       opt-in AreWeAntiCheatYet lookup (cached list)
   src/fsutil.rs          config_home(), write_atomic() (temp + rename; writes through symlinks, keeps perms),

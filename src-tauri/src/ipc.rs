@@ -210,6 +210,10 @@ pub struct AppState {
     /// with (`art://localhost/<key>`). The `art` protocol serves only these —
     /// a URL never carries a filesystem path.
     pub(crate) art_files: Arc<Mutex<HashMap<String, std::path::PathBuf>>>,
+    /// Folder scans by appid (see `game_scan`), filled by the `game_scan`
+    /// command and read — never triggered — by lint, so a keystroke never
+    /// walks a game folder.
+    game_scans: Arc<Mutex<HashMap<u32, crate::game_scan::GameScan>>>,
 }
 
 impl AppState {
@@ -458,6 +462,7 @@ impl AppState {
             initial_game: Arc::new(Mutex::new(None)),
             discovery: Arc::new(Mutex::new(None)),
             art_files: Arc::new(Mutex::new(HashMap::new())),
+            game_scans: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -1021,8 +1026,17 @@ async fn lint_notices(
         state.hardware.gpu_gen_detected.as_deref(),
         state.hardware.amd,
     );
-    let mut notices =
-        lint::warnings(&state.catalog, &options, &state.hardware, &gpu_gen, &game_files);
+    let shipped_anticheat = app_id
+        .and_then(|id| state.game_scans.locked().get(&id).map(|s| s.anticheat.clone()))
+        .unwrap_or_default();
+    let mut notices = lint::warnings(
+        &state.catalog,
+        &options,
+        &state.hardware,
+        &gpu_gen,
+        &game_files,
+        &shipped_anticheat,
+    );
     notices.extend(lint::invalid_custom_env(&compose::invalid_extra_env(&config.extra_env)));
     // A PATH lookup per enabled `requires` row — a handful of stats, cheap
     // enough for the debounced edit path, and live rather than the scan-time
@@ -1047,6 +1061,32 @@ pub async fn protondb_fetch(appid: u32) -> Result<Tier, String> {
     tauri::async_runtime::spawn_blocking(move || protondb::fetch_blocking(appid))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// What the game ships (upscaler DLLs, anti-cheat, engine), from a bounded
+/// walk of its install folder — see [`crate::game_scan`]. Cached per session;
+/// `fresh` re-scans (after a game update, say). `None` with no install folder.
+#[tauri::command]
+pub async fn game_scan(
+    state: State<'_, AppState>,
+    app_id: u32,
+    fresh: bool,
+) -> Result<Option<crate::game_scan::GameScan>, String> {
+    if !fresh {
+        if let Some(s) = state.game_scans.locked().get(&app_id) {
+            return Ok(Some(s.clone()));
+        }
+    }
+    let Some(dir) = state.game(app_id).and_then(|g| g.install_dir) else {
+        return Ok(None);
+    };
+    let scan = tauri::async_runtime::spawn_blocking(move || {
+        crate::game_scan::scan(std::path::Path::new(&dir))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    state.game_scans.locked().insert(app_id, scan.clone());
+    Ok(Some(scan))
 }
 
 /// Whether the game's anti-cheat runs on Linux, per AreWeAntiCheatYet

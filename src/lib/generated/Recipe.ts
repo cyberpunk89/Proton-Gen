@@ -33,4 +33,10 @@ tags: Array<string>,
  * frontend matches it separately rather than folding it into
  * `irrelevance()` — see `util.ts`'s `matchesTier`.
  */
-protondb_tiers: Array<string>, env: Array<[string, string]>, wrappers: Array<[string, string]>, };
+protondb_tiers: Array<string>, 
+/**
+ * Suggest this recipe for a game whose folder scan (`game_scan.rs`)
+ * carries every listed tag; `!tag` means the tag must be absent. Like
+ * `protondb_tiers` it only *suggests* — it never hides the recipe.
+ */
+when: Array<string>, env: Array<[string, string]>, wrappers: Array<[string, string]>, };

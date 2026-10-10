@@ -40,6 +40,7 @@ mod disk_cache;
 mod explain;
 mod folders;
 mod fsutil;
+mod game_scan;
 mod games;
 mod hardware;
 mod heroic;
@@ -146,6 +147,7 @@ pub fn run_with(initial_game: Option<u32>) {
             ipc::protondb_url,
             ipc::protondb_fetch,
             ipc::anticheat_lookup,
+            ipc::game_scan,
             ipc::game_art,
             ipc::read_proton_log,
             ipc::llm_analyze,

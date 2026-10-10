@@ -4,6 +4,7 @@ import type {
   Bootstrap,
   Config,
   GameFolder,
+  GameScan,
   DiffStatus,
   HeroicInjectResult,
   LlmRequest,
@@ -100,6 +101,19 @@ export const ipc = {
                 updated: "2026-03-02",
               }
             : null,
+        ),
+
+  /** What the game ships (upscaler DLLs, anti-cheat, engine), from its
+   *  install folder; cached per session by the backend unless `fresh`. */
+  gameScan: (appId: number, fresh = false) =>
+    inTauri
+      ? invoke<GameScan | null>("game_scan", { appId, fresh })
+      : Promise.resolve<GameScan | null>(
+          appId === 553850
+            ? { upscalers: ["DLSS", "FSR"], anticheat: [], engine: null, exe_dir: null, tags: ["dlss", "fsr"] }
+            : appId === 1245620
+              ? { upscalers: [], anticheat: ["EasyAntiCheat"], engine: null, exe_dir: null, tags: ["anticheat", "eac"] }
+              : { upscalers: [], anticheat: [], engine: null, exe_dir: null, tags: [] },
         ),
 
   /** The selected game's Wine prefix and shader cache; `sizes` walks them. */

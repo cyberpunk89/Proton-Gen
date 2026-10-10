@@ -66,6 +66,11 @@ pub struct Ctx<'a> {
     /// `optiscaler_upgrade::manual_install_files`). The one rule input read off
     /// the disk rather than the selection — `ipc::lint` scans, rules stay pure.
     game_files: &'a [String],
+    /// Kernel anti-cheat the selected game ships ("EasyAntiCheat",
+    /// "BattlEye"), from its cached folder scan (`game_scan.rs`); empty when
+    /// unscanned. Lets the anti-cheat rules fire without the user having
+    /// turned on PROTON_EAC_RUNTIME first.
+    anticheat: &'a [String],
 }
 
 impl Ctx<'_> {
@@ -705,7 +710,9 @@ const RULES: &[Rule] = &[
             })
         },
     },
-    // gplasync vs kernel anti-cheat: this one gets accounts banned.
+    // gplasync vs kernel anti-cheat: this one gets accounts banned. Fires on
+    // the anti-cheat runtime switches *or* on anti-cheat found in the game's
+    // own folder — the second catches it before the user ever enables EAC.
     Rule {
         id: "gplasync-anticheat",
         keys: &[
@@ -716,13 +723,20 @@ const RULES: &[Rule] = &[
         prefixes: &[],
         check: |c| {
             let anticheat = c.envs_on(&["PROTON_EAC_RUNTIME", "PROTON_BATTLEYE_RUNTIME"]);
-            if !c.env_on("PROTON_DXVK_GPLASYNC") || anticheat.is_empty() {
+            if !c.env_on("PROTON_DXVK_GPLASYNC") || (anticheat.is_empty() && c.anticheat.is_empty()) {
                 return None;
             }
             Some(Notice {
                 id: "gplasync-anticheat".to_string(),
                 severity: Severity::Error,
-                message: "PROTON_DXVK_GPLASYNC can trip kernel anti-cheat — avoid it in EAC/BattlEye games.".to_string(),
+                message: if c.anticheat.is_empty() {
+                    "PROTON_DXVK_GPLASYNC can trip kernel anti-cheat — avoid it in EAC/BattlEye games.".to_string()
+                } else {
+                    format!(
+                        "This game ships {} — PROTON_DXVK_GPLASYNC can trip it and risk a ban.",
+                        c.anticheat.join(" and ")
+                    )
+                },
                 keys: std::iter::once("PROTON_DXVK_GPLASYNC".to_string()).chain(anticheat).collect(),
                 fix: Some(Fix {
                     label: "Disable PROTON_DXVK_GPLASYNC".to_string(),
@@ -826,6 +840,32 @@ const RULES: &[Rule] = &[
                     .to_string(),
                 keys: vec!["DXVK_HDR".to_string(), "gamescope".to_string()],
                 fix: None,
+            })
+        },
+    },
+    // OptiScaler is an injected DLL; kernel anti-cheat in the game's own folder
+    // can flag it. Only from the scan — the env switches alone say too little.
+    Rule {
+        id: "optiscaler-anticheat",
+        keys: &["PROTON_USE_OPTISCALER"],
+        prefixes: &[],
+        check: |c| {
+            if !c.flag_on("PROTON_USE_OPTISCALER") || c.anticheat.is_empty() {
+                return None;
+            }
+            Some(Notice {
+                id: "optiscaler-anticheat".to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "This game ships {} — injecting OptiScaler can get flagged online. Keep it to offline/single-player.",
+                    c.anticheat.join(" and ")
+                ),
+                keys: vec!["PROTON_USE_OPTISCALER".to_string()],
+                fix: Some(Fix {
+                    label: "Disable OptiScaler".to_string(),
+                    disable: vec!["PROTON_USE_OPTISCALER".to_string()],
+                    enable: Vec::new(),
+                }),
             })
         },
     },
@@ -938,15 +978,17 @@ pub fn missing_programs(
 }
 
 /// `game_files` are the selected game's manual-OptiScaler leftovers, empty when
-/// no game is selected or the folder wasn't scanned.
+/// no game is selected or the folder wasn't scanned; `anticheat` is what its
+/// folder scan found (see [`Ctx::anticheat`]).
 pub fn warnings(
     catalog: &Catalog,
     options: &Options,
     hw: &Hardware,
     gpu_gen: &str,
     game_files: &[String],
+    anticheat: &[String],
 ) -> Vec<Notice> {
-    let ctx = Ctx { catalog, options, hw, gpu_gen, game_files };
+    let ctx = Ctx { catalog, options, hw, gpu_gen, game_files, anticheat };
     RULES.iter().filter_map(|r| (r.check)(&ctx)).collect()
 }
 
@@ -990,7 +1032,7 @@ mod tests {
         for k in keys {
             enable(&cat, &mut opts, k, "1");
         }
-        warnings(&cat, &opts, &hw, gpu_gen, &[])
+        warnings(&cat, &opts, &hw, gpu_gen, &[], &[])
     }
 
     fn find<'a>(notices: &'a [Notice], id: &str) -> Option<&'a Notice> {
@@ -1130,7 +1172,7 @@ mod tests {
             enable(&cat, &mut opts, k, v);
         }
         let amd = Hardware { amd: true, ..Default::default() };
-        warnings(&cat, &opts, &amd, gpu_gen, game_files)
+        warnings(&cat, &opts, &amd, gpu_gen, game_files, &[])
     }
 
     #[test]
@@ -1250,7 +1292,7 @@ mod tests {
             "PROTON_OPTISCALER_CONFIG",
             "Upscalers.Dx12Upscaler=ffx;FrameGen.Enabled=true;FrameGen.FGInput=fsrfg",
         );
-        let n = warnings(&cat, &opts, &Hardware::default(), "", &[]);
+        let n = warnings(&cat, &opts, &Hardware::default(), "", &[], &[]);
         let notice = find(&n, "lsfg-double-framegen").expect("rule fires");
         let fix = notice.fix.as_ref().expect("has a fix");
         assert_eq!(
@@ -1263,7 +1305,7 @@ mod tests {
 
         // Upscaling-only OptiScaler is the intended pairing.
         enable(&cat, &mut opts, "PROTON_OPTISCALER_CONFIG", "Upscalers.Dx12Upscaler=ffx");
-        assert!(find(&warnings(&cat, &opts, &Hardware::default(), "", &[]), "lsfg-double-framegen").is_none());
+        assert!(find(&warnings(&cat, &opts, &Hardware::default(), "", &[], &[]), "lsfg-double-framegen").is_none());
 
         // And the fix's own output doesn't re-trigger the rule.
         assert!(!optifg_enabled(&without_optifg("FrameGen.Enabled=true")));
@@ -1357,7 +1399,7 @@ mod tests {
         for (k, v) in keys {
             enable(&cat, &mut opts, k, v);
         }
-        warnings(&cat, &opts, &Hardware::default(), "", &[])
+        warnings(&cat, &opts, &Hardware::default(), "", &[], &[])
     }
 
     #[test]
@@ -1413,6 +1455,22 @@ mod tests {
     }
 
     #[test]
+    fn shipped_anticheat_drives_gplasync_and_optiscaler_rules() {
+        let cat = Catalog::bundled();
+        let mut opts = Options::from_catalog(&cat);
+        enable(&cat, &mut opts, "PROTON_DXVK_GPLASYNC", "1");
+        enable(&cat, &mut opts, "PROTON_USE_OPTISCALER", "1");
+        let eac = vec!["EasyAntiCheat".to_string()];
+        let n = warnings(&cat, &opts, &Hardware::default(), "", &[], &eac);
+        let g = find(&n, "gplasync-anticheat").expect("fires from the scan alone");
+        assert!(g.message.contains("EasyAntiCheat"));
+        assert!(find(&n, "optiscaler-anticheat").is_some());
+        let none = warnings(&cat, &opts, &Hardware::default(), "", &[], &[]);
+        assert!(find(&none, "gplasync-anticheat").is_none());
+        assert!(find(&none, "optiscaler-anticheat").is_none());
+    }
+
+    #[test]
     fn every_rule_has_a_unique_id() {
         let mut ids: Vec<&str> = RULES.iter().map(|r| r.id).collect();
         let total = ids.len();
@@ -1457,6 +1515,8 @@ mod tests {
         }
         // And a dirty game folder, or the folder-gated rule never fires here.
         let game_files = vec!["OptiScaler.dll".to_string()];
+        // And shipped anti-cheat, or the scan-gated rules never fire here.
+        let shipped = vec!["EasyAntiCheat".to_string()];
         for w in opts.wrappers.iter_mut() {
             w.enabled = true;
         }
@@ -1474,7 +1534,14 @@ mod tests {
         ];
         for hw in hws {
             for gpu_gen in ["", "rdna3", "rdna4"] {
-                let ctx = Ctx { catalog: &cat, options: &opts, hw: &hw, gpu_gen, game_files: &game_files };
+                let ctx = Ctx {
+                    catalog: &cat,
+                    options: &opts,
+                    hw: &hw,
+                    gpu_gen,
+                    game_files: &game_files,
+                    anticheat: &shipped,
+                };
                 for rule in RULES {
                     let Some(notice) = (rule.check)(&ctx) else { continue };
                     assert_eq!(notice.id, rule.id, "rule {} emits a mismatched id", rule.id);

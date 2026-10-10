@@ -10,6 +10,7 @@
   import GameFolders from "./GameFolders.svelte";
   import AntiCheatNote from "./AntiCheatNote.svelte";
   import SteamUpdateNote from "./SteamUpdateNote.svelte";
+  import GameScanNote from "./GameScanNote.svelte";
   import { forgetTuningAction } from "$lib/commands";
   import { DownloadSimple, Cpu, CheckCircle, WarningCircle, Trash } from "phosphor-svelte";
 
@@ -64,6 +65,7 @@
 
   <AntiCheatNote />
   <SteamUpdateNote />
+  <GameScanNote />
 
   <RuntimePicker />
 

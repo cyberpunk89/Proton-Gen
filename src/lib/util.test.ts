@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameDto } from "./types";
-import { droppedNote, formatLastPlayed, groupGames, mergeStyle, normalizeGameName } from "./util";
+import { droppedNote, formatLastPlayed, groupGames, matchesWhen, mergeStyle, normalizeGameName } from "./util";
 
 describe("util", () => {
   it("normalizeGameName folds case, accents and punctuation", () => {
@@ -28,5 +28,17 @@ describe("util", () => {
   it("formatLastPlayed is null for never-played", () => {
     expect(formatLastPlayed(null)).toBeNull();
     expect(formatLastPlayed(0)).toBeNull();
+  });
+});
+
+describe("matchesWhen", () => {
+  it("needs every tag, honours !negation, and never matches without a scan", () => {
+    const tags = ["dlss", "unreal"];
+    expect(matchesWhen(["dlss"], tags)).toBe(true);
+    expect(matchesWhen(["dlss", "!anticheat"], tags)).toBe(true);
+    expect(matchesWhen(["dlss", "!unreal"], tags)).toBe(false);
+    expect(matchesWhen(["fsr"], tags)).toBe(false);
+    expect(matchesWhen([], tags)).toBe(false);
+    expect(matchesWhen(["dlss"], undefined)).toBe(false);
   });
 });

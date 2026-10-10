@@ -14,6 +14,11 @@
 # `fsr4` alone would leave it visible on both. env/wrappers are [key, value]
 # pairs; wrapper value is "" for plain wrappers, args for gamescope.
 #
+# `when` (optional) suggests a recipe for a game whose install folder shows the
+# listed traits — every tag present, `!tag` absent. Tags come from the folder
+# scan (game_scan.rs): dlss, dlss-fg, fsr, xess, anticheat, eac, battleye,
+# unreal, unity, re-engine. Like protondb_tiers it only suggests; it never hides.
+#
 # Presentation (all optional): `icon` (sparkle|lightning|rocket|monitor|gauge|
 # wrench|shield|film), `accent` (hex color for the card), `tags` (chips).
 
@@ -21,6 +26,7 @@
 
 [[recipe]]
 name = "NVIDIA: DLSS + Reflex"
+when = ["dlss"]
 kind = "profile"
 gpu = "nvidia"
 icon = "lightning"
@@ -36,6 +42,7 @@ wrappers = []
 
 [[recipe]]
 name = "AMD: FSR 4 upgrade"
+when = ["fsr"]
 kind = "profile"
 gpu = "amd"
 needs = ["rdna4"]
@@ -51,6 +58,7 @@ wrappers = []
 
 [[recipe]]
 name = "AMD: FSR 4 on RDNA3"
+when = ["fsr"]
 kind = "profile"
 gpu = "amd"
 needs = ["rdna3"]
@@ -67,6 +75,7 @@ wrappers = []
 
 [[recipe]]
 name = "AMD: DLSS game → FSR 4 (OptiScaler)"
+when = ["dlss", "!anticheat"]
 kind = "profile"
 gpu = "amd"
 needs = ["fsr4"]
@@ -184,6 +193,7 @@ wrappers = [["gamemoderun", ""]]
 
 [[recipe]]
 name = "RE Engine: ray tracing / DLSS won't show (experimental)"
+when = ["re-engine"]
 kind = "fix"
 symptom = "An RE Engine game (Resident Evil, Monster Hunter) hides its ray-tracing or DLSS options on a Radeon GPU."
 icon = "sparkle"
@@ -221,6 +231,7 @@ wrappers = []
 
 [[recipe]]
 name = "Anti-cheat game won't launch"
+when = ["anticheat"]
 kind = "fix"
 symptom = "EAC/BattlEye title closes immediately or errors."
 icon = "shield"

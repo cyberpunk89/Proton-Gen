@@ -86,8 +86,26 @@ export interface Recipe {
    *  from `needs`/`irrelevance()` since a tier is async per-game data, not
    *  static hardware/session state — see `util.ts`'s `matchesTier`. */
   protondb_tiers: string[];
+  /** Suggests this recipe when the selected game's folder scan carries every
+   *  tag (`!tag` = must be absent) — see `GameScan.tags`, `util.ts`
+   *  `matchesWhen`. Empty = never scan-suggested. */
+  when: string[];
   env: Pair[];
   wrappers: Pair[];
+}
+
+/** What a game ships, from a bounded walk of its install folder
+ *  (game_scan.rs). */
+export interface GameScan {
+  /** "DLSS" | "DLSS Frame Gen" | "FSR" | "XeSS" */
+  upscalers: string[];
+  /** "EasyAntiCheat" | "BattlEye" */
+  anticheat: string[];
+  engine: string | null;
+  /** Where the real exe lives when it isn't the install root (Unreal). */
+  exe_dir: string | null;
+  /** dlss, dlss-fg, fsr, xess, anticheat, eac, battleye, unreal, unity, re-engine */
+  tags: string[];
 }
 
 export interface Hardware {

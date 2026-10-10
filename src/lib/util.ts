@@ -146,6 +146,14 @@ export function matchesTier(tiers: string[], tier: Tier | null | undefined): boo
   return tiers.includes(tier.tier.toLowerCase());
 }
 
+/** A recipe's `when` against a game's folder-scan tags: every plain tag
+ *  present, every `!tag` absent. Empty `when`, or no scan yet, matches
+ *  nothing — it's a suggestion, never a filter. Mirrors game_scan::matches. */
+export function matchesWhen(when: string[], tags: string[] | null | undefined): boolean {
+  if (!when.length || !tags) return false;
+  return when.every((w) => (w.startsWith("!") ? !tags.includes(w.slice(1)) : tags.includes(w)));
+}
+
 /** "42 min" / "3.5 h" / "120 h" of playtime, or null when there is none. */
 export function formatPlaytime(minutes: number | null | undefined): string | null {
   if (!minutes || minutes <= 0) return null;

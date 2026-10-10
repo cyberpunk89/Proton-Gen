@@ -51,6 +51,11 @@ pub struct Recipe {
     /// `irrelevance()` — see `util.ts`'s `matchesTier`.
     #[serde(default)]
     pub protondb_tiers: Vec<String>,
+    /// Suggest this recipe for a game whose folder scan (`game_scan.rs`)
+    /// carries every listed tag; `!tag` means the tag must be absent. Like
+    /// `protondb_tiers` it only *suggests* — it never hides the recipe.
+    #[serde(default)]
+    pub when: Vec<String>,
     #[serde(default)]
     pub env: Vec<(String, String)>,
     #[serde(default)]
@@ -239,6 +244,19 @@ pub fn diff(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bundled_when_tags_are_ones_the_scan_emits() {
+        // A typo'd tag would make a suggestion silently never fire.
+        const KNOWN: &[&str] =
+            &["dlss", "dlss-fg", "fsr", "xess", "anticheat", "eac", "battleye", "unreal", "unity", "re-engine"];
+        for r in Recipes::bundled().recipes {
+            for w in &r.when {
+                let tag = w.trim_start_matches('!');
+                assert!(KNOWN.contains(&tag), "recipe {:?} has unknown when tag {w}", r.name);
+            }
+        }
+    }
+
     use super::*;
 
     #[test]

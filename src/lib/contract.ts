@@ -27,6 +27,7 @@ import type { ExportResult as R_ExportResult } from "./generated/ExportResult";
 import type { Fix as R_Fix } from "./generated/Fix";
 import type { Folder as R_Folder } from "./generated/Folder";
 import type { GameDto as R_GameDto } from "./generated/GameDto";
+import type { GameScan as R_GameScan } from "./generated/GameScan";
 import type { Hardware as R_Hardware } from "./generated/Hardware";
 import type { InjectResult as R_InjectResult } from "./generated/InjectResult";
 import type { LaunchDiff as R_LaunchDiff } from "./generated/LaunchDiff";
@@ -123,6 +124,7 @@ export type _Contract = [
   Same<Keys<T.Scan, R_Scan>>,
   Same<Keys<T.GameFolder, R_Folder>>,
   Same<Keys<T.AntiCheat, R_AntiCheat>>,
+  Same<Keys<T.GameScan, R_GameScan>>,
   Same<Union<T.WrapperKind, R_WrapperKind>>,
   Same<Union<T.RecipeKind, R_RecipeKind>>,
   Same<Union<T.TokenKind, R_TokenKind>>,

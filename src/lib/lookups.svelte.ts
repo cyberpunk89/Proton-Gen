@@ -1,5 +1,5 @@
 import { ipc } from "./ipc";
-import type { AntiCheat, Tier } from "./types";
+import type { AntiCheat, GameScan, Tier } from "./types";
 
 // Per-game facts fetched from third-party sites — ProtonDB's tier and
 // AreWeAntiCheatYet's verdict — cached for the session. Split out of the app
@@ -11,9 +11,8 @@ class LookupStore {
    * time, which is needless load on an unofficial third-party API of unknown
    * rate limits.
    *
-   * Session-only on purpose. A persisted TTL cache needs a `Store` field, a
-   * clock, an eviction policy and `Tier: Deserialize` — worth measuring for
-   * first, and it would have to respect the wholesale-overwrite hazard in #43.
+   * Session-level here; the backend also keeps a 7-day disk cache
+   * (protondb.rs), so a fresh launch doesn't re-ask either.
    */
   tierCache = $state<Record<string, Tier | null>>({});
   /** Appids with a fetch in flight, so the chip can show a spinner. */
@@ -63,6 +62,27 @@ class LookupStore {
         console.error("anticheatLookup failed", appId, e);
         // Forget it so the next visit retries — the list may be reachable then.
         this.#anticheatRequested.delete(appId);
+      });
+  }
+
+  /** Folder scans: appid -> scan, null when the game has no install folder,
+   *  absent while unknown. Backend-cached; `rescan` forces a fresh walk. */
+  scanCache = $state<Record<string, GameScan | null>>({});
+  #scanRequested = new Set<number>();
+
+  scanFor(appId: number | null): GameScan | null | undefined {
+    return appId == null ? undefined : this.scanCache[String(appId)];
+  }
+
+  requestScan(appId: number, fresh = false) {
+    if (!fresh && this.#scanRequested.has(appId)) return;
+    this.#scanRequested.add(appId);
+    ipc
+      .gameScan(appId, fresh)
+      .then((s) => (this.scanCache[String(appId)] = s))
+      .catch((e) => {
+        console.error("gameScan failed", appId, e);
+        this.#scanRequested.delete(appId);
       });
   }
 }
