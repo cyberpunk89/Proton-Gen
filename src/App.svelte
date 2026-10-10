@@ -36,12 +36,22 @@
     // init() so a request that races the first bootstrap isn't dropped (the
     // backend also parks it for bootstrap to pick up).
     let unlistenOpen: (() => void) | undefined;
+    // Live refresh from the backend's file watcher (watch.rs): Steam/Heroic/
+    // Nexus changed a file discovery reads, possibly while this window sat
+    // unfocused beside Steam.
+    let unlistenWatch: (() => void)[] = [];
     if (inTauri) {
-      void import("@tauri-apps/api/event").then(({ listen }) =>
-        listen<{ app_id: number | null }>("open-game", ({ payload }) => {
+      void import("@tauri-apps/api/event").then(({ listen }) => {
+        void listen<{ app_id: number | null }>("open-game", ({ payload }) => {
           if (payload.app_id != null && app.ready) app.openRequestedGame(payload.app_id);
-        }).then((fn) => (unlistenOpen = fn)),
-      );
+        }).then((fn) => (unlistenOpen = fn));
+        void listen("steam-config-changed", () => app.onSteamConfigChanged()).then((fn) =>
+          unlistenWatch.push(fn),
+        );
+        void listen("library-changed", () => app.onLibraryChanged()).then((fn) =>
+          unlistenWatch.push(fn),
+        );
+      });
     }
     app.init();
     prefetchLazy();
@@ -61,6 +71,7 @@
     return () => {
       unlisten?.();
       unlistenOpen?.();
+      for (const fn of unlistenWatch) fn();
     };
   });
 </script>

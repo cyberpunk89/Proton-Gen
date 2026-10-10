@@ -62,6 +62,7 @@ mod steamcfg;
 mod store;
 mod update;
 mod vkbasalt_export;
+mod watch;
 mod which;
 
 use anyhow::Result;
@@ -124,6 +125,10 @@ pub fn run_with(initial_game: Option<u32>) {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ipc::AppState::new().with_initial_game(initial_game))
+        .setup(|app| {
+            watch::spawn(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ipc::bootstrap,
             ipc::rescan,

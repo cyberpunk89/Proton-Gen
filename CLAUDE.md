@@ -49,6 +49,8 @@ src-tauri/               BACKEND (Rust / Tauri)
   src/lint.rs            conflict / footgun notices
   src/store.rs           state.toml persistence + Config (corrupt file → quarantined)
   src/nexus.rs           Nexus library (games.json) → one entry per repack; nexus-cli --set-launch
+  src/watch.rs           live refresh: polls Steam/Heroic/Nexus file mtimes → frontend events
+  src/discovery_cache.rs last scan on disk, painted at launch while a rescan runs behind it
   src/logs.rs            log sources (Proton/umu/PROTON_LOG_DIR, Nexus, DXVK, VKD3D) for the viewer
   src/folders.rs         a game's prefix + shader cache (paths, sizes, open)
   src/conf_merge.rs      shared merge+write core of the MangoHud/vkBasalt exports
@@ -131,7 +133,9 @@ extra `--` into cargo).
   target as unmodeled. `src/lib/shell.ts` is the TS twin for custom env — change both.
 - **The paste loop.** `steam_user_config` re-reads only launch options + compat tools, so
   `app.refreshSteamConfig` can run on every window focus (throttled to one read per 2 s,
-  with extra re-checks for 10 min after Copy / Open in Steam). The root effect is split so
+  with extra re-checks for 10 min after Copy / Open in Steam). `watch.rs` also polls the
+  mtimes of the files discovery reads (std-only, no inotify dep) and emits
+  `steam-config-changed` (→ re-read) / `library-changed` (→ rescan, ≥5 s apart). The root effect is split so
   that re-read only recomputes the sync status — it must never persist `game_memory` or
   flash "Saved".
 - **Deep links into Settings** go through `app.openSettings(section?)`, which expands and

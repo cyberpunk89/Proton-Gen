@@ -107,6 +107,17 @@ pub struct HeroicGame {
     pub art: Option<String>,
 }
 
+/// Every file the Heroic game scan reads, for the live-refresh watcher
+/// (`watch.rs`) — the sideload library plus each native store's cache.
+pub fn watched_files() -> Vec<PathBuf> {
+    let Some(dir) = config_dir() else { return Vec::new() };
+    let mut out = vec![dir.join("sideload_apps").join("library.json")];
+    for f in ["legendary_library.json", "gog_library.json", "nile_library.json"] {
+        out.push(dir.join("store_cache").join(f));
+    }
+    out
+}
+
 /// Sideloaded games from `sideload_apps/library.json`. Any absence — no Heroic
 /// installed, no sideloaded games, an unreadable or malformed file — yields an
 /// empty list rather than an error: Heroic simply isn't part of this setup.

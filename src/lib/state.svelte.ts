@@ -1105,6 +1105,20 @@ class AppStore {
     }
   }
 
+  /** The watcher saw Steam rewrite localconfig.vdf / config.vdf. Bypasses the
+   *  focus throttle: this *is* the change, so re-read now — that is what turns
+   *  the pill green while the user is still in Steam's dialog. */
+  onSteamConfigChanged() {
+    void this.refreshSteamConfig(true);
+  }
+
+  /** The watcher saw a library source change (install, uninstall, a new
+   *  shortcut, a Heroic/Nexus library edit): rescan. `refresh` coalesces with
+   *  one already running. */
+  onLibraryChanged() {
+    if (this.ready) void this.refresh();
+  }
+
   /** Back to Steam (or elsewhere): stop the follow-up re-checks. */
   onWindowBlur() {
     for (const t of this.followUps) clearTimeout(t);

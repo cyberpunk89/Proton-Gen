@@ -30,7 +30,7 @@ pub fn data_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share/nexus"))
 }
 
-fn registry_path() -> Option<PathBuf> {
+pub(crate) fn registry_path() -> Option<PathBuf> {
     data_dir().map(|d| d.join("games.json"))
 }
 

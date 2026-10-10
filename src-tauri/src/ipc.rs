@@ -226,6 +226,12 @@ impl AppState {
         guard.as_ref()?.games.iter().find(|g| g.app_id == app_id).cloned()
     }
 
+    /// The user's Settings → Paths, as of now (the watcher re-reads it so a
+    /// changed path changes what it watches).
+    pub(crate) fn paths(&self) -> store::Paths {
+        self.store.locked().paths.clone()
+    }
+
     /// The Steam root from the last discovery pass, if any has run.
     fn steam_root(&self) -> Option<String> {
         self.discovery.locked().as_ref()?.steam_root.clone()
