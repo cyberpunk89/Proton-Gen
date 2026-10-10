@@ -522,6 +522,8 @@ Three round-trips keep the system consistent and are all tested:
 | `$XDG_CONFIG_HOME/protongen/recipes.toml` | optional user recipes override | user (read-only to app) |
 | `$XDG_CACHE_HOME/protongen/art/` | downloaded artwork cache (+ `.miss` markers) | `art.rs` |
 | `$XDG_CACHE_HOME/protongen/anticheat.json` | AreWeAntiCheatYet list, 3-day cache | `anticheat.rs` |
+| `$XDG_CACHE_HOME/protongen/protondb.json` | ProtonDB tier summaries, 7 days per game | `protondb.rs` |
+| `$XDG_CACHE_HOME/protongen/release-latest.json`, `runtime-latest-*.json` | latest protongen / GE-Proton / proton-cachyos releases, 12 h | `update.rs`, `runtime_updates.rs` (`disk_cache.rs`) |
 | `$XDG_CACHE_HOME/protongen/discovery.json` | last library scan, painted on the next launch while a fresh `rescan` runs behind it (keyed by app version + Settings → Paths) | `discovery_cache.rs` |
 
 ### 6.3 Nexus integration contract

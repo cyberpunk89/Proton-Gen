@@ -37,8 +37,19 @@ pub struct UpdateInfo {
 /// swallow — a failed check must never block launch or surface a false banner.
 pub fn check_blocking() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let body = fetch_text(&url, USER_AGENT)?;
+    // The release JSON is cached, not the verdict: "newer than the running
+    // version" must be re-decided every launch (right after an update the same
+    // body correctly reads as "up to date").
+    const CACHE: &str = "release-latest.json";
+    let body = match crate::disk_cache::get::<String>(CACHE, std::time::Duration::from_secs(12 * 3600)) {
+        Some(body) => body,
+        None => {
+            let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+            let body = fetch_text(&url, USER_AGENT)?;
+            crate::disk_cache::put(CACHE, &body);
+            body
+        }
+    };
 
     let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let tag = v.get("tag_name").and_then(|x| x.as_str()).unwrap_or_default();

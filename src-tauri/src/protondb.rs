@@ -5,9 +5,12 @@
 //! synchronously via `ehttp::fetch_blocking`; the Tauri command wraps it in a
 //! blocking task so it never stalls the UI.
 
-use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
-#[derive(Clone, Debug, Serialize)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct Tier {
     pub tier: String,
@@ -25,9 +28,52 @@ pub fn page_url(appid: u32) -> String {
     format!("https://www.protondb.com/app/{appid}")
 }
 
-/// Blocking fetch of a game's ProtonDB summary. Returns a `Tier` or an error
-/// message suitable for display.
+/// Tiers move slowly — a week-old summary is still the right answer to "how
+/// does this run", and the library looks one up per visible tile.
+const TTL: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+const CACHE: &str = "protondb.json";
+/// Serializes the cache file's read-modify-write: tile lookups run
+/// concurrently, and two interleaved writers would drop each other's entries.
+static CACHE_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Serialize, Deserialize)]
+struct Cached {
+    fetched: u64,
+    tier: Tier,
+}
+
+/// A game's ProtonDB summary, from the on-disk cache when it is younger than
+/// [`TTL`], else fetched (and then cached). Errors are never cached, so a
+/// network blip is retried on the next look.
 pub fn fetch_blocking(appid: u32) -> Result<Tier, String> {
+    let now = crate::fsutil::unix_ts();
+    let key = appid.to_string();
+    {
+        let _g = CACHE_LOCK.lock();
+        let map = read_cache();
+        if let Some(c) = map.get(&key) {
+            if c.fetched <= now && now - c.fetched < TTL.as_secs() {
+                return Ok(c.tier.clone());
+            }
+        }
+    }
+    let tier = fetch_network(appid)?;
+    let _g = CACHE_LOCK.lock();
+    let mut map = read_cache();
+    // Drop expired entries while here, so the file can't grow forever.
+    map.retain(|_, c| c.fetched <= now && now - c.fetched < TTL.as_secs());
+    map.insert(key, Cached { fetched: now, tier: tier.clone() });
+    // Whole-map TTL is irrelevant here (entries carry their own stamps), so it
+    // goes through `disk_cache` with a TTL that never expires the map itself.
+    crate::disk_cache::put(CACHE, &map);
+    Ok(tier)
+}
+
+fn read_cache() -> HashMap<String, Cached> {
+    crate::disk_cache::get(CACHE, std::time::Duration::from_secs(u64::MAX / 4)).unwrap_or_default()
+}
+
+fn fetch_network(appid: u32) -> Result<Tier, String> {
     let url = format!("https://www.protondb.com/api/v1/reports/summaries/{appid}.json");
     let request = ehttp::Request::get(url);
     match ehttp::fetch_blocking(&request) {

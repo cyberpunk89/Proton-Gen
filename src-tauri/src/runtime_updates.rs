@@ -10,14 +10,14 @@
 
 use std::sync::Mutex;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::update::fetch_text;
 
 const USER_AGENT: &str = "protongen-runtime-updates";
 
 /// The Proton builds this notice knows how to version.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum Family {
@@ -80,7 +80,7 @@ pub struct Installed<'a> {
 }
 
 /// An upstream release, reduced to what the comparison needs.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Upstream {
     pub family: Family,
     pub tag: String,
@@ -132,26 +132,56 @@ pub fn compare(installed: &[Installed], upstream: &[Upstream]) -> Vec<RuntimeUpd
 /// asking GitHub again; a failed fetch isn't cached, so it's retried.
 static UPSTREAM: Mutex<Vec<Upstream>> = Mutex::new(Vec::new());
 
+/// How long a family's latest release is trusted on disk across launches.
+/// Both families ship at most a few builds a week.
+const DISK_TTL: std::time::Duration = std::time::Duration::from_secs(12 * 3600);
+
+fn disk_name(f: Family) -> &'static str {
+    match f {
+        Family::GeProton => "runtime-latest-ge-proton.json",
+        Family::ProtonCachyos => "runtime-latest-proton-cachyos.json",
+    }
+}
+
 /// Fetch the latest release of every family the user has installed, then
 /// [`compare`]. A family whose fetch fails is skipped rather than failing the
 /// rest; this backs a background notice with nothing useful to say on error.
+/// Families missing from the session cache come from disk if fresh, else from
+/// GitHub — and those network fetches run in parallel.
 pub fn check_blocking(installed: &[Installed]) -> Vec<RuntimeUpdate> {
     let mut upstream = UPSTREAM.lock().map(|u| u.clone()).unwrap_or_default();
-    for f in Family::ALL {
-        let used = installed.iter().any(|r| f.version(r.name).is_some());
-        if !used || upstream.iter().any(|u| u.family == f) {
-            continue;
-        }
-        match fetch_latest(f) {
-            Ok(u) => {
-                if let Ok(mut cache) = UPSTREAM.lock() {
-                    cache.push(u.clone());
-                }
-                upstream.push(u);
-            }
-            Err(e) => eprintln!("runtime update check for {} failed: {e}", f.repo()),
-        }
+    let wanted: Vec<Family> = Family::ALL
+        .into_iter()
+        .filter(|f| installed.iter().any(|r| f.version(r.name).is_some()))
+        .filter(|f| !upstream.iter().any(|u| u.family == *f))
+        .collect();
+    let fetched: Vec<Upstream> = std::thread::scope(|s| {
+        let handles: Vec<_> = wanted
+            .iter()
+            .map(|&f| {
+                s.spawn(move || {
+                    if let Some(u) = crate::disk_cache::get::<Upstream>(disk_name(f), DISK_TTL) {
+                        return Some(u);
+                    }
+                    match fetch_latest(f) {
+                        Ok(u) => {
+                            crate::disk_cache::put(disk_name(f), &u);
+                            Some(u)
+                        }
+                        Err(e) => {
+                            eprintln!("runtime update check for {} failed: {e}", f.repo());
+                            None
+                        }
+                    }
+                })
+            })
+            .collect();
+        handles.into_iter().filter_map(|h| h.join().ok().flatten()).collect()
+    });
+    if let Ok(mut cache) = UPSTREAM.lock() {
+        cache.extend(fetched.iter().cloned());
     }
+    upstream.extend(fetched);
     compare(installed, &upstream)
 }
 
