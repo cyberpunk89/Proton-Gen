@@ -242,6 +242,28 @@ pub fn list_games(
     extra_libraries: &[String],
     warn: &mut Vec<ConfigWarning>,
 ) -> Vec<Game> {
+    // Heroic's store caches (legendary_library.json alone can be over a MB)
+    // and Nexus's games.json don't depend on Steam: read them while the Steam
+    // libraries are walked.
+    std::thread::scope(|s| {
+        let heroic = s.spawn(list_heroic_games);
+        let nexus = s.spawn(crate::nexus::list);
+        let mut games = list_steam_side(dir, extra_libraries, warn);
+        // Heroic games (sideloaded + native-store installs) — independent of
+        // Steam, but folded in here so `--list`/`dump()` shows them and they
+        // go through the same dedup + sort.
+        games.extend(heroic.join().expect("heroic scan panicked"));
+        // Nexus's repacks replace their own Steam-shortcut and Heroic mirrors.
+        dedup_and_sort(crate::nexus::absorb(games, nexus.join().expect("nexus scan panicked")))
+    })
+}
+
+/// Installed Steam games across every library, plus non-Steam shortcuts.
+fn list_steam_side(
+    dir: &SteamDir,
+    extra_libraries: &[String],
+    warn: &mut Vec<ConfigWarning>,
+) -> Vec<Game> {
     let mut games = Vec::new();
 
     // Installed Steam games across all libraries.
@@ -284,13 +306,7 @@ pub fn list_games(
         }
     }
 
-    // Heroic games (sideloaded + native-store installs) — independent of
-    // Steam, but folded in here so `--list`/`dump()` shows them and they go
-    // through the same dedup + sort.
-    games.extend(list_heroic_games());
-
-    // Nexus's repacks replace their own Steam-shortcut and Heroic mirrors.
-    dedup_and_sort(crate::nexus::absorb(games, crate::nexus::list()))
+    games
 }
 
 #[cfg(test)]

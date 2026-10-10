@@ -6,7 +6,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
-use steamlocate::SteamDir;
 use tauri::State;
 
 use crate::art;
@@ -311,73 +310,107 @@ pub(crate) struct Discovery {
 /// `paths` carries the user's Settings overrides; no discovery module reads the
 /// store itself.
 pub(crate) fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discovery {
-    let mut steam_root = None;
-    let mut load_error = None;
-    let mut runtime_warning = None;
-    let mut runtimes_raw = Vec::new();
-    let games;
-    let mut launch_options = HashMap::new();
-    let mut compat_tools = HashMap::new();
-    let mut path_warnings = Vec::new();
+    // The sources are independent files (Steam's VDFs, each library's
+    // appmanifests, Heroic's JSON, Nexus's games.json, `$PATH`), so they are
+    // read on scoped threads rather than one after another. Warnings are still
+    // pushed in the old fixed order — runtimes, Steam config, libraries — so
+    // the banner reads the same however the threads finish.
+    std::thread::scope(|s| {
+        // Heroic's own last-played/playtime, keyed by its `app_name` — read
+        // unconditionally since sideloaded games don't need Steam installed.
+        let heroic_playtime = s.spawn(heroic::load_playtime);
+        let requires_status = s.spawn(|| {
+            compute_requires_status(catalog, &builder::Bins::with_overrides(&paths.bins))
+        });
 
-    // Heroic's own last-played/playtime, keyed by its `app_name` — read
-    // unconditionally since sideloaded games don't need Steam to be installed.
-    let heroic_playtime = heroic::load_playtime();
+        let mut path_warnings = Vec::new();
+        let mut steam_root = None;
+        let mut load_error = None;
+        let mut runtime_warning = None;
+        let mut runtimes_raw = Vec::new();
+        let mut launch_options = HashMap::new();
+        let mut compat_tools = HashMap::new();
+        let games;
 
-    match steam::locate_native(&paths.steam_roots, &mut path_warnings) {
-        Ok(dir) => {
-            steam_root = Some(steam::root_display(&dir));
-            runtimes_raw = runtime::discover(&dir, &paths.proton_dirs, &mut path_warnings);
-            if runtimes_raw.is_empty() {
-                runtime_warning = Some(runtime::no_runtimes_message(
-                    &steam::user_compat_tools_dir(&dir),
-                    &paths.proton_dirs,
-                ));
+        match steam::locate_native(&paths.steam_roots, &mut path_warnings) {
+            Ok(dir) => {
+                steam_root = Some(steam::root_display(&dir));
+                let dir = &dir;
+                // An inner scope: these borrow `dir`, which lives only in this arm.
+                let ((rt, rt_warn), (app_cfgs, cfg_warn), compat, raw_games, library_warnings) =
+                    std::thread::scope(|s| {
+                        let runtimes = s.spawn(|| {
+                            let mut warn = Vec::new();
+                            (runtime::discover(dir, &paths.proton_dirs, &mut warn), warn)
+                        });
+                        let cfgs = s.spawn(|| {
+                            let mut warn = Vec::new();
+                            (steamcfg::current_app_cfgs(dir, &mut warn), warn)
+                        });
+                        let compat = s.spawn(|| steamcfg::current_compat_tools(dir));
+                        let mut warn = Vec::new();
+                        let raw_games = games::list_games(dir, &paths.steam_libraries, &mut warn);
+                        (
+                            runtimes.join().expect("runtime discovery panicked"),
+                            cfgs.join().expect("localconfig scan panicked"),
+                            compat.join().expect("compat tool scan panicked"),
+                            raw_games,
+                            warn,
+                        )
+                    });
+
+                runtimes_raw = rt;
+                path_warnings.extend(rt_warn);
+                if runtimes_raw.is_empty() {
+                    runtime_warning = Some(runtime::no_runtimes_message(
+                        &steam::user_compat_tools_dir(dir),
+                        &paths.proton_dirs,
+                    ));
+                }
+                // `game_dto` reads last-played/playtime out of localconfig, so
+                // the parsed map is needed before the games are built.
+                path_warnings.extend(cfg_warn);
+                path_warnings.extend(library_warnings);
+                let heroic_playtime = heroic_playtime.join().expect("heroic playtime panicked");
+                games = raw_games
+                    .into_iter()
+                    .map(|g| game_dto(g, &app_cfgs, &heroic_playtime))
+                    .collect();
+                launch_options = stringify_keys(steamcfg::launch_options(&app_cfgs));
+                compat_tools = stringify_keys(compat);
             }
-            // localconfig first: `list_games_dto` reads last-played/playtime out
-            // of it, so the parsed map has to exist before the games are built.
-            let app_cfgs = steamcfg::current_app_cfgs(&dir, &mut path_warnings);
-            games = list_games_dto(
-                &dir,
-                &app_cfgs,
-                &heroic_playtime,
-                &paths.steam_libraries,
-                &mut path_warnings,
-            );
-            launch_options = stringify_keys(steamcfg::launch_options(&app_cfgs));
-            compat_tools = stringify_keys(steamcfg::current_compat_tools(&dir));
-        }
-        Err(e) => {
-            load_error = Some(e.to_string());
-            // Heroic games don't need Steam. With no Steam install, `list_games`
-            // never runs, so surface sideloaded Heroic games on their own here.
-            games = games::dedup_and_sort(crate::nexus::absorb(
-                games::list_heroic_games(),
-                crate::nexus::list(),
-            ))
+            Err(e) => {
+                load_error = Some(e.to_string());
+                // Heroic games don't need Steam. With no Steam install,
+                // `list_games` never runs, so surface sideloaded Heroic games
+                // on their own here.
+                let heroic_playtime = heroic_playtime.join().expect("heroic playtime panicked");
+                games = games::dedup_and_sort(crate::nexus::absorb(
+                    games::list_heroic_games(),
+                    crate::nexus::list(),
+                ))
                 .into_iter()
                 .map(|g| game_dto(g, &HashMap::new(), &heroic_playtime))
                 .collect();
+            }
         }
-    }
 
-    let stale = compute_stale(catalog, &runtimes_raw);
-    let runtimes = runtimes_raw.iter().map(runtime_dto).collect();
-    let requires_status =
-        compute_requires_status(catalog, &builder::Bins::with_overrides(&paths.bins));
+        let stale = compute_stale(catalog, &runtimes_raw);
+        let runtimes = runtimes_raw.iter().map(runtime_dto).collect();
 
-    Discovery {
-        steam_root,
-        load_error,
-        runtime_warning,
-        runtimes,
-        games,
-        launch_options,
-        compat_tools,
-        requires_status,
-        stale,
-        path_warnings,
-    }
+        Discovery {
+            steam_root,
+            load_error,
+            runtime_warning,
+            runtimes,
+            games,
+            launch_options,
+            compat_tools,
+            requires_status: requires_status.join().expect("PATH scan panicked"),
+            stale,
+            path_warnings,
+        }
+    })
 }
 
 impl AppState {
@@ -493,19 +526,6 @@ fn game_dto(
         pinned_proton: nexus.proton,
         alias_ids: nexus.alias_ids,
     }
-}
-
-fn list_games_dto(
-    dir: &SteamDir,
-    app_cfgs: &HashMap<u32, steamcfg::AppUserCfg>,
-    heroic_playtime: &HashMap<String, heroic::PlayStats>,
-    extra_libraries: &[String],
-    warn: &mut Vec<ConfigWarning>,
-) -> Vec<GameDto> {
-    games::list_games(dir, extra_libraries, warn)
-        .into_iter()
-        .map(|g| game_dto(g, app_cfgs, heroic_playtime))
-        .collect()
 }
 
 fn stringify_keys(m: HashMap<u32, String>) -> HashMap<String, String> {
