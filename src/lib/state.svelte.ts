@@ -1120,6 +1120,42 @@ class AppStore {
     if (this.ready) void this.refresh();
   }
 
+  // ------------------------- Pending in Steam queue ------------------------
+
+  /** The "Pending in Steam" dialog (PendingQueue.svelte, mounted at the root). */
+  pendingQueueOpen = $state(false);
+
+  /** Installed Steam games whose saved tuning isn't what Steam has: never
+   *  pasted, or pasted and changed since. Exactly the games whose library
+   *  badge is the peach or dashed one. umu configs report "umu", not a
+   *  verdict, so they never appear. */
+  get pendingInSteam(): GameDto[] {
+    return this.games.filter((g) => {
+      if (g.source !== "steam" || !g.installed) return false;
+      const s = this.launchStatuses[String(g.app_id)];
+      return s === "drifted" || s === "not-applied";
+    });
+  }
+
+  /** The launch command a game's *saved* tuning builds — what the queue copies
+   *  without opening that game in the builder. */
+  async commandForSaved(appId: number): Promise<string> {
+    const cfg = this.store.game_memory[String(appId)];
+    if (!cfg) throw new Error("This game has no saved tuning.");
+    const runtime = cfg.runtime ? this.runtimes.find((r) => r.internal_name === cfg.runtime) : null;
+    const r = await ipc.recompute($state.snapshot(cfg) as Config, runtime?.path ?? null, appId, null);
+    return r.command;
+  }
+
+  /** The Proton a saved tuning wants Steam set to, when Steam disagrees and
+   *  the runtime has a real internal name to compare (see `runtimeComparable`). */
+  savedRuntimeMismatch(appId: number): string | null {
+    const cfg = this.store.game_memory[String(appId)];
+    const r = cfg?.runtime ? this.runtimes.find((x) => x.internal_name === cfg.runtime) : null;
+    if (!r || r.kind === "valve" || r.kind === "auto") return null;
+    return this.compatTools[String(appId)] === r.internal_name ? null : r.display_name;
+  }
+
   /** Back to Steam (or elsewhere): stop the follow-up re-checks. */
   onWindowBlur() {
     for (const t of this.followUps) clearTimeout(t);

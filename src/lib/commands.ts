@@ -276,6 +276,20 @@ export const protondbAction: AppCommand = {
   },
 };
 
+export const pendingQueueAction: AppCommand = {
+  id: "pending-queue",
+  get label() {
+    const n = app.pendingInSteam.length;
+    return n ? `Review ${n} game${n === 1 ? "" : "s"} pending in Steam` : "Review games pending in Steam";
+  },
+  icon: SteamLogo,
+  keywords: ["drifted", "not pasted", "sync", "queue", "launch options"],
+  available: () => app.pendingInSteam.length > 0,
+  run: () => {
+    app.pendingQueueOpen = true;
+  },
+};
+
 export const redoAction: AppCommand = {
   id: "redo",
   label: "Redo",
@@ -352,6 +366,7 @@ export const uiModeAction: AppCommand = {
 export const APP_COMMANDS: AppCommand[] = [
   copyCommandAction,
   copyAndOpenSteamAction,
+  pendingQueueAction,
   resetCommandAction,
   forgetTuningAction,
   undoAction,

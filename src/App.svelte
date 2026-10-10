@@ -278,6 +278,9 @@
 <Lazy load={lazy.troubleshooter} when={app.showTroubleshooter}>
   {#snippet children(C)}<C />{/snippet}
 </Lazy>
+<Lazy load={lazy.pendingQueue} when={app.pendingQueueOpen}>
+  {#snippet children(C)}<C />{/snippet}
+</Lazy>
 <Toast />
 <!-- Outside the init-error / loading branches above on purpose: both of those
      are full-screen and were unresizable too, which is exactly when you want to

@@ -15,6 +15,7 @@
   import { fuzzy } from "$lib/fuzzy";
   import { slide } from "$lib/motion.svelte";
   import {
+    SteamLogo,
     GameController,
     MagnifyingGlass,
     Terminal,
@@ -435,6 +436,23 @@
         <button onclick={() => app.setSelectMode(false)} class="text-xs text-muted hover:text-text">Done</button>
       </span>
     </div>
+  {/if}
+
+  {#if app.pendingInSteam.length && !app.selectMode}
+    <!-- The library-wide version of the command bar's sync pill: every tuned
+         game whose options aren't in Steam, one click from a guided pass. -->
+    <button
+      onclick={() => (app.pendingQueueOpen = true)}
+      class="flex w-full items-center gap-2 rounded-xl border border-peach/40 bg-peach/5 px-3 py-2 text-left text-xs text-subtext transition hover:bg-peach/10"
+    >
+      <SteamLogo size={15} class="shrink-0 text-peach" />
+      <span class="flex-1">
+        <span class="font-medium text-text">{app.pendingInSteam.length}</span>
+        tuned game{app.pendingInSteam.length === 1 ? "" : "s"}
+        {app.pendingInSteam.length === 1 ? "isn't" : "aren't"} in Steam yet
+      </span>
+      <span class="font-medium text-peach">Review &amp; paste →</span>
+    </button>
   {/if}
 
   <!-- Sort + filters -->
