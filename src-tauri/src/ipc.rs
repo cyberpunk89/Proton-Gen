@@ -339,12 +339,17 @@ pub(crate) fn scan_discovery(catalog: &Catalog, paths: &store::Paths) -> Discove
 
 impl AppState {
     pub fn new() -> Self {
-        let (catalog, catalog_warning) = Catalog::load();
-        let (recipes, recipes_warning) = Recipes::load();
-        let (store, store_warning) = Store::load_or_recover();
+        // This runs before the window exists, so it is on the time-to-first-
+        // paint path. Hardware detection is all sysfs/procfs/`pci.ids` reads
+        // and shares nothing with the TOML parsing, so it overlaps with it.
+        let (hardware, (catalog, catalog_warning), (recipes, recipes_warning), (store, store_warning)) =
+            std::thread::scope(|s| {
+                let hw = s.spawn(hardware::detect);
+                let loaded = (Catalog::load(), Recipes::load(), Store::load_or_recover());
+                (hw.join().unwrap_or_default(), loaded.0, loaded.1, loaded.2)
+            });
         let config_warnings =
             catalog_warning.into_iter().chain(recipes_warning).chain(store_warning).collect();
-        let hardware = hardware::detect();
 
         // No filesystem scan here — see `AppState::discovery`.
         Self {

@@ -74,6 +74,8 @@ const AMD_VENDOR: &str = "0x1002";
 /// hand-maintenance every GPU generation and silently misreports new cards until
 /// someone remembers, whereas this file already ships with the distro and is
 /// already kept current by it.
+/// AMD's vendor id as `pci.ids` spells it (no `0x`, unlike sysfs's [`AMD_VENDOR`]).
+const AMD_VENDOR_ID: &str = "1002";
 const PCI_IDS_PATHS: [&str; 2] = ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids"];
 
 /// The RDNA generation a `pci.ids` device name implies.
@@ -138,6 +140,33 @@ fn pci_ids_lookup(text: &str, vendor: &str, device: &str) -> Option<String> {
     None
 }
 
+/// Just one vendor's block of `pci.ids` (its header line and the indented
+/// device lines under it), read line by line and abandoned as soon as the next
+/// vendor starts. The file is ~1.7 MB and sits on the startup path, while AMD's
+/// block (`1002`) is near the top — so this reads about a tenth of it instead
+/// of the whole thing. The result feeds [`pci_ids_lookup`] unchanged.
+fn vendor_block(reader: impl std::io::BufRead, vendor: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for line in reader.lines() {
+        let Ok(line) = line else { break };
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
+        if !line.starts_with('\t') {
+            if inside {
+                break;
+            }
+            inside = line.split_whitespace().next() == Some(vendor);
+        }
+        if inside {
+            out.push_str(&line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 /// PCI device ids of every AMD GPU with a DRM card node, lowercase hex without
 /// the `0x` prefix, ordered by card number.
 ///
@@ -189,12 +218,13 @@ fn detect_gpu_gen() -> Option<String> {
         return None;
     }
     for path in PCI_IDS_PATHS {
-        let Ok(text) = std::fs::read_to_string(path) else {
+        let Ok(file) = std::fs::File::open(path) else {
             continue;
         };
+        let text = vendor_block(std::io::BufReader::new(file), AMD_VENDOR_ID);
         let found = devices
             .iter()
-            .filter_map(|d| pci_ids_lookup(&text, "1002", d))
+            .filter_map(|d| pci_ids_lookup(&text, AMD_VENDOR_ID, d))
             .find_map(|name| generation_from_name(&name));
         if let Some(generation) = found {
             return Some(generation.to_string());
@@ -447,6 +477,19 @@ mod tests {
             pci_ids_lookup(PCI_IDS_FIXTURE, "1002", "744C").as_deref(),
             Some("Navi 31 [Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M]")
         );
+    }
+
+    #[test]
+    fn vendor_block_keeps_only_that_vendor_and_stops_after_it() {
+        let block = vendor_block(PCI_IDS_FIXTURE.as_bytes(), "1002");
+        assert!(block.starts_with("1002 "));
+        assert_eq!(
+            pci_ids_lookup(&block, "1002", "744c").as_deref(),
+            Some("Navi 31 [Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M]")
+        );
+        // Nothing from the next vendor's block survives.
+        assert_eq!(pci_ids_lookup(&block, "10de", "2684"), None);
+        assert!(vendor_block(PCI_IDS_FIXTURE.as_bytes(), "ffff").is_empty());
     }
 
     #[test]
