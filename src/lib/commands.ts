@@ -16,6 +16,12 @@ import {
   FloppyDisk,
   Eye,
   Trash,
+  ArrowClockwise,
+  FileText,
+  Robot,
+  Export,
+  GlobeHemisphereWest,
+  SlidersHorizontal,
 } from "phosphor-svelte";
 
 import { app } from "./state.svelte";
@@ -270,6 +276,78 @@ export const protondbAction: AppCommand = {
   },
 };
 
+export const redoAction: AppCommand = {
+  id: "redo",
+  label: "Redo",
+  icon: ArrowClockwise,
+  keywords: ["again"],
+  run: () => app.redo(),
+};
+
+export const logsAction: AppCommand = {
+  id: "logs",
+  label: "View this game's Proton log",
+  icon: FileText,
+  keywords: ["log", "crash", "diagnostics", "dxvk", "vkd3d"],
+  available: () => app.selectedAppId != null,
+  run: () => {
+    app.showLogs = true;
+  },
+};
+
+export const troubleshootAction: AppCommand = {
+  id: "troubleshoot",
+  get label() {
+    return app.store.llm_enabled ? "Troubleshoot a problem (AI)" : "Browse fixes for a problem";
+  },
+  icon: Robot,
+  keywords: ["fix", "crash", "stutter", "black screen", "help", "symptom"],
+  run: () => {
+    // Without the AI coach there is still a symptom → fix list: the recipes
+    // section's troubleshooter tab.
+    if (app.store.llm_enabled) app.showTroubleshooter = true;
+    else app.setSection("recipes");
+  },
+};
+
+export const applyToLauncherAction: AppCommand = {
+  id: "apply-launcher",
+  get label() {
+    return app.nexusSlug != null ? "Apply to Nexus" : "Apply to Heroic";
+  },
+  icon: Export,
+  keywords: ["nexus", "heroic", "write", "launcher"],
+  available: () => app.nexusSlug != null || app.heroicId != null,
+  run: () => {
+    if (app.nexusSlug != null) app.nexusConfirmOpen = true;
+    else if (app.heroicId != null) app.heroicConfirmOpen = true;
+  },
+};
+
+export const applyDefaultProfileAction: AppCommand = {
+  id: "apply-default-profile",
+  label: "Apply default profile",
+  icon: GlobeHemisphereWest,
+  keywords: ["global", "baseline", "profile"],
+  available: () => app.store.global_profile != null && app.view === "builder",
+  run: () => {
+    app.applyGlobalProfile();
+    toast.success("Default profile applied", {
+      action: { label: "Undo", onClick: () => app.undo() },
+    });
+  },
+};
+
+export const uiModeAction: AppCommand = {
+  id: "ui-mode",
+  get label() {
+    return app.uiMode === "simple" ? "Switch to Advanced view" : "Switch to Simple view";
+  },
+  icon: SlidersHorizontal,
+  keywords: ["simple", "advanced", "layout"],
+  run: () => app.setUiMode(app.uiMode === "simple" ? "advanced" : "simple"),
+};
+
 /** Everything the palette offers under "Actions", in rough usefulness order. */
 export const APP_COMMANDS: AppCommand[] = [
   copyCommandAction,
@@ -277,10 +355,16 @@ export const APP_COMMANDS: AppCommand[] = [
   resetCommandAction,
   forgetTuningAction,
   undoAction,
+  redoAction,
+  applyToLauncherAction,
+  applyDefaultProfileAction,
   backToLibraryAction,
+  logsAction,
+  troubleshootAction,
   activeOptionsAction,
   recipesAction,
   toggleModeAction,
+  uiModeAction,
   genericCommandAction,
   openInSteamAction,
   protondbAction,

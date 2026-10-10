@@ -26,6 +26,7 @@
     GlobeHemisphereWest,
     FileText,
     Robot,
+    MagnifyingGlass,
     Minus,
     Square,
     X,
@@ -249,6 +250,18 @@
       </button>
     {/if}
     {/if}
+
+    <!-- The palette reaches every action, game, option and preset; without a
+         visible entry it was Ctrl+K-only and effectively undiscoverable. -->
+    <button
+      onclick={() => (app.showPalette = true)}
+      class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2 text-xs text-muted transition hover:border-accent/50 hover:text-subtext"
+      aria-label="Search actions, games and options"
+      title="Search actions, games and options (Ctrl+K)"
+    >
+      <MagnifyingGlass size={14} />
+      <kbd class="hidden rounded border border-border px-1 font-sans text-[10px] lg:inline">Ctrl K</kbd>
+    </button>
 
     <!-- Refresh library (available on both library and builder views) -->
     <button
