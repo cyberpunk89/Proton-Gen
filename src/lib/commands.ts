@@ -84,6 +84,40 @@ export const copyCommandAction: AppCommand = {
   },
 };
 
+/** Steam's half of the paste loop in one step: copy, open the game's Properties
+ *  (Launch Options is on the first tab), and show the checklist that ticks
+ *  itself off as Steam's config catches up. A failed deep link still leaves the
+ *  command copied, so it says so instead of pretending nothing happened. */
+export const copyAndOpenSteamAction: AppCommand = {
+  id: "copy-open-steam",
+  label: "Copy & open in Steam",
+  icon: SteamLogo,
+  keywords: ["paste", "launch options", "properties", "clipboard"],
+  available: () => app.steamAppId != null && !app.umu,
+  async run() {
+    const id = app.steamAppId;
+    if (id == null) return;
+    try {
+      await copyText(app.command);
+    } catch (e) {
+      // Opening Steam with nothing on the clipboard would send the user off to
+      // paste whatever was there before.
+      toast.error(`Couldn't copy the command: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
+    app.expectPaste();
+    app.pasteGuideFor = id;
+    const { openSteamUrl, steamPropertiesUrl } = await import("./util");
+    if (await openSteamUrl(steamPropertiesUrl(id))) return;
+    const { inTauri } = await import("./ipc");
+    toast.info(
+      inTauri
+        ? "Copied — but couldn't hand the link to Steam. Is Steam installed?"
+        : "Copied. Steam deep links only work in the desktop app.",
+    );
+  },
+};
+
 export const backToLibraryAction: AppCommand = {
   id: "back",
   label: "Back to library",
@@ -239,6 +273,7 @@ export const protondbAction: AppCommand = {
 /** Everything the palette offers under "Actions", in rough usefulness order. */
 export const APP_COMMANDS: AppCommand[] = [
   copyCommandAction,
+  copyAndOpenSteamAction,
   resetCommandAction,
   forgetTuningAction,
   undoAction,

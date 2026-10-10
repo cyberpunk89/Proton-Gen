@@ -1,19 +1,21 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { history } from "$lib/history.svelte";
-  import { copyCommandAction, resetCommandAction } from "$lib/commands";
+  import { copyAndOpenSteamAction, copyCommandAction, resetCommandAction } from "$lib/commands";
   import {
     ArrowCounterClockwise,
     ArrowUUpLeft,
     ArrowUUpRight,
     CheckCircle,
     Copy,
+    SteamLogo,
     Terminal,
     WarningCircle,
   } from "phosphor-svelte";
   import { fade } from "$lib/motion.svelte";
   import CommandBody from "./CommandBody.svelte";
   import LauncherAction from "./LauncherAction.svelte";
+  import PasteGuide from "./PasteGuide.svelte";
   import SyncPill from "./SyncPill.svelte";
 
   /**
@@ -28,6 +30,13 @@
    */
   const copy = () => void copyCommandAction.run();
   const reset = () => void resetCommandAction.run();
+  const copyAndOpen = () => void copyAndOpenSteamAction.run();
+
+  /** A Steam game in Steam mode: the paste loop is the whole job, so its one
+   *  primary button does both halves (copy + open Properties) and Copy alone
+   *  steps down to secondary. Everything else keeps Copy as the primary. */
+  let steamPrimary = $derived(app.steamAppId != null && !app.umu);
+  let guide = $derived(steamPrimary && app.pasteGuideFor === app.steamAppId);
 
   /**
    * The runtime hint, stated as fact when we can check it and as an instruction
@@ -122,9 +131,11 @@
         <ArrowUUpRight size={14} />
       </button>
 
-      <!-- Copy, then land on the dialog you paste into — or, for a Heroic game,
-           write it straight in. Hides itself when neither applies. -->
-      <LauncherAction collapsible />
+      <!-- For a Steam game the primary button below already opens Steam, so
+           the launcher slot only carries Heroic/Nexus apply. -->
+      {#if !steamPrimary}
+        <LauncherAction collapsible />
+      {/if}
       <button
         onclick={reset}
         title="Reset the command to defaults"
@@ -134,13 +145,33 @@
         <ArrowCounterClockwise size={14} />
         <span class="hidden @2xl:inline">Reset</span>
       </button>
-      <button
-        onclick={copy}
-        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95"
-        style="background: var(--accent); color: var(--on-accent)"
-      >
-        <Copy size={14} weight="bold" /> Copy
-      </button>
+      {#if steamPrimary}
+        <button
+          onclick={copy}
+          title="Copy the command"
+          aria-label="Copy"
+          class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2 py-1.5 text-xs text-subtext transition hover:border-accent/50 active:scale-95 @2xl:px-2.5"
+        >
+          <Copy size={14} />
+          <span class="hidden @2xl:inline">Copy</span>
+        </button>
+        <button
+          onclick={copyAndOpen}
+          title="Copy the command and open this game's Properties in Steam"
+          class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95"
+          style="background: var(--accent); color: var(--on-accent)"
+        >
+          <SteamLogo size={14} weight="bold" /> Copy &amp; open Steam
+        </button>
+      {:else}
+        <button
+          onclick={copy}
+          class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition active:scale-95"
+          style="background: var(--accent); color: var(--on-accent)"
+        >
+          <Copy size={14} weight="bold" /> Copy
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -170,7 +201,9 @@
     </div>
   {/if}
 
-  {#if runtimeHint}
+  {#if guide}
+    <PasteGuide />
+  {:else if runtimeHint}
     <p
       class="mt-3 flex items-center gap-1.5 border-t border-border/50 pt-2 text-xs"
       class:text-muted={!runtimeHint.done}

@@ -134,6 +134,10 @@ class AppStore {
   /** Until when (epoch ms) the user counts as "about to paste into Steam":
    *  set by Copy / Open in Steam, so focus also schedules follow-up re-reads. */
   private awaitingPasteUntil = 0;
+  /** The Steam appid whose "paste it into Steam" checklist is showing under the
+   *  command, set by Copy & open Steam. Keyed by game rather than a bool so
+   *  switching games hides it without any cleanup. */
+  pasteGuideFor = $state<number | null>(null);
   private steamReadInFlight = false;
   private lastSteamRead = 0;
   private followUps: ReturnType<typeof setTimeout>[] = [];
