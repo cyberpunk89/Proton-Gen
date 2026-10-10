@@ -617,6 +617,8 @@ export interface Bootstrap {
   config_warnings: ConfigWarning[];
   /** Set by `protongen --game <appid>` (e.g. from Nexus): open on that game. */
   initial_game_appid?: number | null;
+  /** The library came from last session's discovery cache; rescan behind it. */
+  from_cache: boolean;
 }
 
 /** What `rescan` returns: only the scan-dependent half of `Bootstrap`. */

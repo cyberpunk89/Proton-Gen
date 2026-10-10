@@ -310,9 +310,16 @@ class AppStore {
 
     // Check for a newer release in the background; never blocks launch.
     this.checkForUpdate();
-    this.checkRuntimeUpdates();
-    // Lossless Scaling profile names for the LSFGVK_PROFILE row; cheap, local.
-    void this.refreshLsfgStatus();
+    if (b.from_cache) {
+      // The library on screen is last session's scan, painted instantly; get
+      // the real one now. `refresh` also re-checks runtime updates and the
+      // lsfg status, so they aren't fired twice.
+      void this.refresh();
+    } else {
+      this.checkRuntimeUpdates();
+      // Lossless Scaling profile names for the LSFGVK_PROFILE row; cheap, local.
+      void this.refreshLsfgStatus();
+    }
   }
 
   /**

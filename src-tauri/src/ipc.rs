@@ -50,7 +50,7 @@ impl<T> Locked<T> for Mutex<T> {
 }
 
 /// A runtime, flattened for the frontend (path + kind as strings).
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct RuntimeDto {
     pub internal_name: String,
@@ -66,7 +66,7 @@ pub struct RuntimeDto {
 /// own `store/timestamp.json` for Heroic games — see [`game_dto`]. Both are
 /// `None` for a game neither source has recorded yet, and always `None` for
 /// non-Steam shortcuts (neither Steam nor Heroic tracks those).
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct GameDto {
     pub app_id: u32,
@@ -102,7 +102,7 @@ pub struct GameDto {
 pub use crate::logs::ProtonLog;
 
 /// The "catalog refreshed for an older build" banner data.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct StaleInfo {
     pub installed: String,
@@ -140,6 +140,10 @@ pub struct Bootstrap {
     /// The game to open on, from `protongen --game <appid>`. Only the first
     /// bootstrap carries it; a rescan never re-selects.
     pub initial_game_appid: Option<u32>,
+    /// The discovery half came from the last session's cache (see
+    /// `discovery_cache`), not a fresh scan: the frontend should `rescan` in
+    /// the background right away.
+    pub from_cache: bool,
 }
 
 /// What a `rescan` sends back: only the fields a filesystem scan can change.
@@ -255,6 +259,7 @@ impl AppState {
                 .chain(d.path_warnings.iter().cloned())
                 .collect(),
             initial_game_appid: None,
+            from_cache: false,
         }
     }
 }
@@ -286,7 +291,7 @@ impl AppState {
 /// running (a game installed, a Proton runtime added). Produced by the first
 /// `bootstrap` and replaced by every `rescan` — never by `AppState::new()`,
 /// which must stay cheap (see [`AppState::discovery`]).
-#[derive(Clone)]
+#[derive(Clone, Serialize, serde::Deserialize)]
 pub(crate) struct Discovery {
     pub(crate) steam_root: Option<String>,
     load_error: Option<String>,
@@ -582,21 +587,34 @@ pub async fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap, String> 
     let store = { state.store.locked().clone() };
     let cached = { state.discovery.locked().clone() };
 
-    let d = match cached {
-        Some(d) => d,
+    let (d, from_cache) = match cached {
+        Some(d) => (d, false),
         None => {
             let catalog = Arc::clone(&state.catalog);
             let paths = store.paths.clone();
-            let d = tauri::async_runtime::spawn_blocking(move || scan_discovery(&catalog, &paths))
-                .await
-                .map_err(|e| e.to_string())?;
+            // Last session's scan first: painting from it costs one small JSON
+            // read, and the frontend re-scans behind it immediately. Only with
+            // no usable cache does the first frame wait for a full scan.
+            let (d, from_cache) = tauri::async_runtime::spawn_blocking(move || {
+                match crate::discovery_cache::load(&paths) {
+                    Some(d) => (d, true),
+                    None => {
+                        let d = scan_discovery(&catalog, &paths);
+                        crate::discovery_cache::save(&d, &paths);
+                        (d, false)
+                    }
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             *state.discovery.locked() = Some(d.clone());
-            d
+            (d, from_cache)
         }
     };
 
     let mut b = state.bootstrap_from(&d, store);
     b.initial_game_appid = state.initial_game.locked().take();
+    b.from_cache = from_cache;
     Ok(b)
 }
 
@@ -616,9 +634,13 @@ pub async fn rescan(state: State<'_, AppState>) -> Result<Scan, String> {
     let catalog = Arc::clone(&state.catalog);
     let paths = state.store.locked().paths.clone();
 
-    let d = tauri::async_runtime::spawn_blocking(move || scan_discovery(&catalog, &paths))
-        .await
-        .map_err(|e| e.to_string())?;
+    let d = tauri::async_runtime::spawn_blocking(move || {
+        let d = scan_discovery(&catalog, &paths);
+        crate::discovery_cache::save(&d, &paths);
+        d
+    })
+    .await
+    .map_err(|e| e.to_string())?;
 
     let scan = state.scan_from(&d);
     *state.discovery.locked() = Some(d);

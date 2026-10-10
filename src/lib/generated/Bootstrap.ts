@@ -39,4 +39,10 @@ config_warnings: Array<ConfigWarning>,
  * The game to open on, from `protongen --game <appid>`. Only the first
  * bootstrap carries it; a rescan never re-selects.
  */
-initial_game_appid: number | null, };
+initial_game_appid: number | null, 
+/**
+ * The discovery half came from the last session's cache (see
+ * `discovery_cache`), not a fresh scan: the frontend should `rescan` in
+ * the background right away.
+ */
+from_cache: boolean, };

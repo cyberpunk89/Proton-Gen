@@ -35,6 +35,7 @@ pub mod cli;
 mod compose;
 mod conf_merge;
 mod diff;
+mod discovery_cache;
 mod explain;
 mod folders;
 mod fsutil;

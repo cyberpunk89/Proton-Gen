@@ -14,6 +14,16 @@ pub fn config_home() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
 }
 
+/// protongen's own cache directory: `$XDG_CACHE_HOME/protongen` (when set and
+/// non-empty), else `~/.cache/protongen`. Everything in it is disposable.
+pub fn cache_dir() -> Option<std::path::PathBuf> {
+    let base = match std::env::var_os("XDG_CACHE_HOME").filter(|s| !s.is_empty()) {
+        Some(xdg) => std::path::PathBuf::from(xdg),
+        None => std::path::PathBuf::from(std::env::var_os("HOME")?).join(".cache"),
+    };
+    Some(base.join("protongen"))
+}
+
 /// Replace `path` with `bytes` without ever leaving a half-written file: write
 /// a temp file in the same directory (so the rename can't cross filesystems),
 /// fsync it, then rename over the target. A crash mid-write leaves the old

@@ -701,6 +701,7 @@ export const mockBootstrap: Bootstrap = {
   requires_status: { gamescope: true, gamemoderun: true, mangohud: false, "umu-run": true },
   stale: null,
   config_warnings: [],
+  from_cache: false,
 };
 
 /**

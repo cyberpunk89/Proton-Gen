@@ -236,7 +236,7 @@ pub fn config_dir() -> Option<PathBuf> {
 /// What kind of user input a [`ConfigWarning`] is about. The UI needs this to
 /// word the banner: "couldn't be parsed; using the bundled catalog" is right for
 /// a TOML override and nonsense for a Settings path.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub enum WarningKind {
@@ -258,7 +258,7 @@ pub enum WarningKind {
 /// Deliberately not fatal: one bad entry must not kill discovery of everything
 /// else. Deliberately not silent either — that is what makes a portability
 /// feature feel broken.
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
 pub struct ConfigWarning {
     pub kind: WarningKind,
