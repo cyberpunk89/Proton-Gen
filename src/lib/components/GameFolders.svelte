@@ -94,6 +94,16 @@
         >
       {/if}
     </div>
+    {#if app.selectedGame?.size_on_disk}
+      <!-- From the appmanifest, so free — no folder walk behind "Show sizes". -->
+      <div class="flex items-center gap-2 text-xs">
+        <span class="w-24 shrink-0 text-subtext">Install</span>
+        <span class="min-w-0 flex-1 truncate font-mono text-[11px] text-muted" title={app.selectedGame.install_dir ?? ""}
+          >{app.selectedGame.install_dir ?? ""}</span
+        >
+        <span class="shrink-0 font-mono text-[11px] text-subtext">{human(app.selectedGame.size_on_disk)}</span>
+      </div>
+    {/if}
     {#each folders as f (f.kind)}
       <div class="flex items-center gap-2 text-xs">
         <span class="w-24 shrink-0 text-subtext">{LABEL[f.kind]}</span>

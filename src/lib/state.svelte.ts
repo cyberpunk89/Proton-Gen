@@ -80,6 +80,7 @@ const EMPTY_STORE: Store = {
   seen_intro_tour: false,
   paths: { steam_roots: [], steam_libraries: [], proton_dirs: [], bins: {} },
   global_profile: null,
+  tuned_builds: {},
 };
 
 /** Library sort ids. Kept here because both the toolbar and the comparator in
@@ -1219,8 +1220,45 @@ class AppStore {
     if (this.selectedAppId == null) return;
     const key = String(this.selectedAppId);
     const cfg = this.toConfig();
-    if (this.isBaseline(cfg, this.selectedGame)) delete this.store.game_memory[key];
-    else this.store.game_memory[key] = cfg;
+    if (this.isBaseline(cfg, this.selectedGame)) {
+      delete this.store.game_memory[key];
+      delete this.store.tuned_builds[key];
+      return;
+    }
+    const isNew = !(key in this.store.game_memory);
+    this.store.game_memory[key] = cfg;
+    // Only a real edit re-stamps the build: this runs on every session save,
+    // including the one that merely *opening* a tuned game triggers, and that
+    // must not silently acknowledge "updated since you tuned it". Compared
+    // against this session's previous save of the same game rather than the
+    // stored entry, since both sides then come out of `toConfig` and can't
+    // differ by normalisation alone.
+    const json = stableJson(cfg);
+    const seen = this.savedJson.get(key);
+    this.savedJson.set(key, json);
+    const edited = isNew || (seen !== undefined && seen !== json);
+    const build = this.selectedGame?.build_id;
+    if (edited && build != null) this.store.tuned_builds[key] = build;
+  }
+
+  /** Per game, the config last saved this session (see `rememberCurrent`). */
+  private savedJson = new Map<string, string>();
+
+  /** Steam updated `g` after its tuning was last saved — worth a re-check,
+   *  since a game update can change what a launch option does (a new DX12
+   *  path, a bundled DLSS, a fixed bug the workaround was for). */
+  updatedSinceTuned(g: GameDto | null): boolean {
+    if (!g || g.build_id == null) return false;
+    const key = String(g.app_id);
+    const tuned = this.store.tuned_builds[key];
+    return tuned != null && tuned !== g.build_id && key in this.store.game_memory;
+  }
+
+  /** "I've checked it": stamp the current build without changing the tuning. */
+  acknowledgeUpdate(g: GameDto) {
+    if (g.build_id == null) return;
+    this.store.tuned_builds[String(g.app_id)] = g.build_id;
+    this.persistStore();
   }
 
   /** One-time repair of `game_memory` written before the fixes above: prune
@@ -1242,6 +1280,17 @@ class AppStore {
       }
       if (this.isBaseline(cfg, game)) {
         delete this.store.game_memory[key];
+        changed = true;
+      } else if (!(key in this.store.tuned_builds) && game?.build_id != null) {
+        // Tuned before builds were recorded: assume the current build, so
+        // upgrading protongen doesn't flag every tuned game as "updated".
+        this.store.tuned_builds[key] = game.build_id;
+        changed = true;
+      }
+    }
+    for (const key of Object.keys(this.store.tuned_builds)) {
+      if (!(key in this.store.game_memory)) {
+        delete this.store.tuned_builds[key];
         changed = true;
       }
     }
@@ -2598,6 +2647,17 @@ const SIMPLE_ANCHORS: Record<string, string> = {
 };
 
 /** Same keys, same values — so an unchanged re-read doesn't churn reactivity. */
+/** JSON with object keys sorted, so two configs compare by content: one built
+ *  by `toConfig` and one round-tripped through Rust's serde can list the same
+ *  fields in a different order. */
+function stableJson(v: unknown): string {
+  return JSON.stringify(v, (_k, val) =>
+    val && typeof val === "object" && !Array.isArray(val)
+      ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : val,
+  );
+}
+
 function sameEntries(a: Record<string, string>, b: Record<string, string>): boolean {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);

@@ -167,6 +167,7 @@ fn parse_registry(text: &str) -> Vec<Game> {
                 executable: Some(exe),
                 installed: true,
                 heroic_id: None,
+                steam: None,
                 art_url: non_empty(e.artwork_dir),
                 nexus: Some(NexusInfo {
                     slug,
@@ -393,6 +394,7 @@ mod tests {
             installed: true,
             heroic_id: None,
             install_dir: None,
+            steam: None,
             art_url: None,
             nexus: None,
         }

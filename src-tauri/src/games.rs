@@ -61,6 +61,48 @@ pub struct Game {
     /// Nexus-only extras (slug, prefix, pinned Proton, absorbed mirrors);
     /// `Some` exactly when `source` is [`GameSource::Nexus`].
     pub nexus: Option<crate::nexus::NexusInfo>,
+    /// What the appmanifest says about the install; `Some` only for
+    /// [`GameSource::Steam`].
+    pub steam: Option<SteamAppState>,
+}
+
+/// The parts of a Steam appmanifest worth surfacing: whether Steam is about to
+/// change the game under the user's tuning, and when it last did.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SteamAppState {
+    /// An update is required, queued, paused or in progress.
+    pub update_pending: bool,
+    /// Unix seconds of the last update Steam applied.
+    pub last_updated: Option<u64>,
+    /// Steam's build id of the installed version.
+    pub build_id: Option<u64>,
+    /// Bytes on disk as Steam counts them — free, unlike walking the folder.
+    pub size_on_disk: Option<u64>,
+}
+
+impl SteamAppState {
+    fn of(app: &steamlocate::App) -> Self {
+        const PENDING: &[StateFlag] = &[
+            StateFlag::UpdateRequired,
+            StateFlag::UpdateRunning,
+            StateFlag::UpdatePaused,
+            StateFlag::UpdateStarted,
+            StateFlag::Downloading,
+            StateFlag::Staging,
+            StateFlag::Committing,
+        ];
+        Self {
+            update_pending: app
+                .state_flags
+                .is_some_and(|f| f.flags().any(|s| PENDING.contains(&s))),
+            last_updated: app
+                .last_updated
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs()),
+            build_id: app.build_id.filter(|b| *b != 0),
+            size_on_disk: app.size_on_disk.filter(|b| *b != 0),
+        }
+    }
 }
 
 /// Well-known non-game app IDs (runtimes / redistributables) to hide.
@@ -162,6 +204,7 @@ pub fn list_heroic_games() -> Vec<Game> {
             executable: h.executable,
             installed: h.installed,
             heroic_id: Some(h.app_name),
+            steam: None,
             art_url: h.art,
             nexus: None,
         })
@@ -193,6 +236,7 @@ fn push_library_apps(library: &steamlocate::Library, out: &mut Vec<Game>) -> usi
             installed,
             heroic_id: None,
             install_dir: Some(library.resolve_app_dir(&app)),
+            steam: Some(SteamAppState::of(&app)),
             art_url: None,
             nexus: None,
         }));
@@ -300,6 +344,7 @@ fn list_steam_side(
                 executable,
                 installed: true,
                 heroic_id: None,
+                steam: None,
                 art_url: None,
                 nexus: None,
             }));
@@ -350,6 +395,7 @@ mod tests {
             installed: true,
             heroic_id: None,
             install_dir: None,
+            steam: None,
             art_url: None,
             nexus: None,
         }

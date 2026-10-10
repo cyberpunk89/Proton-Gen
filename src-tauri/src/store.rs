@@ -187,6 +187,13 @@ pub struct Store {
     /// until the user saves one.
     #[serde(default)]
     pub global_profile: Option<Config>,
+    /// appid → the Steam build id installed when that game's tuning was last
+    /// saved. A different build id now means Steam updated the game since —
+    /// the "updated since you tuned it, recheck" hint. Kept beside
+    /// `game_memory` rather than in [`Config`], which presets and share codes
+    /// reuse and which must not carry a per-install fact.
+    #[serde(default)]
+    pub tuned_builds: BTreeMap<String, u64>,
 }
 
 fn default_llm_endpoint() -> String {

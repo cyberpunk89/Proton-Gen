@@ -97,6 +97,15 @@ pub struct GameDto {
     /// mirrors), best source of saved tuning first — the frontend carries
     /// `game_memory` saved under them over to `app_id`.
     pub alias_ids: Vec<u32>,
+    /// Steam games only (see `games::SteamAppState`): an update is pending.
+    pub update_pending: bool,
+    /// Steam games only: unix seconds of the last update Steam applied.
+    pub last_updated: Option<u64>,
+    /// Steam games only: the installed build id, recorded with a game's tuning
+    /// so "updated since you tuned it" can be told apart from "never checked".
+    pub build_id: Option<u64>,
+    /// Steam games only: install size from the appmanifest.
+    pub size_on_disk: Option<u64>,
 }
 
 pub use crate::logs::ProtonLog;
@@ -521,6 +530,7 @@ fn game_dto(
         }
     };
     let nexus = g.nexus.unwrap_or_default();
+    let steam = g.steam.unwrap_or_default();
     GameDto {
         app_id: g.app_id,
         name: g.name,
@@ -536,6 +546,10 @@ fn game_dto(
         wine_prefix: nexus.wine_prefix,
         pinned_proton: nexus.proton,
         alias_ids: nexus.alias_ids,
+        update_pending: steam.update_pending,
+        last_updated: steam.last_updated,
+        build_id: steam.build_id,
+        size_on_disk: steam.size_on_disk,
     }
 }
 
@@ -1108,6 +1122,7 @@ mod tests {
             installed: true,
             heroic_id: None,
             install_dir: None,
+            steam: None,
             art_url: None,
             nexus: None,
         }

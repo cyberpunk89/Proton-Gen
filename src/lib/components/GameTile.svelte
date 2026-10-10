@@ -180,6 +180,9 @@
     }
   });
 
+  /** Steam updated the game after its tuning was saved (see SteamUpdateNote). */
+  let updated = $derived(app.updatedSinceTuned(game));
+
   /** "12 h · 3 days ago". Only Steam records these, so a merged tile takes the
    *  best of its entries rather than whatever `primary` happens to be. */
   let playLine = $derived.by(() => {
@@ -194,12 +197,12 @@
     multi ? `choose ${entries.map((e) => sourceLabel(e.source)).join(" or ")} to open` : "",
   );
   let titleText = $derived(
-    [game.name, missing && "Not installed", playLine, status?.label, openDescription]
+    [game.name, missing && "Not installed", playLine, status?.label, updated && "Updated since tuned", openDescription]
       .filter(Boolean)
       .join(" — "),
   );
   let srText = $derived(
-    `${game.name}${missing ? ", not installed" : ""}${playLine ? `, ${playLine}` : ""}${status ? `, ${status.label}` : ""}${
+    `${game.name}${missing ? ", not installed" : ""}${playLine ? `, ${playLine}` : ""}${status ? `, ${status.label}` : ""}${updated ? ", updated since tuned" : ""}${
       favorite ? ", favourite" : ""
     }${openDescription ? `, ${openDescription}` : ""}`,
   );
@@ -382,6 +385,13 @@
       {#if missing}
         <span class="rounded-full bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white/80"
           >Not installed</span
+        >
+      {/if}
+      {#if updated}
+        <span
+          class="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+          style="background: color-mix(in srgb, var(--peach) 80%, transparent); color: var(--on-accent)"
+          >Updated</span
         >
       {/if}
       {#each extraSources as src (src)}

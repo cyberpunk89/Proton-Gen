@@ -506,6 +506,12 @@ export const mockBootstrap: Bootstrap = {
       wine_prefix: null,
       pinned_proton: null,
       alias_ids: [],
+      update_pending: false,
+      // Updated after it was tuned (see `tuned_builds` in the mock store), so
+      // the "updated since you tuned it" hint shows under `pnpm dev`.
+      last_updated: 1791000000,
+      build_id: 20000002,
+      size_on_disk: 92_341_211_136,
     },
     {
       app_id: 1245620,
@@ -522,6 +528,11 @@ export const mockBootstrap: Bootstrap = {
       wine_prefix: null,
       pinned_proton: null,
       alias_ids: [],
+      // Steam has an update queued — exercises the "update pending" note.
+      update_pending: true,
+      last_updated: 1783000000,
+      build_id: 15000001,
+      size_on_disk: 60_129_542_144,
     },
     {
       app_id: 275850,
@@ -539,6 +550,10 @@ export const mockBootstrap: Bootstrap = {
       wine_prefix: null,
       pinned_proton: null,
       alias_ids: [],
+      update_pending: false,
+      last_updated: null,
+      build_id: null,
+      size_on_disk: null,
     },
     {
       app_id: 0x80000001,
@@ -555,6 +570,10 @@ export const mockBootstrap: Bootstrap = {
       wine_prefix: null,
       pinned_proton: null,
       alias_ids: [],
+      update_pending: false,
+      last_updated: null,
+      build_id: null,
+      size_on_disk: null,
     },
     // Same title as the Steam entry above, sideloaded through Heroic too — the
     // library grid's job is to fold this into ELDEN RING's tile with a source
@@ -574,6 +593,10 @@ export const mockBootstrap: Bootstrap = {
       wine_prefix: null,
       pinned_proton: null,
       alias_ids: [],
+      update_pending: false,
+      last_updated: null,
+      build_id: null,
+      size_on_disk: null,
     },
     // A FitGirl repack in Nexus (the user's launcher): one entry standing in
     // for the Steam shortcut and Heroic sideload Nexus mirrors it into, with
@@ -593,6 +616,10 @@ export const mockBootstrap: Bootstrap = {
       wine_prefix: "/home/u/Games/FitGirl/007-first-light/pfx",
       pinned_proton: "GE-Proton11-1",
       alias_ids: [0x80000003],
+      update_pending: false,
+      last_updated: null,
+      build_id: null,
+      size_on_disk: null,
     },
   ],
   // Both vendors on, so the dev path exercises the NVAPI/DLSS *and* the AMD
@@ -684,6 +711,7 @@ export const mockBootstrap: Bootstrap = {
       bins: {},
     },
     global_profile: null,
+    tuned_builds: { "553850": 20000001 },
   },
   // 553850 drifts against anything the builder produces; 1245620 is exactly
   // what `mockBuildCommand` emits for a freshly-reset config, so opening it

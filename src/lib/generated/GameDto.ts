@@ -47,4 +47,21 @@ pinned_proton: string | null,
  * mirrors), best source of saved tuning first — the frontend carries
  * `game_memory` saved under them over to `app_id`.
  */
-alias_ids: Array<number>, };
+alias_ids: Array<number>, 
+/**
+ * Steam games only (see `games::SteamAppState`): an update is pending.
+ */
+update_pending: boolean, 
+/**
+ * Steam games only: unix seconds of the last update Steam applied.
+ */
+last_updated: bigint | null, 
+/**
+ * Steam games only: the installed build id, recorded with a game's tuning
+ * so "updated since you tuned it" can be told apart from "never checked".
+ */
+build_id: bigint | null, 
+/**
+ * Steam games only: install size from the appmanifest.
+ */
+size_on_disk: bigint | null, };

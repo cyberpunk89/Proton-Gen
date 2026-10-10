@@ -177,6 +177,14 @@ export interface GameDto {
   /** Ids this entry replaced (a Nexus game's Steam-shortcut / Heroic mirrors),
    *  best source of saved tuning first. */
   alias_ids: number[];
+  /** Steam only: an update is required, queued or downloading. */
+  update_pending: boolean;
+  /** Steam only: unix seconds of the last update Steam applied. */
+  last_updated: number | null;
+  /** Steam only: installed build id (see `Store.tuned_builds`). */
+  build_id: number | null;
+  /** Steam only: install size in bytes, from the appmanifest. */
+  size_on_disk: number | null;
 }
 
 /** Result of a successful `inject_heroic` write, for the confirmation toast. */
@@ -463,6 +471,10 @@ export interface Store {
    *  button. Null until the user saves one. Mirrors store::Store.global_profile
    *  (Rust `Option<Config>`). */
   global_profile: Config | null;
+  /** appid → Steam build id when that game's tuning was last saved; a
+   *  different `GameDto.build_id` now means "updated since you tuned it".
+   *  Rust `BTreeMap<String, u64>`. */
+  tuned_builds: Record<string, number>;
 }
 
 /// Mirrors explain::TokenKind (serde rename_all = "snake_case").

@@ -122,4 +122,12 @@ paths: Paths,
  * [`Config`], so it survives catalog drift the same way presets do. `None`
  * until the user saves one.
  */
-global_profile: Config | null, };
+global_profile: Config | null, 
+/**
+ * appid → the Steam build id installed when that game's tuning was last
+ * saved. A different build id now means Steam updated the game since —
+ * the "updated since you tuned it, recheck" hint. Kept beside
+ * `game_memory` rather than in [`Config`], which presets and share codes
+ * reuse and which must not carry a per-install fact.
+ */
+tuned_builds: { [key in string]?: bigint }, };
