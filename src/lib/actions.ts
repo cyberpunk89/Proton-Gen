@@ -57,6 +57,34 @@ export const focusTarget: Action<HTMLElement, string> = (node, name) => {
   };
 };
 
+/** One observer for every `inView` node, not one per tile: a large library
+ *  made hundreds of IntersectionObservers, each re-evaluated on every scroll
+ *  frame. Created on first use; nodes leave it as soon as they fire. */
+let sharedObserver: IntersectionObserver | null = null;
+const inViewCallbacks = new Map<Element, () => void>();
+
+function observeOnce(node: Element, cb: () => void) {
+  sharedObserver ??= new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const fire = inViewCallbacks.get(e.target);
+        sharedObserver!.unobserve(e.target);
+        inViewCallbacks.delete(e.target);
+        fire?.();
+      }
+    },
+    { rootMargin: "600px" },
+  );
+  inViewCallbacks.set(node, cb);
+  sharedObserver.observe(node);
+}
+
+function unobserve(node: Element) {
+  if (!inViewCallbacks.delete(node)) return;
+  sharedObserver?.unobserve(node);
+}
+
 /**
  * Calls `cb` once, when the node comes within 600px of the viewport.
  * Used for lazy-loading grid art without an arbitrary tile cap.
@@ -75,22 +103,15 @@ export const inView: Action<HTMLElement, () => void> = (node, handler) => {
     };
   }
 
-  const observer = new IntersectionObserver(
-    (entries) => {
-      if (!entries.some((e) => e.isIntersecting)) return;
-      observer.disconnect();
-      cb();
-    },
-    { rootMargin: "600px" },
-  );
-  observer.observe(node);
+  // Indirect, so `update` can swap the handler without re-observing.
+  observeOnce(node, () => cb());
 
   return {
     update(next) {
       cb = next;
     },
     destroy() {
-      observer.disconnect();
+      unobserve(node);
     },
   };
 };
