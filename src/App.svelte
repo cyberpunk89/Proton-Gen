@@ -18,15 +18,14 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeroicConfirm from "$lib/components/HeroicConfirm.svelte";
   import NexusConfirm from "$lib/components/NexusConfirm.svelte";
-  import CompareDialog from "$lib/components/CompareDialog.svelte";
   import MangoHudSystemConfirm from "$lib/components/MangoHudSystemConfirm.svelte";
   import VkBasaltSystemConfirm from "$lib/components/VkBasaltSystemConfirm.svelte";
   import OverlayBuilders from "$lib/components/OverlayBuilders.svelte";
   import DefaultProfilePrompt from "$lib/components/DefaultProfilePrompt.svelte";
   import IntroTour from "$lib/components/IntroTour.svelte";
-  import LogViewer from "$lib/components/LogViewer.svelte";
-  import Troubleshooter from "$lib/components/Troubleshooter.svelte";
   import ResizeGrips from "$lib/components/ResizeGrips.svelte";
+  import Lazy from "$lib/components/Lazy.svelte";
+  import { lazy, prefetchLazy } from "$lib/lazy";
   import { CircleNotch, WarningCircle, ArrowsClockwise, Copy } from "phosphor-svelte";
   import { copyText } from "$lib/util";
   import { inTauri } from "$lib/ipc";
@@ -45,6 +44,7 @@
       );
     }
     app.init();
+    prefetchLazy();
     // WebKitGTK doesn't always fire DOM focus when the OS window is re-focused
     // (alt-tab back from Steam), so also listen to Tauri's own window event.
     // All three sources funnel into one throttled re-read.
@@ -246,7 +246,9 @@
      section change can't unmount an open bits-ui modal — see HeroicConfirm. -->
 <HeroicConfirm />
 <NexusConfirm />
-<CompareDialog />
+<Lazy load={lazy.compare} when={app.compareOpen}>
+  {#snippet children(C)}<C />{/snippet}
+</Lazy>
 <!-- Same rationale, one level up: its trigger lives inside the MangoHud
      dialog, which the user can close mid-flow. -->
 <MangoHudSystemConfirm />
@@ -258,8 +260,13 @@
 <OverlayBuilders />
 <DefaultProfilePrompt />
 <IntroTour />
-<LogViewer />
-<Troubleshooter />
+<!-- Lazy: mounted on first open, then kept (see Lazy.svelte). -->
+<Lazy load={lazy.logViewer} when={app.showLogs}>
+  {#snippet children(C)}<C />{/snippet}
+</Lazy>
+<Lazy load={lazy.troubleshooter} when={app.showTroubleshooter}>
+  {#snippet children(C)}<C />{/snippet}
+</Lazy>
 <Toast />
 <!-- Outside the init-error / loading branches above on purpose: both of those
      are full-screen and were unresizable too, which is exactly when you want to

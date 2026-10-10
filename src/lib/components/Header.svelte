@@ -5,7 +5,8 @@
   import { droppedNote } from "$lib/util";
   import Popover from "./Popover.svelte";
   import Dialog from "./Dialog.svelte";
-  import SettingsDrawer from "./SettingsDrawer.svelte";
+  import Lazy from "./Lazy.svelte";
+  import { lazy } from "$lib/lazy";
   import UiModeToggle from "./UiModeToggle.svelte";
   import PresetRow from "./PresetRow.svelte";
   import { decodePreset, isPresetCode } from "$lib/presetCode";
@@ -416,4 +417,6 @@
   </div>
 </Dialog>
 
-<SettingsDrawer bind:open={app.showSettings} />
+<Lazy load={lazy.settings} when={app.showSettings}>
+  {#snippet children(C)}<C bind:open={app.showSettings} />{/snippet}
+</Lazy>

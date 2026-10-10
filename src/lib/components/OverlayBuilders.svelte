@@ -1,12 +1,8 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import Dialog from "./Dialog.svelte";
-  import MangoHud from "./MangoHud.svelte";
-  import OptiScaler from "./OptiScaler.svelte";
-  import VkBasalt from "./VkBasalt.svelte";
-  import LosslessScaling from "./LosslessScaling.svelte";
-  import GamescopeBuilder from "./GamescopeBuilder.svelte";
-  import DllOverrides from "./DllOverrides.svelte";
+  import Lazy from "./Lazy.svelte";
+  import { lazy } from "$lib/lazy";
 
   /**
    * The MangoHud, OptiScaler, vkBasalt and Lossless Scaling builders, mounted once at
@@ -21,6 +17,9 @@
    * error and nothing on screen to explain it. Same #63 failure mode as
    * `HeroicConfirm`, same fix: one dialog, driven by store state, mounted
    * somewhere that can't be pulled out from under it.
+   *
+   * The builder bodies are lazy chunks: a dialog's content only renders while
+   * it is open, so each body loads on first open (normally already prefetched).
    */
 </script>
 
@@ -30,7 +29,9 @@
   subtitle="Build the overlay, then apply it to the launch command."
   width="46rem"
 >
-  <MangoHud onapply={() => (app.mangoBuilderOpen = false)} />
+  <Lazy load={lazy.mangohud}>
+    {#snippet children(C)}<C onapply={() => (app.mangoBuilderOpen = false)} />{/snippet}
+  </Lazy>
 </Dialog>
 
 <Dialog
@@ -39,7 +40,9 @@
   subtitle="Compose the upscaler config, then apply it to the launch command."
   width="46rem"
 >
-  <OptiScaler onapply={() => (app.optiBuilderOpen = false)} />
+  <Lazy load={lazy.optiscaler}>
+    {#snippet children(C)}<C onapply={() => (app.optiBuilderOpen = false)} />{/snippet}
+  </Lazy>
 </Dialog>
 
 <Dialog
@@ -48,7 +51,9 @@
   subtitle="Compose the effect chain, then set it as the system-wide vkBasalt.conf."
   width="46rem"
 >
-  <VkBasalt onapply={() => (app.vkBuilderOpen = false)} />
+  <Lazy load={lazy.vkbasalt}>
+    {#snippet children(C)}<C onapply={() => (app.vkBuilderOpen = false)} />{/snippet}
+  </Lazy>
 </Dialog>
 
 <Dialog
@@ -57,7 +62,9 @@
   subtitle="Set up lsfg-vk for this game, then apply it to the launch command."
   width="46rem"
 >
-  <LosslessScaling onapply={() => (app.lsfgBuilderOpen = false)} />
+  <Lazy load={lazy.lsfg}>
+    {#snippet children(C)}<C onapply={() => (app.lsfgBuilderOpen = false)} />{/snippet}
+  </Lazy>
 </Dialog>
 
 <Dialog
@@ -66,7 +73,9 @@
   subtitle="Pick output and render sizes, upscaling and display options for the gamescope wrapper."
   width="50rem"
 >
-  <GamescopeBuilder onapply={() => (app.gamescopeBuilderOpen = false)} />
+  <Lazy load={lazy.gamescope}>
+    {#snippet children(C)}<C onapply={() => (app.gamescopeBuilderOpen = false)} />{/snippet}
+  </Lazy>
 </Dialog>
 
 <Dialog
@@ -75,5 +84,7 @@
   subtitle="Choose which DLLs Wine loads from the game folder, from Wine, or not at all."
   width="40rem"
 >
-  <DllOverrides onapply={() => (app.dllBuilderOpen = false)} />
+  <Lazy load={lazy.dllOverrides}>
+    {#snippet children(C)}<C onapply={() => (app.dllBuilderOpen = false)} />{/snippet}
+  </Lazy>
 </Dialog>
