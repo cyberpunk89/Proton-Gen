@@ -27,6 +27,8 @@ import type {
   LsfgStatus,
   OptiscalerChannel,
   OptiscalerExtractResult,
+  OptiscalerInstall,
+  OptiscalerOverview,
   OptiscalerRelease,
   OptiscalerStatus,
   Preset,
@@ -62,6 +64,7 @@ const EMPTY_STORE: Store = {
   dismissed_cachyos_build: "",
   dismissed_update_version: "",
   dismissed_runtime_updates: [],
+  dismissed_optiscaler_update: "",
   show_irrelevant: false,
   show_advanced: false,
   hdr: false,
@@ -318,6 +321,7 @@ class AppStore {
       void this.refresh();
     } else {
       this.checkRuntimeUpdates();
+      void this.checkOptiscalerOverview();
       // Lossless Scaling profile names for the LSFGVK_PROFILE row; cheap, local.
       void this.refreshLsfgStatus();
     }
@@ -411,6 +415,8 @@ class AppStore {
       // Cheap after the first run: the backend caches upstream releases, so
       // this only re-compares against the freshly scanned runtimes.
       this.checkRuntimeUpdates();
+      // Same caching: only DLLs whose size/mtime changed are re-read.
+      void this.checkOptiscalerOverview();
       // A rescan is how a freshly installed Lossless Scaling's DLL is found.
       void this.refreshLsfgStatus();
       // Both are recomputed by `rescan` and must be copied, or a corrected
@@ -1900,6 +1906,13 @@ class AppStore {
     setTimeout(() => (this.optiBuilderOpen = true), 250);
   }
 
+  /** From the OptiScaler builder to the library-wide versions list, closing
+   *  the builder first (#63). */
+  openOptiscalerManagerFromBuilder() {
+    this.optiBuilderOpen = false;
+    setTimeout(() => (this.optiscalerManagerOpen = true), 250);
+  }
+
   /** The reverse hop, from the OptiScaler builder's frame-generation section. */
   openLsfgFromOpti() {
     this.optiBuilderOpen = false;
@@ -2407,10 +2420,77 @@ class AppStore {
         proxies: prev?.proxies ?? [],
         stray_dll: prev?.stray_dll ?? false,
       };
+      // The DLL just changed under the overview; re-read so the version line
+      // and the library notice catch up.
+      void this.checkOptiscalerOverview();
       return result;
     } finally {
       this.optiscalerFetchBusy = false;
     }
+  }
+
+  /** Every OptiScaler in the library vs upstream (`optiscaler_versions`);
+   *  `null` until the first check lands. */
+  optiscalerOverview = $state<OptiscalerOverview | null>(null);
+  optiscalerOverviewLoading = $state(false);
+  optiscalerManagerOpen = $state(false);
+
+  /** (Re-)check. Cheap after the first run: the backend memoizes DLL reads by
+   *  size + mtime and caches upstream answers on disk. Never blocks launch. */
+  async checkOptiscalerOverview() {
+    if (this.optiscalerOverviewLoading) return;
+    this.optiscalerOverviewLoading = true;
+    try {
+      this.optiscalerOverview = await ipc.optiscalerOverview();
+    } catch (e) {
+      console.error("optiscalerOverview failed", e);
+    } finally {
+      this.optiscalerOverviewLoading = false;
+    }
+  }
+
+  /** This game's OptiScaler installs (a manual one, Proton's, or both). */
+  optiscalerInstallsFor(appId: number): OptiscalerInstall[] {
+    return this.optiscalerOverview?.installs.filter((i) => i.app_id === appId) ?? [];
+  }
+
+  /** Manual installs a newer upstream build exists for — the only ones the user
+   *  has to act on (Proton refreshes its own copy at launch). */
+  get optiscalerOutdated(): OptiscalerInstall[] {
+    return (
+      this.optiscalerOverview?.installs.filter(
+        (i) => i.kind === "manual" && i.freshness === "outdated",
+      ) ?? []
+    );
+  }
+
+  /** The dismissal key: the upstream versions on offer, so dismissing hides
+   *  the notice until something newer is released. */
+  private get optiscalerUpdateKey(): string {
+    return [...new Set(this.optiscalerOutdated.map((i) => i.latest ?? ""))].sort().join(",");
+  }
+
+  get optiscalerNoticeVisible(): boolean {
+    return (
+      this.optiscalerOutdated.length > 0 &&
+      this.store.dismissed_optiscaler_update !== this.optiscalerUpdateKey
+    );
+  }
+
+  dismissOptiscalerUpdate() {
+    this.store.dismissed_optiscaler_update = this.optiscalerUpdateKey;
+    this.persistStore();
+  }
+
+  /** From the manager: that game in the builder with its OptiScaler dialog
+   *  open, where the confirm-gated upgrade lives. Sequential, never stacked:
+   *  the builder opens once the manager has finished closing (#63). */
+  openOptiscalerFor(appId: number) {
+    this.optiscalerManagerOpen = false;
+    setTimeout(() => {
+      this.openRequestedGame(appId);
+      if (this.selectedAppId === appId) setTimeout(() => (this.optiBuilderOpen = true), 0);
+    }, 250);
   }
 
   /**

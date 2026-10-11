@@ -52,6 +52,7 @@ mod llm;
 mod mangohud_export;
 mod nexus;
 mod optiscaler_upgrade;
+mod optiscaler_versions;
 mod params;
 mod parser;
 mod protondb;
@@ -161,6 +162,7 @@ pub fn run_with(initial_game: Option<u32>) {
             ipc::optiscaler_status,
             ipc::optiscaler_latest,
             ipc::optiscaler_fetch,
+            ipc::optiscaler_overview,
             ipc::export_mangohud_system,
             ipc::vkbasalt_read_config,
             ipc::export_vkbasalt_system,

@@ -13,6 +13,7 @@
   import StaleBanner from "$lib/components/StaleBanner.svelte";
   import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import RuntimeUpdateBanner from "$lib/components/RuntimeUpdateBanner.svelte";
+  import OptiscalerUpdateBanner from "$lib/components/OptiscalerUpdateBanner.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import ShortcutsSheet from "$lib/components/ShortcutsSheet.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
@@ -206,11 +207,12 @@
 
     {#if app.view === "library"}
       <div class="min-h-0 flex-1 overflow-y-auto" in:fade={{ duration: 120 }}>
-        {#if app.loadError || app.runtimeWarning || app.persistError || app.configWarnings.length || app.staleVisible || app.updateVisible || app.visibleRuntimeUpdates.length}
+        {#if app.loadError || app.runtimeWarning || app.persistError || app.configWarnings.length || app.staleVisible || app.updateVisible || app.visibleRuntimeUpdates.length || app.optiscalerNoticeVisible}
           <div class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 pt-4">
             {@render loadErrorBanner()}
             <UpdateBanner />
             <RuntimeUpdateBanner />
+            <OptiscalerUpdateBanner />
             <StaleBanner />
           </div>
         {/if}
@@ -279,6 +281,9 @@
   {#snippet children(C)}<C />{/snippet}
 </Lazy>
 <Lazy load={lazy.pendingQueue} when={app.pendingQueueOpen}>
+  {#snippet children(C)}<C />{/snippet}
+</Lazy>
+<Lazy load={lazy.optiscalerManager} when={app.optiscalerManagerOpen}>
   {#snippet children(C)}<C />{/snippet}
 </Lazy>
 <Toast />

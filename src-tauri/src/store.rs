@@ -103,6 +103,10 @@ pub struct Store {
     /// "newer Proton available" notice was dismissed.
     #[serde(default)]
     pub dismissed_runtime_updates: Vec<String>,
+    /// The upstream OptiScaler version(s) whose "your manual installs are
+    /// behind" notice was dismissed; a newer release shows it again.
+    #[serde(default)]
+    pub dismissed_optiscaler_update: String,
     /// Show recipes/options that don't apply to the detected hardware (default: hide).
     #[serde(default)]
     pub show_irrelevant: bool,

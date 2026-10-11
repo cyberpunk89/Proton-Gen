@@ -15,6 +15,7 @@ export const lazy = {
   troubleshooter: () => import("./components/Troubleshooter.svelte"),
   compare: () => import("./components/CompareDialog.svelte"),
   pendingQueue: () => import("./components/PendingQueue.svelte"),
+  optiscalerManager: () => import("./components/OptiscalerManager.svelte"),
   mangohud: () => import("./components/MangoHud.svelte"),
   optiscaler: () => import("./components/OptiScaler.svelte"),
   vkbasalt: () => import("./components/VkBasalt.svelte"),

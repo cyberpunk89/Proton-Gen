@@ -645,6 +645,18 @@ browser-mock path (`pnpm dev`) and the Preview tools.
   `update.rs`'s own `REPO` for protongen's self-updater. If the project moves,
   update those; there's no override. The channel is a session-only choice in the
   confirm panel (starts on stable every launch), not a persisted store field.
+- **OptiScaler version checks** (`optiscaler_versions.rs`) are report-only. A
+  manual install's build is read from the DLL's own `OptiScaler v<ver> (<commit>)`
+  banner string (bytes only, memoized by size + mtime); Proton's injected copy
+  from proton-cachyos's `upscaler_files` tracking file (beside `pfx/` for Steam,
+  inside the prefix for umu). Manual installs are judged against the stable
+  release (nightly-line builds against the newest nightly, by build date);
+  Proton copies against the newest non-dev entry of the proton-upscalers
+  manifest (`loathingkernel.github.io/proton-upscalers/manifest.json`), since
+  proton-cachyos re-syncs that copy at every launch. Network only when an
+  install was found; answers cached 6 h in `disk_cache`. Only outdated *manual*
+  installs raise the library notice (dismissal: `dismissed_optiscaler_update`,
+  keyed by the upstream version on offer); upgrading stays the §11 confirm.
 
 ---
 
@@ -784,6 +796,7 @@ Proton-gui/
         ├── protondb.rs        opt-in tier summary
         ├── update.rs          self-update against GitHub Releases
         ├── optiscaler_upgrade.rs  fetch+extract latest OptiScaler into a game's folder
+        ├── optiscaler_versions.rs installed OptiScaler builds vs upstream (report only)
         ├── mangohud_export.rs merge the MangoHud builder into the system MangoHud.conf
         ├── vkbasalt_export.rs merge the vkBasalt builder into the system vkBasalt.conf
         ├── llm.rs             opt-in local-LLM log coach + troubleshooter (OpenAI-compatible)

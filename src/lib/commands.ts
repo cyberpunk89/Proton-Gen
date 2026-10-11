@@ -22,6 +22,7 @@ import {
   Export,
   GlobeHemisphereWest,
   SlidersHorizontal,
+  ArrowCircleUp,
 } from "phosphor-svelte";
 
 import { app } from "./state.svelte";
@@ -290,6 +291,21 @@ export const pendingQueueAction: AppCommand = {
   },
 };
 
+export const optiscalerManagerAction: AppCommand = {
+  id: "optiscaler-versions",
+  get label() {
+    const n = app.optiscalerOutdated.length;
+    return n
+      ? `OptiScaler versions — ${n} game${n === 1 ? "" : "s"} behind`
+      : "OptiScaler versions across the library";
+  },
+  icon: ArrowCircleUp,
+  keywords: ["optiscaler", "update", "upgrade", "version", "latest", "outdated", "manager"],
+  run: () => {
+    app.optiscalerManagerOpen = true;
+  },
+};
+
 export const redoAction: AppCommand = {
   id: "redo",
   label: "Redo",
@@ -367,6 +383,7 @@ export const APP_COMMANDS: AppCommand[] = [
   copyCommandAction,
   copyAndOpenSteamAction,
   pendingQueueAction,
+  optiscalerManagerAction,
   resetCommandAction,
   forgetTuningAction,
   undoAction,

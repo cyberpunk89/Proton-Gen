@@ -18,7 +18,7 @@
   } from "$lib/optiscaler";
   import { openUrl } from "$lib/util";
   import { autofocus } from "$lib/actions";
-  import type { OptiscalerChannel } from "$lib/types";
+  import type { OptiscalerChannel, OptiscalerInstall } from "$lib/types";
   import { tick, untrack } from "svelte";
   import {
     ArrowSquareOut,
@@ -26,6 +26,7 @@
     CloudArrowDown,
     CheckCircle,
     WarningCircle,
+    ArrowCircleUp,
   } from "phosphor-svelte";
 
   let { onapply }: { onapply?: () => void } = $props();
@@ -46,6 +47,17 @@
   });
   let status = $derived(appId == null ? undefined : app.optiscalerStatusFor(appId));
   let statusLoading = $derived(appId != null && app.optiscalerStatusLoading[String(appId)] === true);
+
+  // Installed build vs upstream, from the library-wide overview
+  // (optiscaler_versions.rs) — one shared check, not one per open.
+  let installs = $derived(appId == null ? [] : app.optiscalerInstallsFor(appId));
+  let manualInstall = $derived(installs.find((i) => i.kind === "manual"));
+  let protonInstall = $derived(installs.find((i) => i.kind === "proton"));
+  /** `PROTON_USE_OPTISCALER=<version>` pins proton-cachyos to that build. */
+  let protonPin = $derived.by(() => {
+    const v = app.env["PROTON_USE_OPTISCALER"]?.value.trim() ?? "";
+    return app.optiInjected && v !== "1" && v !== "" ? v : null;
+  });
 
   /** Why the fetch can't run as things stand, or null. */
   let blocked = $derived(
@@ -152,13 +164,16 @@
         <p class="text-xs text-muted">
           No manual OptiScaler install detected in <span class="font-mono">{status.install_dir}</span> —
           nothing to upgrade. Proton's own <span class="font-mono">PROTON_USE_OPTISCALER</span> injects
-          the build bundled with the runtime from the prefix and needs nothing here.
+          its copy from the prefix, re-synced at every launch, and needs nothing here.
         </p>
       {:else}
         <p class="text-xs text-subtext">
           Detected in <span class="font-mono">{status.install_dir}</span>{#if status.proxies.length === 1}, loading as
             <span class="font-mono">{status.proxies[0]}</span>{/if}.
         </p>
+        {#if manualInstall}
+          {@render versionLine(manualInstall)}
+        {/if}
         {#if confirmOpen}
           {@render confirmPanel(status.install_dir, status.proxies, status.stray_dll)}
         {:else}
@@ -174,6 +189,25 @@
           </button>
         {/if}
       {/if}
+      {#if protonInstall && (app.optiInjected || !manualInstall)}
+        <div class="space-y-1 border-t border-border/60 pt-2">
+          <p class="text-xs text-subtext">
+            Proton's injected copy (last launch{app.optiInjected ? "" : ", injection now off"}):
+          </p>
+          {@render versionLine(protonInstall)}
+          {#if protonPin}
+            <p class="text-[11px] leading-snug text-yellow">
+              Pinned to <span class="font-mono">{protonPin}</span> by
+              <span class="font-mono">PROTON_USE_OPTISCALER</span> — set it to
+              <span class="font-mono">1</span> to follow proton-upscalers' newest build.
+            </p>
+          {/if}
+        </div>
+      {/if}
+      <button
+        onclick={() => app.openOptiscalerManagerFromBuilder()}
+        class="text-[11px] text-accent hover:underline">OptiScaler versions across the library…</button
+      >
     </div>
   {/if}
 
@@ -530,6 +564,32 @@
       </button>
     </div>
   </div>
+{/snippet}
+
+{#snippet versionLine(i: OptiscalerInstall)}
+  <p class="flex flex-wrap items-center gap-x-1.5 text-xs">
+    <span class="text-muted">Installed</span>
+    <span class="font-mono text-subtext"
+      >{i.build?.version ?? "unknown"}{i.build?.built ? ` (${i.build.built})` : ""}</span
+    >
+    {#if i.freshness === "current"}
+      <span class="inline-flex items-center gap-1 text-green"><CheckCircle size={12} weight="fill" /> up to date</span>
+    {:else if i.freshness === "outdated"}
+      <span class="inline-flex items-center gap-1 font-medium text-accent"
+        ><ArrowCircleUp size={12} weight="fill" /> {i.latest} available</span
+      >
+    {:else if i.freshness === "ahead"}
+      <span class="text-yellow">newer than any published build</span>
+    {:else if i.freshness === "proton-refresh"}
+      <span class="text-muted">· Proton swaps in {i.latest} on the next launch</span>
+    {:else if i.freshness === "proton-waiting"}
+      <span class="text-muted">· proton-upscalers' newest; OptiScaler {i.latest} isn't packaged yet</span>
+    {:else if app.optiscalerOverviewLoading}
+      <ArrowClockwise size={11} class="animate-spin text-muted" />
+    {:else}
+      <span class="text-muted">· couldn't compare with upstream</span>
+    {/if}
+  </p>
 {/snippet}
 
 {#snippet pick(

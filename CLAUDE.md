@@ -61,6 +61,8 @@ src-tauri/               BACKEND (Rust / Tauri)
                          write_backup() (collision-proof .bak), read_existing() — store/Heroic/overlay writes
   src/{steam,runtime,games,steamcfg}.rs   read-only discovery
   src/runtime_updates.rs "newer GE-Proton / proton-cachyos out" notice (report only)
+  src/optiscaler_versions.rs installed OptiScaler builds (DLL banner / Proton's upscaler_files)
+                         vs upstream → library notice + OptiscalerManager (report only)
   src/lsfg.rs            lsfg-vk (Lossless Scaling frame gen): layer, conf.toml profiles,
                          Lossless.dll — read-only; the builder is LosslessScaling.svelte + lib/lsfg.ts
   src/hardware.rs        GPU/session/ntsync detection + relevance

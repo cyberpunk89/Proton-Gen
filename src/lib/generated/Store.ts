@@ -22,6 +22,11 @@ dismissed_update_version: string,
  */
 dismissed_runtime_updates: Array<string>, 
 /**
+ * The upstream OptiScaler version(s) whose "your manual installs are
+ * behind" notice was dismissed; a newer release shows it again.
+ */
+dismissed_optiscaler_update: string, 
+/**
  * Show recipes/options that don't apply to the detected hardware (default: hide).
  */
 show_irrelevant: boolean, 

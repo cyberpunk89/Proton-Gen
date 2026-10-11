@@ -41,9 +41,15 @@ import type { LsfgStatus as R_LsfgStatus } from "./generated/LsfgStatus";
 import type { Meta as R_Meta } from "./generated/Meta";
 import type { Monitor as R_Monitor } from "./generated/Monitor";
 import type { Notice as R_Notice } from "./generated/Notice";
+import type { OptiscalerBuild as R_OptiscalerBuild } from "./generated/OptiscalerBuild";
 import type { OptiscalerExtractResult as R_OptiscalerExtractResult } from "./generated/OptiscalerExtractResult";
+import type { OptiscalerFreshness as R_OptiscalerFreshness } from "./generated/OptiscalerFreshness";
+import type { OptiscalerInstall as R_OptiscalerInstall } from "./generated/OptiscalerInstall";
+import type { OptiscalerInstallKind as R_OptiscalerInstallKind } from "./generated/OptiscalerInstallKind";
+import type { OptiscalerOverview as R_OptiscalerOverview } from "./generated/OptiscalerOverview";
 import type { OptiscalerRelease as R_OptiscalerRelease } from "./generated/OptiscalerRelease";
 import type { OptiscalerStatus as R_OptiscalerStatus } from "./generated/OptiscalerStatus";
+import type { OptiscalerUpstream as R_OptiscalerUpstream } from "./generated/OptiscalerUpstream";
 import type { ParsedCommand as R_ParsedCommand } from "./generated/ParsedCommand";
 import type { Paths as R_Paths } from "./generated/Paths";
 import type { Preset as R_Preset } from "./generated/Preset";
@@ -99,6 +105,10 @@ export type _Contract = [
   Same<Keys<T.OptiscalerStatus, R_OptiscalerStatus>>,
   Same<Keys<T.OptiscalerRelease, R_OptiscalerRelease>>,
   Same<Keys<T.OptiscalerExtractResult, R_OptiscalerExtractResult>>,
+  Same<Keys<T.OptiscalerBuild, R_OptiscalerBuild>>,
+  Same<Keys<T.OptiscalerUpstream, R_OptiscalerUpstream>>,
+  Same<Keys<T.OptiscalerInstall, R_OptiscalerInstall>>,
+  Same<Keys<T.OptiscalerOverview, R_OptiscalerOverview>>,
   Same<Keys<T.LsfgLayer, R_LsfgLayer>>,
   Same<Keys<T.LsfgProfile, R_LsfgProfile>>,
   Same<Keys<T.LsfgStatus, R_LsfgStatus>>,
@@ -133,4 +143,6 @@ export type _Contract = [
   Same<Union<T.DiffStatus, R_DiffStatus>>,
   Same<Union<T.WarningKind, R_WarningKind>>,
   Same<Union<T.OptiscalerChannel, R_Channel>>,
+  Same<Union<T.OptiscalerInstallKind, R_OptiscalerInstallKind>>,
+  Same<Union<T.OptiscalerFreshness, R_OptiscalerFreshness>>,
 ];

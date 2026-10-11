@@ -381,6 +381,59 @@ export interface OptiscalerExtractResult {
   dll_name: string;
 }
 
+/** Mirrors optiscaler_versions::OptiscalerBuild — what a DLL's banner says. */
+export interface OptiscalerBuild {
+  /** Without the `v`: "0.9.4-final", "10.0.0-pre1". */
+  version: string;
+  commit: string | null;
+  /** YYYYMMDD, for dev / nightly builds that stamp it. */
+  built: string | null;
+}
+
+/** Mirrors optiscaler_versions::UpstreamBuild (ts: OptiscalerUpstream). */
+export interface OptiscalerUpstream {
+  channel: OptiscalerChannel;
+  version: string;
+  tag: string;
+  html_url: string;
+  built: string | null;
+}
+
+/** Mirrors optiscaler_versions::InstallKind: in the game folder, or Proton's
+ *  copy in the prefix (`PROTON_USE_OPTISCALER`). */
+export type OptiscalerInstallKind = "manual" | "proton";
+
+/** Mirrors optiscaler_versions::Freshness. */
+export type OptiscalerFreshness =
+  | "current"
+  | "outdated"
+  | "ahead"
+  | "proton-refresh"
+  | "proton-waiting"
+  | "unknown";
+
+/** Mirrors optiscaler_versions::OptiscalerInstall. */
+export interface OptiscalerInstall {
+  app_id: number;
+  kind: OptiscalerInstallKind;
+  dir: string;
+  /** File the build was read from; "" when a manual install has no DLL. */
+  dll: string;
+  build: OptiscalerBuild | null;
+  freshness: OptiscalerFreshness;
+  /** What it would move to, when that differs. */
+  latest: string | null;
+}
+
+/** Mirrors optiscaler_versions::OptiscalerOverview. */
+export interface OptiscalerOverview {
+  installs: OptiscalerInstall[];
+  stable: OptiscalerUpstream | null;
+  nightly: OptiscalerUpstream | null;
+  proton_latest: string | null;
+  errors: string[];
+}
+
 /** Mirrors mangohud_export::ExportResult, for the system-wide export confirm
  *  dialog / toast. `backup_path` is null when there was no pre-existing file. */
 export interface MangohudExportResult {
@@ -447,6 +500,8 @@ export interface Store {
   dismissed_cachyos_build: string;
   dismissed_update_version: string;
   dismissed_runtime_updates: string[];
+  /** Upstream OptiScaler version(s) whose update notice was dismissed. */
+  dismissed_optiscaler_update: string;
   show_irrelevant: boolean;
   /** Show catalog entries tagged `tier = "advanced"`. Separate from
    *  `show_irrelevant`: that's about this machine, this is about this user. */

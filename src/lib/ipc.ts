@@ -13,6 +13,7 @@ import type {
   MangohudExportResult,
   OptiscalerExtractResult,
   OptiscalerChannel,
+  OptiscalerOverview,
   RuntimeUpdate,
   OptiscalerRelease,
   OptiscalerStatus,
@@ -347,6 +348,45 @@ export const ipc = {
           files_written: 12,
           ini_preserved: true,
           dll_name: "dxgi.dll",
+        }),
+
+  // Every OptiScaler in the library with its installed build vs upstream.
+  // Read-only; the backend only goes online when it found one. The mock shows
+  // one of each state so the banner and manager can be iterated in `pnpm dev`.
+  optiscalerOverview: () =>
+    inTauri
+      ? invoke<OptiscalerOverview>("optiscaler_overview")
+      : Promise.resolve<OptiscalerOverview>({
+          installs: [
+            {
+              app_id: 1245620,
+              kind: "manual",
+              dir: "/mnt/games/SteamLibrary/steamapps/common/ELDEN RING/Game",
+              dll: "dxgi.dll",
+              build: { version: "0.9.3-final", commit: "4b1e2c9", built: null },
+              freshness: "outdated",
+              latest: "0.9.4-final",
+            },
+            {
+              app_id: 553850,
+              kind: "proton",
+              dir: "/home/me/.local/share/Steam/steamapps/compatdata/553850/pfx",
+              dll: "system32/umu/OptiScaler.dll",
+              build: { version: "0.9.4", commit: null, built: null },
+              freshness: "current",
+              latest: null,
+            },
+          ],
+          stable: {
+            channel: "stable",
+            version: "0.9.4-final",
+            tag: "v0.9.4",
+            html_url: "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.4",
+            built: "20260718",
+          },
+          nightly: null,
+          proton_latest: "0.9.4",
+          errors: [],
         }),
 
   // Merge `config` into the real, system-wide ~/.config/MangoHud/MangoHud.conf.

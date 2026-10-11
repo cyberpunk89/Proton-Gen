@@ -21,6 +21,7 @@ use crate::lsfg;
 use crate::llm::{self, LlmRequest, LlmSuggestion, RecipeRef, TroubleshootRequest, TroubleshootResult};
 use crate::mangohud_export;
 use crate::optiscaler_upgrade;
+use crate::optiscaler_versions;
 use crate::runtime_updates;
 use crate::params::{Catalog, ConfigWarning};
 use crate::parser;
@@ -1440,6 +1441,35 @@ pub async fn optiscaler_fetch(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Every OptiScaler in the library — manual installs in game folders and
+/// Proton's injected copies in prefixes — with its installed build and how it
+/// compares to upstream (off the UI thread). Read-only; touches the network
+/// only when something was found, and caches what it learns.
+#[tauri::command]
+pub async fn optiscaler_overview(
+    state: State<'_, AppState>,
+) -> Result<optiscaler_versions::OptiscalerOverview, String> {
+    let games: Vec<GameDto> =
+        state.discovery.locked().as_ref().map(|d| d.games.clone()).unwrap_or_default();
+    let root = state.steam_root().map(std::path::PathBuf::from);
+    tauri::async_runtime::spawn_blocking(move || {
+        let targets: Vec<optiscaler_versions::Target> = games
+            .iter()
+            .filter(|g| g.installed)
+            .map(|g| optiscaler_versions::Target {
+                app_id: g.app_id,
+                install_dir: g.install_dir.as_ref().map(std::path::PathBuf::from),
+                prefix: crate::folders::locate(g, root.as_deref())
+                    .into_iter()
+                    .find_map(|(kind, path)| (kind == "prefix").then_some(path)),
+            })
+            .collect();
+        optiscaler_versions::overview(&targets)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Write `config` (a `MANGOHUD_CONFIG`-style string) into the real, system-wide
