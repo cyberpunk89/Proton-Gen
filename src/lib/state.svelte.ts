@@ -1888,8 +1888,7 @@ class AppStore {
     if (!row) return;
     const c = parseOptiScaler(row.value);
     c.frameGenOn = false;
-    const rest = buildOptiScaler(c);
-    this.setEnvOrExtra("PROTON_OPTISCALER_CONFIG", [rest, "FrameGen.Enabled=false"].filter(Boolean).join(";"));
+    this.setEnvOrExtra("PROTON_OPTISCALER_CONFIG", buildOptiScaler(c));
     this.mark("turn off OptiScaler frame generation");
   }
 

@@ -312,8 +312,9 @@ export function parseOptiScaler(str: string): OptiScalerConfig {
 /**
  * Build the `PROTON_OPTISCALER_CONFIG` string from the builder's state.
  *
- * Only set options are emitted, so a config that changes nothing is the empty
- * string. Section sub-values (multiplier, sharpness amount, FG in/out) are
+ * Only set options are emitted, except `FrameGen.Enabled`, which is always
+ * written (see below) — so an untouched builder yields `FrameGen.Enabled=false`.
+ * Section sub-values (multiplier, sharpness amount, FG in/out) are
  * emitted only when their section is enabled, so `parse(build(c))` equals `c`
  * for everything the UI can express.
  */
@@ -339,6 +340,12 @@ export function buildOptiScaler(c: OptiScalerConfig): string {
     parts.push("FrameGen.Enabled=true");
     if (c.fgInput) parts.push(`FrameGen.FGInput=${c.fgInput}`);
     if (c.fgOutput) parts.push(`FrameGen.FGOutput=${c.fgOutput}`);
+  } else {
+    // Explicit, unlike the other sections: proton-cachyos keeps the prefix's
+    // OptiScaler.ini between runs and only rewrites the keys named here, so
+    // emitting nothing would leave a frame-gen hook from an earlier config (or
+    // the in-game menu's Save) on. Seen crashing Phantom Blade Zero at launch.
+    parts.push("FrameGen.Enabled=false");
   }
 
   if (c.dlssPresetOn) {
