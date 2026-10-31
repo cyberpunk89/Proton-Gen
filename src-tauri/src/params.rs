@@ -570,7 +570,7 @@ mod tests {
         let cmd = crate::builder::build_command(&env, &wrappers, "", &crate::builder::Bins::default());
         assert_eq!(
             cmd,
-            "gamescope -f -- prime-run game-performance gamemoderun dlss-swapper mangohud %command%"
+            "gamescope -f -- prime-run game-performance gamemoderun dlss-swapper dlss-swapper-dll mangohud %command%"
         );
     }
 

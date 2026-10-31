@@ -1,5 +1,5 @@
 # protongen parameter catalog
-# Catalog for Proton 11.0 / proton-cachyos 11.0-20261005  —  updated 2026-10-07
+# Catalog for Proton 11.0 / proton-cachyos 11.0-20261015  —  updated 2026-10-31
 #
 # Sources (refresh with the /update-proton-params Claude skill):
 #   - https://github.com/ValveSoftware/Proton/blob/proton_11.0/README.md
@@ -41,8 +41,8 @@
 # The app compares it to your installed build and shows a banner when newer.
 # The /update-proton-params skill bumps this when it refreshes the catalog.
 [meta]
-proton_cachyos_build = "20261005"
-updated = "2026-10-07"
+proton_cachyos_build = "20261015"
+updated = "2026-10-31"
 
 # ============================ Wrappers ============================
 
@@ -112,9 +112,22 @@ order = 40
 gpu = "nvidia"
 requires = "dlss-swapper"
 pkg = "cachyos-settings"
-help = "Swap in the latest DLSS DLL for this game (community tool, works with any Proton)."
-details = "Community tool (github.com/beeradmoore/dlss-swapper) that replaces a game's bundled nvngx_dlss(d|g).dll with a newer one you pick, independent of Proton flavor. Overlaps with proton-cachyos's own PROTON_DLSS_UPGRADE — prefer that on proton-cachyos and reach for this only on Valve's Proton or another fork without an auto-upgrade option."
+help = "CachyOS wrapper: force the latest DLSS preset for SR, RR and frame gen, and update DLSS via NGX."
+details = "A small cachyos-settings script that exports DXVK-NVAPI driver-settings overrides (DXVK_NVAPI_DRS_NGX_DLSS_{SR,RR,FG}_OVERRIDE=on, render_preset_latest for SR and RR) plus PROTON_ENABLE_NGX_UPDATER=1, so games pick up the newest DLSS DLLs and use the latest transformer preset. Works with any Proton that ships DXVK-NVAPI. If the NGX updater misbehaves, use dlss-swapper-dll instead; don't stack it with your own DXVK_NVAPI_DRS_SETTINGS overrides for the same keys."
 example = "dlss-swapper %command%"
+url = "https://wiki.cachyos.org/configuration/gaming/"
+
+[[wrapper]]
+key = "dlss-swapper-dll"
+label = "DLSS Swapper (no NGX updater)"
+kind = "plain"
+order = 40
+gpu = "nvidia"
+requires = "dlss-swapper-dll"
+pkg = "cachyos-settings"
+help = "CachyOS wrapper: force the latest DLSS preset but skip the NGX DLL updater."
+details = "Same preset overrides as dlss-swapper (latest preset for super resolution, ray reconstruction and frame gen), without PROTON_ENABLE_NGX_UPDATER. The CachyOS wiki suggests it when dlss-swapper causes problems or when you replace nvngx_dlss.dll yourself (or let PROTON_DLSS_UPGRADE do it). Pick one of the two wrappers, not both."
+example = "dlss-swapper-dll %command%"
 url = "https://wiki.cachyos.org/configuration/gaming/"
 
 # ====================== Performance / Sync =======================
@@ -686,6 +699,17 @@ details = "Pushes arbitrary OptiScaler.ini settings without editing the file by 
 example = "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG='Upscalers.Dx12Upscaler=fsr31;FSR.UpscaleRatio=2.0' %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 
+[[env]]
+key = "PROTON_OPTISCALER_STREAMLINE"
+tier = "advanced"
+category = "Upscaling & frame-gen"
+default_value = "1"
+values = ["1"]
+help = "CachyOS: have OptiScaler also download the Streamline SDK files."
+details = "Makes the OptiScaler setup fetch NVIDIA Streamline SDK files in addition to its normal payload. The proton-cachyos changelog calls it a manual option that is not relevant yet, so leave it off unless a game's OptiScaler guide asks for Streamline DLLs. Only meaningful with PROTON_USE_OPTISCALER=1. CachyOS-Proton only (added 11.0-20261014)."
+example = "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_STREAMLINE=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
+
 # ===================== Display / Wayland / HDR ====================
 
 [[env]]
@@ -986,9 +1010,9 @@ key = "VKD3D_CONFIG"
 tier = "advanced"
 category = "VKD3D (D3D12)"
 default_value = "dxr"
-values = ["dxr", "nodxr", "dxr12", "no_invariant_position", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue", "breadcrumbs", "vk_debug"]
+values = ["dxr", "nodxr", "dxr12", "no_invariant_position", "descriptor_heap", "no_upload_hvv", "force_static_cbv", "single_queue", "force_host_cached", "no_staggered_submit", "breadcrumbs", "vk_debug"]
 help = "Comma-separated vkd3d-proton tweaks, e.g. 'dxr' to force-enable ray tracing."
-details = "A comma- or semicolon-separated list of options that modify vkd3d-proton behavior. Common ones: 'dxr' (force-enable ray tracing even when considered unsafe; DXR is normally auto-detected), 'nodxr' (disable it), 'dxr12' (experimental DXR 1.2 support), 'no_invariant_position' (skips vkd3d-proton's default workaround for shader position invariance — try toggling it if a game has subtle z-fighting or geometry jitter), 'no_upload_hvv' (avoid host-visible VRAM for upload heaps on constrained GPUs), 'force_static_cbv' (NVIDIA constant-buffer optimization), 'single_queue' (disable async compute/transfer), 'descriptor_heap' (CachyOS-only descriptor-heap path; this replaced the old PROTON_VKD3D_HEAP knob), 'breadcrumbs' (instrument command lists so a GPU device-lost/hang writes a crash dump with the offending commands to the log), and 'vk_debug' (load the Vulkan validation layer, pairing with VK_INSTANCE_LAYERS). Most games run fine with defaults — use this for advanced features or specific workarounds."
+details = "A comma- or semicolon-separated list of options that modify vkd3d-proton behavior. Common ones: 'dxr' (force-enable ray tracing even when considered unsafe; DXR is normally auto-detected), 'nodxr' (disable it), 'dxr12' (experimental DXR 1.2 support), 'no_invariant_position' (skips vkd3d-proton's default workaround for shader position invariance — try toggling it if a game has subtle z-fighting or geometry jitter), 'no_upload_hvv' (avoid host-visible VRAM for upload heaps on constrained GPUs), 'force_static_cbv' (NVIDIA constant-buffer optimization), 'single_queue' (disable async compute/transfer), 'force_host_cached' (force host-visible allocations to cached memory — mainly speeds up GPU captures), 'no_staggered_submit' (disable the software queue-scheduling path, added in v2.14), 'descriptor_heap' (CachyOS-only descriptor-heap path; this replaced the old PROTON_VKD3D_HEAP knob), 'breadcrumbs' (instrument command lists so a GPU device-lost/hang writes a crash dump with the offending commands to the log), and 'vk_debug' (load the Vulkan validation layer, pairing with VK_INSTANCE_LAYERS). Most games run fine with defaults — use this for advanced features or specific workarounds."
 example = "VKD3D_CONFIG=dxr %command%"
 url = "https://github.com/HansKristian-Work/vkd3d-proton/blob/master/README.md#environment-variables"
 
@@ -1532,6 +1556,18 @@ help = "Use Wine's own window decorations instead of the window manager's."
 details = "Disables window-manager decorations and lets Wine draw its own. Can fix borderless/fullscreen and title-bar glitches on some compositors, or give consistent window borders across desktops."
 example = "PROTON_NO_WM_DECORATION=1 %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
+
+[[env]]
+key = "PROTON_ZLUDA"
+tier = "advanced"
+gpu = "amd"
+category = "Compatibility / Misc"
+default_value = "1"
+values = ["1"]
+help = "CachyOS (native build only): partial 32-bit PhysX on AMD via ZLUDA."
+details = "Runs NVIDIA's 32-bit GPU PhysX path on an AMD GPU through ZLUDA, which can bring back hardware PhysX effects in older games that otherwise fall back to slow CPU PhysX. Support is partial. It needs the proton-cachyos-native package (not the -slr build) and optionally hip-runtime-amd. CachyOS-Proton only (added 11.0-20261014)."
+example = "PROTON_ZLUDA=1 %command%"
+url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/CHANGELOG.md"
 
 [[env]]
 key = "PROTON_DISCORD_BRIDGE"
