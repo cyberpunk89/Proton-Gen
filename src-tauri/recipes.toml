@@ -207,6 +207,26 @@ env = [
 ]
 wrappers = []
 
+# OptiScaler.ini in the prefix survives between runs (proton-cachyos only
+# overwrites the keys PROTON_OPTISCALER_CONFIG names), so a frame-gen setting
+# saved once stays on after it is dropped from the launch line — hence the
+# explicit `false`. Seen on Phantom Blade Zero: every launch with OptiScaler
+# died in 16–33 s with FGInput=dlssg left in the ini.
+[[recipe]]
+name = "OptiScaler crashes the game within seconds"
+when = ["unreal", "dlss-fg", "!anticheat"]
+kind = "fix"
+symptom = "With OptiScaler injected the game closes 15–30 seconds after launch; without it, it runs fine."
+icon = "wrench"
+accent = "#f38ba8"
+tags = ["OptiScaler", "frame-gen", "Streamline", "logging"]
+description = "Turns OptiScaler's frame generation off explicitly (the prefix's OptiScaler.ini keeps an old DLSS-G hook on otherwise) and writes OptiScaler.log next to OptiScaler.dll in the prefix's system32/umu folder. Upscaling still works: pick XeSS or DLSS in the game and OptiScaler outputs FSR. If it still crashes, set PROTON_OPTISCALER_NAME to d3d12.dll and check the log."
+env = [
+    ["PROTON_USE_OPTISCALER", "1"],
+    ["PROTON_OPTISCALER_CONFIG", "FrameGen.Enabled=false;Log.LogToFile=true"],
+]
+wrappers = []
+
 [[recipe]]
 name = "Black or missing cutscenes / videos"
 kind = "fix"

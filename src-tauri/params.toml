@@ -695,7 +695,7 @@ key = "PROTON_OPTISCALER_CONFIG"
 category = "Upscaling & frame-gen"
 default_value = ""
 help = "CachyOS: write OptiScaler.ini settings inline, e.g. 'Upscalers.Dx12Upscaler=fsr31'."
-details = "Pushes arbitrary OptiScaler.ini settings without editing the file by hand, as a semicolon-separated list of '{section}.{option}={value}' entries. Use it to pin the substitute upscaler or tune quality once OptiScaler is injected. Only meaningful with PROTON_USE_OPTISCALER=1. CachyOS-Proton only (added 11.0-20260601)."
+details = "Pushes arbitrary OptiScaler.ini settings without editing the file by hand, as a semicolon-separated list of '{section}.{option}={value}' entries. Use it to pin the substitute upscaler or tune quality once OptiScaler is injected. 'Plugins.LoadAsiPlugins=true' loads the OptiPatcher.asi that ships in Proton's OptiScaler payload, which unlocks DLSS/XeSS menus on AMD/Intel in the games it supports without GPU spoofing. Only meaningful with PROTON_USE_OPTISCALER=1. CachyOS-Proton only (added 11.0-20260601)."
 example = "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG='Upscalers.Dx12Upscaler=fsr31;FSR.UpscaleRatio=2.0' %command%"
 url = "https://github.com/CachyOS/proton-cachyos/blob/cachyos_main/README.md"
 

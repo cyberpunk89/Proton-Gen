@@ -131,6 +131,14 @@ export const OPTI_FIXES: Fix[] = [
     pairs: [["InitFlags.DisplayResolution", "true"]],
   },
   {
+    // proton-cachyos' OptiScaler payload ships plugins/OptiPatcher.asi, but
+    // OptiScaler leaves ASI loading off unless asked.
+    id: "optiPatcher",
+    label: "DLSS or XeSS options greyed out on AMD / Intel",
+    note: "Loads OptiPatcher (bundled with Proton's OptiScaler): it patches the vendor check in the games it supports — mostly Unreal — instead of spoofing the GPU. Does nothing for games not on its list.",
+    pairs: [["Plugins.LoadAsiPlugins", "true"]],
+  },
+  {
     id: "arcSpoofing",
     label: "Rainbow artifacts on an Intel Arc GPU",
     note: "Turns off DXGI spoofing, which Arc doesn't tolerate when posing as NVIDIA.",
