@@ -199,7 +199,7 @@ symptom = "An RE Engine game (Resident Evil, Monster Hunter) hides its ray-traci
 icon = "sparkle"
 accent = "#f5c2e7"
 tags = ["RE Engine", "ray tracing", "DLSS", "OptiScaler", "experimental"]
-description = "Forces NVAPI on and loads a native dxgi so the engine exposes RT/DLSS, which OptiScaler then maps to FSR. Also: enable OptiScaler with GPU spoofing on, and add the game argument /WineDetectionEnabled:False in Game arguments. Full path tracing currently needs an experimental OptiScaler build."
+description = "Forces NVAPI on and loads a native dxgi so the engine exposes RT/DLSS, which OptiScaler then maps to FSR. Also: enable OptiScaler with GPU spoofing on, and add the game argument /WineDetectionEnabled:False in Game arguments. Full path tracing currently needs an experimental OptiScaler build. If the game then crashes before the menu with DLSS selected, see \"RE Engine: GPU crash with DLSS via OptiScaler\"."
 env = [
     ["WINEDLLOVERRIDES", "dxgi=n,b"],
     ["PROTON_FORCE_NVAPI", "1"],
@@ -224,6 +224,28 @@ description = "Turns OptiScaler's frame generation off explicitly (the prefix's 
 env = [
     ["PROTON_USE_OPTISCALER", "1"],
     ["PROTON_OPTISCALER_CONFIG", "FrameGen.Enabled=false;Log.LogToFile=true"],
+]
+wrappers = []
+
+# Seen on Onimusha: Way of the Sword (RX 9060 XT, GE-Proton11-11): with
+# Streamline spoofing the game picks DLSS on first run, and the DLSS path
+# through OptiScaler GPU-faults in vkd3d within 8–21 s (amdgpu page fault +
+# ring reset), frame gen on or off. FSR3 in-game ran clean with OptiScaler on
+# or off. Spoofing goes explicitly false for the same ini-persistence reason
+# as the recipe above.
+[[recipe]]
+name = "RE Engine: GPU crash with DLSS via OptiScaler"
+when = ["re-engine", "dlss", "!anticheat"]
+kind = "fix"
+gpu = "amd"
+symptom = "The game launches, then the screen freezes and it closes within seconds, before the menu; the kernel log shows an amdgpu page fault and ring reset."
+icon = "wrench"
+accent = "#f38ba8"
+tags = ["RE Engine", "OptiScaler", "DLSS", "GPU hang"]
+description = "The DLSS path through OptiScaler crashes the GPU in some RE Engine games. The real fix is in the game: set the upscaler to FSR (in config.ini next to the exe: UpscaleTypeOption=FSR3) — OptiScaler still loads and can work on FSR input. This recipe also turns Streamline spoofing off, so the game has no reason to switch itself back to DLSS."
+env = [
+    ["PROTON_USE_OPTISCALER", "1"],
+    ["PROTON_OPTISCALER_CONFIG", "FrameGen.Enabled=false;Spoofing.StreamlineSpoofing=false"],
 ]
 wrappers = []
 
