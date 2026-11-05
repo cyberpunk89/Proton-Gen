@@ -2,9 +2,10 @@
   import { app } from "$lib/state.svelte";
   import CommandPreview from "./CommandPreview.svelte";
   import ProblemsPane from "./ProblemsPane.svelte";
+  import RunsPane from "./RunsPane.svelte";
   import Lazy from "./Lazy.svelte";
   import { lazy } from "$lib/lazy";
-  import { Terminal, WarningOctagon, FileText, CaretDown, CaretUp } from "phosphor-svelte";
+  import { Terminal, WarningOctagon, FileText, CaretDown, CaretUp, Pulse } from "phosphor-svelte";
 
   /**
    * The bottom dock: one place for everything about the output. Collapsed
@@ -12,7 +13,19 @@
    * it up to a resizable pane. A pane, not a `Dialog`, so it needs no
    * `restoreScrollDelay` and can't strand a pointer-events lock (#63).
    */
-  type Tab = "command" | "problems" | "logs";
+  type Tab = "command" | "problems" | "logs" | "runs";
+
+  // Runs for the open game: on entering it, and every few seconds while the
+  // Runs tab is up (a game writes its log as it plays). Focus polls too.
+  $effect(() => {
+    void app.selectedAppId;
+    void app.pollRuns();
+  });
+  $effect(() => {
+    if (app.dockTab !== "runs") return;
+    const t = setInterval(() => void app.pollRuns(), 5000);
+    return () => clearInterval(t);
+  });
 
   let counts = $derived({
     error: app.notices.filter((n) => n.severity === "error").length,
@@ -82,6 +95,7 @@
     {@render tab("command", "Command", Terminal)}
     {@render tab("problems", "Problems", WarningOctagon)}
     {@render tab("logs", "Logs", FileText)}
+    {@render tab("runs", "Runs", Pulse)}
     <button
       onclick={() => (app.dockTab = open ? "command" : "problems")}
       class="ml-auto grid size-7 place-items-center rounded-md text-muted transition hover:bg-surface-2 hover:text-text"
@@ -101,6 +115,8 @@
       <div class="mx-auto max-w-6xl">
         {#if app.dockTab === "problems"}
           <ProblemsPane />
+        {:else if app.dockTab === "runs"}
+          <RunsPane />
         {:else}
           <Lazy load={lazy.logViewer}>
             {#snippet children(C)}<C />{/snippet}
@@ -130,6 +146,18 @@
       {#if counts.rest}
         <span class="rounded-full bg-peach/20 px-1.5 text-[10px] text-peach">{counts.rest}</span>
       {/if}
+    {/if}
+    {#if id === "runs" && app.runs.length}
+      {@const latest = app.runs[0]}
+      <span
+        class="size-1.5 rounded-full"
+        title="Latest run"
+        style="background: {latest.mark === true || (latest.mark == null && latest.verdict === 'clean')
+          ? 'var(--green)'
+          : latest.verdict === 'errors' && latest.mark == null
+            ? 'var(--peach)'
+            : 'var(--red)'}"
+      ></span>
     {/if}
     {#if active}
       <span class="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent"></span>

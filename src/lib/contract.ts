@@ -58,6 +58,8 @@ import type { ProtonLog as R_ProtonLog } from "./generated/ProtonLog";
 import type { Recipe as R_Recipe } from "./generated/Recipe";
 import type { RecipeChange as R_RecipeChange } from "./generated/RecipeChange";
 import type { RecipeKind as R_RecipeKind } from "./generated/RecipeKind";
+import type { Run as R_Run } from "./generated/Run";
+import type { Verdict as R_Verdict } from "./generated/Verdict";
 import type { Recompute as R_Recompute } from "./generated/Recompute";
 import type { RuntimeDto as R_RuntimeDto } from "./generated/RuntimeDto";
 import type { RuntimeUpdate as R_RuntimeUpdate } from "./generated/RuntimeUpdate";
@@ -139,6 +141,8 @@ export type _Contract = [
   Same<Keys<T.GameScan, R_GameScan>>,
   Same<Union<T.WrapperKind, R_WrapperKind>>,
   Same<Union<T.RecipeKind, R_RecipeKind>>,
+  Same<Union<T.Verdict, R_Verdict>>,
+  Same<Keys<T.Run, R_Run>>,
   Same<Union<T.TokenKind, R_TokenKind>>,
   Same<Union<T.Severity, R_Severity>>,
   Same<Union<T.ChangeKind, R_ChangeKind>>,

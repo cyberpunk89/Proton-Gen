@@ -23,7 +23,7 @@ src/                     FRONTEND (Svelte 5 + TS + Tailwind)
                          game", docked ≥1100px, overlay below) beside MainPanel (Everything scope —
                          one scrolling catalog, sticky toolbar + category chips with scroll-spy,
                          lint inline on rows) or SimplePanel (Essentials scope; `ui_mode` "simple"),
-                         with the Dock below (tabs Command · Problems · Logs: collapsed it's the
+                         with the Dock below (tabs Command · Problems · Logs · Runs: collapsed it's the
                          CommandPreview bar; Problems = lint + fix recipes + AI Troubleshooter,
                          Logs = LogViewer; `app.showLogs`/`showTroubleshooter` map onto `dockTab`);
                          root-mounted dialogs (CommandPalette, builders, confirms, …)
@@ -56,6 +56,9 @@ src-tauri/               BACKEND (Rust / Tauri)
   src/nexus.rs           Nexus library (games.json) → one entry per repack; nexus-cli --set-launch
   src/watch.rs           live refresh: polls Steam/Heroic/Nexus file mtimes → frontend events
   src/discovery_cache.rs last scan on disk, painted at launch while a rescan runs behind it
+  src/runs.rs            Runs: a config armed on Copy / Apply becomes a run when the game's
+                         next log is written; verdict + recipe `log_patterns` matches;
+                         runs.toml (backend-owned). Dock's Runs tab: diff, mark, revert
   src/logs.rs            log sources (Proton/umu/PROTON_LOG_DIR, Nexus, DXVK, VKD3D) for the viewer
   src/folders.rs         a game's prefix + shader cache (paths, sizes, open)
   src/game_scan.rs       bounded read-only walk of a game's folder: bundled DLSS/FSR/XeSS,
@@ -99,7 +102,9 @@ extra `--` into cargo).
 ## Conventions & invariants
 
 - **Read-only by contract.** Never write Steam config files. The only output is a string
-  the user copies. App state lives only under `$XDG_CONFIG_HOME/protongen/state.toml`. Five
+  the user copies. App state lives only under `$XDG_CONFIG_HOME/protongen/` — `state.toml`,
+  plus `runs.toml` (backend-owned run history, kept out of `state.toml` because
+  `save_store` overwrites that wholesale). Five
   named exceptions, all explicit-confirm-only and documented in `design.md` §11:
   `heroic::inject` (writes Heroic's per-game config), `optiscaler_upgrade.rs` (fetches
   the latest OptiScaler release and extracts it into a game's own folder),

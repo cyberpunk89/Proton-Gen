@@ -21,6 +21,7 @@ import type {
   Recompute,
   Scan,
   ProtonLog,
+  Run,
   TroubleshootRequest,
   TroubleshootResult,
   RecipeChange,
@@ -45,6 +46,9 @@ import {
   mockParseCommand,
   mockPreviewRecipe,
   mockProtonLog,
+  mockArmRun,
+  mockPollRuns,
+  mockMarkRun,
   mockSteam,
 } from "./mock";
 
@@ -216,6 +220,15 @@ export const ipc = {
   // VKD3D paths). The mock has no filesystem, so it returns a canned Proton
   // log plus a canned DXVK one — enough to exercise the viewer, its source
   // switcher and the AI coach under `pnpm dev`.
+  // Runs (runs.rs): arm the config about to launch; poll folds the newest log
+  // into this game's runs; mark is the user's own verdict.
+  armRun: (appId: number, config: Config) =>
+    inTauri ? invoke<void>("arm_run", { appId, config }) : Promise.resolve(mockArmRun(appId, config)),
+  pollRuns: (appId: number, config: Config | null) =>
+    inTauri ? invoke<Run[]>("poll_runs", { appId, config }) : Promise.resolve(mockPollRuns(appId)),
+  markRun: (appId: number, id: number, mark: boolean | null) =>
+    inTauri ? invoke<Run[]>("mark_run", { appId, id, mark }) : Promise.resolve(mockMarkRun(appId, id, mark)),
+
   readProtonLog: (appId: number, config: Config | null, sourceId: string | null = null) =>
     inTauri
       ? invoke<ProtonLog>("read_proton_log", { appId, config, sourceId })

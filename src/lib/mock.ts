@@ -2,6 +2,7 @@
 // `vite` in a plain browser for design/dev). Under Tauri this module is unused.
 
 import type {
+  Run,
   Bootstrap,
   Change,
   Config,
@@ -427,6 +428,7 @@ export const mockBootstrap: Bootstrap = {
       tags: ["DLSS", "Reflex"],
       protondb_tiers: [],
       when: ["dlss"],
+      log_patterns: [],
       env: [["DXVK_ENABLE_NVAPI", "1"]],
       wrappers: [],
     },
@@ -442,6 +444,7 @@ export const mockBootstrap: Bootstrap = {
       tags: ["low-latency", "GameMode"],
       protondb_tiers: [],
       when: [],
+      log_patterns: [],
       env: [],
       wrappers: [["gamemoderun", ""], ["mangohud", ""]],
     },
@@ -457,6 +460,7 @@ export const mockBootstrap: Bootstrap = {
       tags: ["HDR", "Wayland"],
       protondb_tiers: [],
       when: [],
+      log_patterns: [],
       env: [["PROTON_ENABLE_WAYLAND", "1"]],
       wrappers: [],
     },
@@ -475,6 +479,7 @@ export const mockBootstrap: Bootstrap = {
       // "gold" and so never actually surfaces this suggestion under `pnpm dev`.
       protondb_tiers: ["borked", "bronze"],
       when: [],
+      log_patterns: ["device lost"],
       env: [["DXVK_ASYNC", "1"]],
       wrappers: [],
     },
@@ -1145,4 +1150,46 @@ export function mockProtonLog(appId: number, sourceId: string | null): ProtonLog
     source_id: "proton",
     sources,
   };
+}
+
+// ---------------------------------- runs ----------------------------------
+
+/** Mock runs.rs: in memory, one run per arm, from the mock Proton log. */
+const mockRunState = new Map<number, { armed: { at: number; config: Config } | null; runs: Run[] }>();
+
+export function mockArmRun(appId: number, config: Config) {
+  const g = mockRunState.get(appId) ?? { armed: null, runs: [] };
+  const floor = Math.max(g.armed ? g.armed.at + 1 : 0, g.runs[0] ? g.runs[0].id + 1 : 0);
+  g.armed = { at: Math.max(Math.floor(Date.now() / 1000), floor), config: JSON.parse(JSON.stringify(config)) };
+  mockRunState.set(appId, g);
+}
+
+export function mockPollRuns(appId: number): Run[] {
+  const g = mockRunState.get(appId);
+  if (!g) return [];
+  if (g.armed && g.runs[0]?.id !== g.armed.at) {
+    // Alternate verdicts so the list shows both kinds under `pnpm dev`.
+    const crash = g.runs.length % 2 === 0;
+    g.runs.unshift({
+      id: g.armed.at,
+      log_at: g.armed.at + 30,
+      source: "Proton",
+      verdict: crash ? "crash" : "clean",
+      error_count: crash ? 1 : 0,
+      first_error: crash ? "err:   vulkan: device lost while presenting" : null,
+      matched_recipes: crash ? ["Game crashes at launch"] : [],
+      mark: null,
+      config: g.armed.config,
+    });
+  }
+  // A copy, like a real IPC reply: handing out the live array lets Svelte's
+  // state proxy and this module disagree about its contents.
+  return structuredClone(g.runs);
+}
+
+export function mockMarkRun(appId: number, id: number, mark: boolean | null): Run[] {
+  const g = mockRunState.get(appId);
+  const r = g?.runs.find((x) => x.id === id);
+  if (r) r.mark = mark;
+  return structuredClone(g?.runs ?? []);
 }

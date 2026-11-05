@@ -1289,6 +1289,73 @@ pub async fn read_proton_log(
     .map_err(|e| e.to_string())
 }
 
+/// Arm `config` as the one this game will launch with next (Copy, Open in
+/// Steam, Apply to Nexus/Heroic): the next log written for it becomes a run.
+/// See `runs.rs`. Writes only protongen's own runs.toml.
+#[tauri::command]
+pub async fn arm_run(app_id: u32, config: Config) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::runs::with_game(app_id, |g| {
+            crate::runs::arm(g, crate::runs::now(), config);
+            (true, ())
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Look at this game's newest log, fold it into its runs, return them newest
+/// first. Cheap (a few stats and one tail read), so the Runs tab polls it.
+#[tauri::command]
+pub async fn poll_runs(
+    state: State<'_, AppState>,
+    app_id: u32,
+    config: Option<Config>,
+) -> Result<Vec<crate::runs::Run>, String> {
+    let game = state.game(app_id);
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).ok_or("$HOME is not set")?;
+    let patterns: Vec<(String, Vec<String>)> = state
+        .recipes
+        .recipes
+        .iter()
+        .filter(|r| !r.log_patterns.is_empty())
+        .map(|r| (r.name.clone(), r.log_patterns.clone()))
+        .collect();
+    let config = config.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::runs::with_game(app_id, |g| {
+            // Where the logs are depends on the config (PROTON_LOG_DIR, umu's
+            // GAMEID): use the one that ran, if one is waiting.
+            let cfg = g.armed.as_ref().map(|a| a.config.clone()).unwrap_or(config);
+            let cands = crate::logs::candidates(&home, app_id, game.as_ref(), &cfg);
+            let newest = crate::logs::sources(&cands).into_iter().find(|s| s.present);
+            let changed = newest.is_some_and(|src| {
+                let log = crate::logs::read_tail(std::path::Path::new(&src.path));
+                let obs = crate::runs::Observation {
+                    log_at: src.modified.unwrap_or(0),
+                    source: &src.label,
+                    tail: &log.tail,
+                    error_lines: &log.error_lines,
+                };
+                crate::runs::observe(g, &obs, &patterns)
+            });
+            (changed, g.runs.clone())
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The user's own verdict on a run: worked (true), broke (false), or cleared.
+#[tauri::command]
+pub async fn mark_run(app_id: u32, id: u64, mark: Option<bool>) -> Result<Vec<crate::runs::Run>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::runs::with_game(app_id, |g| (crate::runs::mark(g, id, mark), g.runs.clone()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Analyze a game's Proton log with the configured local LLM (off the UI thread).
 /// Opt-in: the endpoint/model come from the store, while the catalog allow-list
 /// and detected-hardware summary are added here from `AppState`. Read-only — the

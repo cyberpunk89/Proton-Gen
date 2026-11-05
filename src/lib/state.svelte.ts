@@ -15,6 +15,7 @@ import { encodePreset } from "./presetCode";
 import { buildOptiScaler, parseOptiScaler } from "./optiscaler";
 import type {
   AbSlot,
+  Run,
   Catalog,
   Config,
   DiffStatus,
@@ -215,12 +216,12 @@ class AppStore {
    * The builder's bottom dock: "command" is the collapsed command bar; any
    * other tab pulls the dock up to `dockHeight` px. Per session.
    */
-  dockTab = $state<"command" | "problems" | "logs">("command");
+  dockTab = $state<"command" | "problems" | "logs" | "runs">("command");
   dockHeight = $state(340);
   /** Bumped to focus the troubleshooter's symptom box when it's asked for. */
   troubleshootFocus = $state(0);
 
-  openDock(tab: "command" | "problems" | "logs") {
+  openDock(tab: "command" | "problems" | "logs" | "runs") {
     this.view = "builder";
     this.dockTab = tab;
   }
@@ -1152,6 +1153,66 @@ class AppStore {
    *  next 10 minutes, coming back to the window also re-checks a little later. */
   expectPaste() {
     this.awaitingPasteUntil = Date.now() + 10 * 60_000;
+    // About to launch with this: the next log for the game becomes a run.
+    this.armRun();
+  }
+
+  // ---------------------------------- runs ----------------------------------
+
+  /** The selected game's runs, newest first (runs.rs). */
+  runs = $state<Run[]>([]);
+  private runsSeq = 0;
+
+  /** Arm the current config for this game's next launch. Fire-and-forget:
+   *  a failure here must never get in the way of the copy/apply itself. */
+  armRun() {
+    const id = this.selectedAppId;
+    if (id == null) return;
+    ipc.armRun(id, this.toConfig()).catch((e) => console.error("armRun failed", e));
+  }
+
+  /** Fold the game's newest log into its runs. Cheap; polled while the Runs
+   *  tab is open and on window focus. Only the latest call may land. */
+  async pollRuns() {
+    const id = this.selectedAppId;
+    const seq = ++this.runsSeq;
+    if (id == null) {
+      this.runs = [];
+      return;
+    }
+    try {
+      const runs = await ipc.pollRuns(id, this.toConfig());
+      if (seq === this.runsSeq && id === this.selectedAppId) this.runs = runs;
+    } catch (e) {
+      console.error("pollRuns failed", e);
+    }
+  }
+
+  async markRun(runId: number, mark: boolean | null) {
+    const id = this.selectedAppId;
+    if (id == null) return;
+    try {
+      this.runs = await ipc.markRun(id, runId, mark);
+    } catch (e) {
+      toast.error(`Couldn't save that: ${e}`);
+    }
+  }
+
+  /** The run to go back to: the newest one you marked as working, else the
+   *  newest clean one you haven't marked as broken. */
+  get lastGoodRun(): Run | null {
+    return (
+      this.runs.find((r) => r.mark === true) ??
+      this.runs.find((r) => r.mark !== false && r.verdict === "clean") ??
+      null
+    );
+  }
+
+  /** Load a run's config as the current one (undoable). */
+  loadRun(run: Run, label = "load a run's config") {
+    this.loadConfig(run.config);
+    this.mark(label);
+    toast.success("Loaded that run's config", { action: { label: "Undo", onClick: () => this.undo() } });
   }
 
   /**
@@ -1193,6 +1254,8 @@ class AppStore {
    *  its Properties dialog closes. */
   onWindowFocus() {
     void this.refreshSteamConfig();
+    // Back from playing: a new log may have landed.
+    if (this.view === "builder") void this.pollRuns();
     // Back from lsfg-vk-ui with an edited profile list — pick it up.
     if (this.lsfgBuilderOpen) void this.refreshLsfgStatus();
     this.onWindowBlur();
@@ -1541,6 +1604,7 @@ class AppStore {
     if (id == null) return;
     try {
       await ipc.injectHeroic(id, this.toConfig());
+      this.armRun();
       toast.success("Applied to Heroic — restart Heroic to pick it up (backup saved)", {
         ms: 6000,
       });
@@ -1573,6 +1637,7 @@ class AppStore {
     try {
       const code = encodePreset({ name: g.name.slice(0, 64), config: this.toConfig() });
       await ipc.applyToNexus(g.app_id, code);
+      this.armRun();
       toast.success(`Applied to Nexus — ${g.name} launches with this tuning now`, { ms: 5000 });
     } catch (e) {
       toast.error(`Nexus didn't take it: ${e}`, { ms: 8000 });

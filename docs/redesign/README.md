@@ -1,6 +1,6 @@
 # Builder redesign — exploration
 
-Status: **rollout steps 1–4 built** (layout pass + OptiScaler builder rework, On column +
+Status: **rollout complete (steps 1–5 built)** (layout pass + OptiScaler builder rework, On column +
 Essentials scope; see below). Mockups are static HTML in [`mockups/`](mockups/)
 (Catppuccin Mocha tokens + Lexend from `app.css`), rendered to [`img/`](img/) at 1440×900.
 Yellow sticky notes are annotations, not UI.
@@ -147,7 +147,11 @@ Where today's ten header controls go:
    wherever a command is assembled or linted, so presets, game memory and the JSON CLI
    honour it) and `Store.ab_slots` (per game, the slot that isn't live; B starts as a copy
    of A). Answers open question 4 with two slots; per-game presets still exist for more.
-5. **Runs:** backend run tracking plus diff and "revert to last good".
+5. ✅ **Runs:** backend run tracking plus diff and "revert to last good". `runs.rs`: Copy /
+   Apply arms the config; the next log write makes it a run (verdict from the log, Worked /
+   Broke marks, 12 per game in `runs.toml`). `log_patterns` in `recipes.toml` link log lines
+   to fix recipes (Runs + top of Problems). Open question 3: no debug kit — the Runs tab
+   instead offers to turn on `PROTON_LOG` for Steam games that don't log yet.
 
 ## Open questions
 

@@ -56,6 +56,11 @@ pub struct Recipe {
     /// `protondb_tiers` it only *suggests* — it never hides the recipe.
     #[serde(default)]
     pub when: Vec<String>,
+    /// Fix recipes only: case-folded substrings that, found in a game's log,
+    /// mark this recipe as a likely cause/fix for that run (`runs.rs`, the
+    /// dock's Runs and Problems tabs). Suggests only, like `when`.
+    #[serde(default)]
+    pub log_patterns: Vec<String>,
     #[serde(default)]
     pub env: Vec<(String, String)>,
     #[serde(default)]

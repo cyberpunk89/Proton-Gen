@@ -39,4 +39,10 @@ protondb_tiers: Array<string>,
  * carries every listed tag; `!tag` means the tag must be absent. Like
  * `protondb_tiers` it only *suggests* — it never hides the recipe.
  */
-when: Array<string>, env: Array<[string, string]>, wrappers: Array<[string, string]>, };
+when: Array<string>, 
+/**
+ * Fix recipes only: case-folded substrings that, found in a game's log,
+ * mark this recipe as a likely cause/fix for that run (`runs.rs`, the
+ * dock's Runs and Problems tabs). Suggests only, like `when`.
+ */
+log_patterns: Array<string>, env: Array<[string, string]>, wrappers: Array<[string, string]>, };

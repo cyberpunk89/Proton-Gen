@@ -19,6 +19,10 @@
 # scan (game_scan.rs): dlss, dlss-fg, fsr, xess, anticheat, eac, battleye,
 # unreal, unity, re-engine. Like protondb_tiers it only suggests; it never hides.
 #
+# `log_patterns` (optional, fix recipes) are case-folded substrings: found in a
+# game's newest log, they flag the recipe as a likely fix for that run in the
+# dock's Runs and Problems tabs. Like `when`, it only suggests.
+#
 # Presentation (all optional): `icon` (sparkle|lightning|rocket|monitor|gauge|
 # wrench|shield|film), `accent` (hex color for the card), `tags` (chips).
 
@@ -243,6 +247,7 @@ icon = "wrench"
 accent = "#f38ba8"
 tags = ["RE Engine", "OptiScaler", "DLSS", "GPU hang"]
 description = "The DLSS path through OptiScaler crashes the GPU in some RE Engine games. The real fix is in the game: set the upscaler to FSR (in config.ini next to the exe: UpscaleTypeOption=FSR3) — OptiScaler still loads and can work on FSR input. This recipe also turns Streamline spoofing off, so the game has no reason to switch itself back to DLSS."
+log_patterns = ["VK_ERROR_DEVICE_LOST"]
 env = [
     ["PROTON_USE_OPTISCALER", "1"],
     ["PROTON_OPTISCALER_CONFIG", "FrameGen.Enabled=false;Spoofing.StreamlineSpoofing=false"],
@@ -257,6 +262,7 @@ icon = "film"
 accent = "#f9e2af"
 tags = ["video", "GStreamer"]
 description = "Force GStreamer media playback, which fixes most missing-video cases."
+log_patterns = ["err:mfplat", "winegstreamer"]
 env = [["PROTON_MEDIA_FORCE_GST", "1"]]
 wrappers = []
 
@@ -281,6 +287,7 @@ accent = "#a6e3a1"
 tags = ["EAC", "BattlEye"]
 protondb_tiers = ["borked"]
 description = "Ensure Proton's bundled EAC and BattlEye runtimes are enabled."
+log_patterns = ["EasyAntiCheat", "BattlEye", "BEService"]
 env = [["PROTON_EAC_RUNTIME", "1"], ["PROTON_BATTLEYE_RUNTIME", "1"]]
 wrappers = []
 
@@ -293,6 +300,7 @@ accent = "#f38ba8"
 tags = ["crash", "logging"]
 protondb_tiers = ["borked", "bronze"]
 description = "Common crash workarounds + a log to pinpoint the cause."
+log_patterns = ["Unhandled page fault", "Unhandled exception"]
 env = [
     ["PROTON_FORCE_LARGE_ADDRESS_AWARE", "1"],
     ["PROTON_HEAP_DELAY_FREE", "1"],
@@ -309,6 +317,7 @@ accent = "#fab387"
 tags = ["DXVK", "fallback"]
 protondb_tiers = ["borked", "bronze"]
 description = "Route Direct3D through OpenGL (WineD3D) instead of DXVK as a last resort."
+log_patterns = ["VK_ERROR_INITIALIZATION_FAILED", "Failed to create Vulkan instance", "DXVK: No adapters found"]
 env = [["PROTON_USE_WINED3D", "1"]]
 wrappers = []
 

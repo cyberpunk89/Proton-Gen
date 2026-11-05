@@ -59,6 +59,7 @@ mod protondb;
 mod recipes;
 mod runtime;
 mod runtime_updates;
+mod runs;
 mod steam;
 mod steamcfg;
 mod store;
@@ -151,6 +152,9 @@ pub fn run_with(initial_game: Option<u32>) {
             ipc::game_scan,
             ipc::game_art,
             ipc::read_proton_log,
+            ipc::arm_run,
+            ipc::poll_runs,
+            ipc::mark_run,
             ipc::llm_analyze,
             ipc::llm_troubleshoot,
             ipc::llm_models,

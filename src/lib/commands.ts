@@ -85,6 +85,9 @@ export const copyCommandAction: AppCommand = {
   icon: Copy,
   keywords: ["clipboard"],
   async run() {
+    // Armed before the clipboard write: the user is about to launch with this
+    // whether or not the copy succeeds (re-arming the same config is a no-op).
+    app.armRun();
     await copyText(app.command);
     app.expectPaste();
     toast.success("Command copied");

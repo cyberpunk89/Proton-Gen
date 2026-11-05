@@ -90,6 +90,8 @@ export interface Recipe {
    *  tag (`!tag` = must be absent) — see `GameScan.tags`, `util.ts`
    *  `matchesWhen`. Empty = never scan-suggested. */
   when: string[];
+  /** Fix recipes: case-folded log substrings that flag this recipe for a run. */
+  log_patterns: string[];
   env: Pair[];
   wrappers: Pair[];
 }
@@ -464,6 +466,26 @@ export interface Config {
   game_args: string;
   /** Keys on but left out of the command (the On column's mute). */
   muted: string[];
+}
+
+/** Mirrors runs::Verdict. */
+export type Verdict = "crash" | "errors" | "clean";
+
+/** Mirrors runs::Run — one launch of one config, inferred from its log. */
+export interface Run {
+  /** When the config was armed (unix seconds); unique per game. */
+  id: number;
+  /** Last log write seen (unix seconds). */
+  log_at: number;
+  source: string;
+  verdict: Verdict;
+  error_count: number;
+  first_error: string | null;
+  /** Names of fix recipes whose log_patterns matched. */
+  matched_recipes: string[];
+  /** The user's verdict: true worked, false broke. */
+  mark: boolean | null;
+  config: Config;
 }
 
 /** Mirrors store::AbSlot — a game's other A/B variant. */

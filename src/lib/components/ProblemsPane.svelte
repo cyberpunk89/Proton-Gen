@@ -16,6 +16,12 @@
    */
   let q = $state("");
 
+  /** Fix recipes the latest run's log matched (`log_patterns`), first. */
+  let fromLog = $derived.by(() => {
+    const names = new Set(app.runs[0]?.matched_recipes ?? []);
+    return app.recipes.flatMap((r, index) => (names.has(r.name) ? [index] : []));
+  });
+
   /** Fix recipes for this machine, best symptom match first when searching.
    *  Keeps the original index: it's `applyRecipe`'s handle. */
   let fixes = $derived.by(() => {
@@ -66,26 +72,17 @@
         />
       </div>
     </div>
+    {#if fromLog.length && !q.trim()}
+      <p class="mb-1 px-2.5 text-[11px] text-accent">Matched in the last run's log</p>
+      <div class="mb-3 space-y-1 rounded-lg border border-accent/30 bg-accent/5 py-1">
+        {#each fromLog as index (index)}
+          {@render fix(index)}
+        {/each}
+      </div>
+    {/if}
     <div class="space-y-1">
       {#each fixes as f (f.index)}
-        {@const r = app.recipes[f.index]}
-        {@const accent = r.accent ?? "var(--accent)"}
-        <div class="flex items-start gap-3 rounded-lg px-2.5 py-2 transition hover:bg-surface-2/50">
-          <div class="min-w-0 flex-1">
-            <p class="text-sm text-text">{r.symptom ?? r.name}</p>
-            <p class="truncate text-xs text-muted" title={r.description}>
-              {r.symptom ? r.name : r.description}
-            </p>
-          </div>
-          <RecipePreview index={f.index} {accent} />
-          <button
-            onclick={() => void app.applyRecipe(f.index)}
-            class="shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium transition active:scale-95"
-            style="background: color-mix(in srgb, {accent} 20%, transparent); color: {accent}"
-          >
-            Apply
-          </button>
-        </div>
+        {@render fix(f.index)}
       {:else}
         <p class="px-2.5 py-4 text-xs text-muted">
           {q.trim() ? `No fix matches “${q.trim()}”.` : "No fixes for this hardware."}
@@ -94,3 +91,24 @@
     </div>
   </section>
 </div>
+
+{#snippet fix(index: number)}
+        {@const r = app.recipes[index]}
+        {@const accent = r.accent ?? "var(--accent)"}
+        <div class="flex items-start gap-3 rounded-lg px-2.5 py-2 transition hover:bg-surface-2/50">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm text-text">{r.symptom ?? r.name}</p>
+            <p class="truncate text-xs text-muted" title={r.description}>
+              {r.symptom ? r.name : r.description}
+            </p>
+          </div>
+          <RecipePreview {index} {accent} />
+          <button
+            onclick={() => void app.applyRecipe(index)}
+            class="shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium transition active:scale-95"
+            style="background: color-mix(in srgb, {accent} 20%, transparent); color: {accent}"
+          >
+            Apply
+          </button>
+        </div>
+{/snippet}
