@@ -235,7 +235,7 @@
 </script>
 
 <div class="space-y-4">
-  <!-- Which game this is — Advanced shows it in the NavRail, which Simple lacks. -->
+  <!-- Which game this is — Advanced shows it in the header bar. -->
   <CurrentGameCard details />
 
   <!-- Steam vs umu, then the game & runtime block (shared with Advanced). -->

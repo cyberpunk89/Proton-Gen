@@ -1,0 +1,91 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>D · Workbench (debug)</title><link rel="stylesheet" href="base.css">
+<style>
+  .stk { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+  .stk .k { font: 500 11.5px "JetBrains Mono", monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stk.warn { background: color-mix(in srgb, var(--red) 9%, transparent); }
+  .stk.mute { opacity: .45; } .stk.mute .k { text-decoration: line-through; }
+  .grp { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 8px 3px; font-weight: 500; }
+  .expand { margin: 2px 0 8px 56px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); display: flex; gap: 22px; }
+  .catbar { display: flex; gap: 6px; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .dockbar { display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border); }
+</style></head>
+<body><div class="app">
+<div class="topbar">
+  <div class="logo">&gt;_</div>
+  <span class="btn ghost">← Library</span>
+  <div class="game"><div class="cover"></div><div class="col"><b style="font-weight:500">ELDEN RING</b><span class="muted small" style="margin-top:-2px">Heroic · 144 h</span></div></div>
+  <div class="seg accent"><span class="on">Steam</span><span>umu</span></div>
+  <div class="grow"></div>
+  <div class="search" style="width:440px">⌕ <span class="grow">Find an option, recipe or action…</span><span class="kbd">Ctrl K</span></div>
+  <div class="grow"></div>
+  <span class="btn outline">Presets ▾</span>
+  <span class="btn ghost">⋯</span>
+  <div class="winctl"><span>–</span><span>□</span><span>✕</span></div>
+</div>
+
+<div class="row grow" style="align-items:stretch;min-height:0;gap:0">
+  <!-- left: what's on -->
+  <div class="side br" style="width:290px;padding:12px 10px;display:flex;flex-direction:column;position:relative;overflow:hidden">
+    <div class="row" style="padding:0 6px 4px"><span style="font-weight:500">On for this game</span><span class="count">8</span><span class="grow"></span><div class="seg"><span class="on">A</span><span>B</span></div></div>
+    <div class="grp">Runtime</div>
+    <div class="stk"><span class="k grow">GE-Proton11-7</span><span class="muted small">▾</span></div>
+    <div class="grp">Wrappers</div>
+    <div class="stk"><span class="k grow t-wr">gamemoderun</span><span class="eye muted">◉</span></div>
+    <div class="stk"><span class="k grow t-wr">gamescope <span class="t-arg">2560×1440@165</span></span><span class="eye muted">◉</span></div>
+    <div class="grp">Environment</div>
+    <div class="stk"><span class="dot" style="background:var(--mauve)"></span><span class="k grow">DXVK_ASYNC</span><span class="muted">◉</span></div>
+    <div class="stk warn"><span class="dot" style="background:var(--red)"></span><span class="k grow">PROTON_DXVK_GPLASYNC</span><span class="muted">◉</span></div>
+    <div class="stk"><span class="dot" style="background:var(--overlay)"></span><span class="k grow">DXVK_HUD</span><span class="muted">◉</span></div>
+    <div class="stk"><span class="dot" style="background:var(--mauve)"></span><span class="k grow">PROTON_ENABLE_WAYLAND</span><span class="muted">◉</span></div>
+    <div class="stk mute"><span class="dot" style="background:var(--blue)"></span><span class="k grow">PROTON_LOG</span><span class="muted">◎</span></div>
+    <div class="row" style="gap:10px;padding:10px 8px 0;font-size:10.5px" class="muted"><span class="row muted" style="gap:4px"><span class="dot" style="background:var(--mauve)"></span>recipe</span><span class="row muted" style="gap:4px"><span class="dot" style="background:var(--overlay)"></span>manual</span><span class="row muted" style="gap:4px"><span class="dot" style="background:var(--blue)"></span>debug kit</span></div>
+    <div class="grow"></div>
+    <div class="row" style="gap:6px"><span class="btn outline grow" style="justify-content:center">Mute all</span><span class="btn outline grow" style="justify-content:center">Save as preset</span></div>
+    
+  </div>
+
+  <!-- centre: essentials -->
+  <div class="grow col" style="min-height:0;position:relative;padding:12px 20px;gap:12px">
+    <div class="row"><div class="seg accent"><span>Everything</span><span class="on">Essentials</span></div><span class="muted small" style="margin-left:6px">curated for your RDNA4 GPU · Wayland</span></div>
+    <div class="row" style="gap:12px;align-items:stretch">
+      <div class="panel grow" style="padding:14px"><div class="row"><span class="tiny">Smoothness</span><span class="grow"></span><span class="chip mauve">Stutter fix</span></div>
+        <div class="row" style="margin-top:10px;gap:10px"><div class="sw on"></div><span class="grow">Async shader compile</span><span class="mono muted small">DXVK_ASYNC</span></div>
+        <div class="row" style="margin-top:8px;gap:10px"><div class="sw on"></div><span class="grow">Game mode</span><span class="mono muted small">gamemoderun</span></div></div>
+      <div class="panel grow" style="padding:14px"><div class="row"><span class="tiny">Display</span><span class="grow"></span><span class="chip mauve">HDR</span></div>
+        <div class="row" style="margin-top:10px;gap:10px"><div class="sw on"></div><span class="grow">gamescope 2560×1440 @ 165</span><span class="small" style="color:var(--accent)">Edit</span></div>
+        <div class="row" style="margin-top:8px;gap:10px"><div class="sw on"></div><span class="grow">Native Wayland + HDR</span><span class="mono muted small">2 vars</span></div></div>
+      <div class="panel grow" style="padding:14px"><div class="row"><span class="tiny">Upscaling &amp; frame gen</span></div>
+        <div class="row" style="margin-top:10px;gap:10px"><div class="sw"></div><span class="grow">FSR 4 upgrade</span><span class="chip green" style="height:18px">your GPU</span></div>
+        <div class="row" style="margin-top:8px;gap:10px"><div class="sw"></div><span class="grow">Lossless Scaling ×2</span><span class="mono muted small">lsfg-vk</span></div></div>
+    </div>
+    <div class="note" style="left:360px;top:150px;max-width:330px"><span class="n">4</span><b>Simple mode becomes a scope</b>, not a separate screen: Essentials shows curated cards; flipping to Everything keeps your place and the left "On" list never changes.</div>
+  </div>
+</div>
+
+<!-- bottom dock, expanded -->
+<div class="bt" style="background:color-mix(in srgb,var(--mantle) 60%,transparent);position:relative;height:470px;display:flex;flex-direction:column">
+  <div class="dockbar">
+    <span class="tab">Command</span><span class="tab">Problems <span class="chip red" style="height:18px">1</span><span class="chip yellow" style="height:18px">2</span></span><span class="tab">Logs</span><span class="tab act">Runs <span class="count">4</span></span>
+    <div class="grow"></div><span class="chip green"><span class="dot" style="background:var(--green)"></span>watching Proton · umu · Nexus logs</span><span class="btn outline" style="height:28px">Apply to Nexus</span><span class="muted" style="margin-left:6px">⌄</span>
+  </div>
+  <div class="row grow" style="align-items:stretch;gap:0;min-height:0">
+    <div class="br" style="width:290px;padding:10px;display:flex;flex-direction:column;gap:4px">
+      <div class="opt sel" style="padding:9px 10px"><span class="dot" style="background:var(--red);margin-top:5px"></span><div class="grow"><div class="row"><b style="font-weight:500">Crashed after 9 s</b><span class="grow"></span><span class="muted small">14:02</span></div><div class="mono small" style="color:var(--green)">+ PROTON_DXVK_GPLASYNC<br>+ gamescope</div></div></div>
+      <div class="opt" style="padding:9px 10px"><span class="dot" style="background:var(--green);margin-top:5px"></span><div class="grow"><div class="row"><b style="font-weight:500">Ran 42 min</b><span class="grow"></span><span class="muted small">Yesterday</span></div><div class="mono small" style="color:var(--green)">+ DXVK_ASYNC</div></div></div>
+      <div class="opt" style="padding:9px 10px"><span class="dot" style="background:var(--yellow);margin-top:5px"></span><div class="grow"><div class="row"><b style="font-weight:500">Ran 3 min · stutter</b><span class="grow"></span><span class="muted small">Tue</span></div></div></div>
+    </div>
+    <div class="grow col" style="padding:12px 16px;gap:10px;min-height:0">
+      <div class="panel" style="padding:12px;border-color:color-mix(in srgb,var(--peach) 40%,transparent);background:color-mix(in srgb,var(--peach) 6%,transparent)">
+        <div class="row"><span style="color:var(--peach)">✦</span><b style="font-weight:500">Likely cause: PROTON_DXVK_GPLASYNC + Easy Anti-Cheat</b><span class="grow"></span><span class="chip red">exit 139</span></div>
+        <div class="sub small" style="margin-top:4px">EAC refused an unsigned module 0.4 s before the segfault. Added since the last good run.</div>
+        <div class="row" style="margin-top:8px"><span class="btn primary" style="height:28px">Turn it off</span><span class="btn outline" style="height:28px">Revert to last good run</span><span class="btn ghost" style="height:28px">Open full log</span></div>
+      </div>
+      <div class="log" style="font:11.5px/1.6 'JetBrains Mono',monospace;color:var(--muted);white-space:pre"><span style="color:var(--overlay)">1805 </span><span style="color:var(--yellow)">warn:  DXVK: GPL async enabled, pipelines may compile out of order</span>
+<span style="color:var(--red);background:color-mix(in srgb,var(--red) 8%,transparent);display:block"><span style="color:var(--overlay)">1846 </span>EasyAntiCheat: Untrusted system file (C:\windows\system32\d3d11.dll)</span><span style="color:var(--overlay)">1847 </span>0130:err:module:LdrInitializeThunk "start_protected_game.exe" failed to initialize
+<span style="color:var(--red);background:color-mix(in srgb,var(--red) 8%,transparent);display:block"><span style="color:var(--overlay)">1851 </span>wine: Unhandled page fault on read access to 0000000000000000</span></div>
+    </div>
+  </div>
+  <div class="note" style="right:30px;top:-74px;max-width:300px"><span class="n">5</span>The <b>debug loop in one place</b>: toggle above, Apply to Nexus, launch there — the run appears here with its log, the diff vs. the last good run, and a fix.</div>
+</div>
+</div></body></html>

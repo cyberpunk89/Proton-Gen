@@ -1,0 +1,88 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>A · One catalog</title><link rel="stylesheet" href="base.css"></head>
+<body><div class="app">
+
+<!-- top bar: 9 buttons → back, game, launch-mode, search, health, menu -->
+<div class="topbar">
+  <div class="logo">&gt;_</div>
+  <span class="btn ghost">← Library</span>
+  <div class="game"><div class="cover"></div><div class="col"><b style="font-weight:500">ELDEN RING</b><span class="muted small" style="margin-top:-2px">Heroic · 144 h</span></div></div>
+  <div class="seg accent"><span class="on">Steam</span><span>umu</span></div>
+  <div class="grow"></div>
+  <div class="search" style="width:420px">⌕ <span class="grow">Search 150 options, recipes, actions…</span><span class="kbd">Ctrl K</span></div>
+  <div class="grow"></div>
+  <span class="chip red"><span class="dot" style="background:var(--red)"></span>1 problem</span>
+  <span class="chip yellow">2 hints</span>
+  <span class="btn ghost">⋯</span>
+  <div class="winctl"><span>–</span><span>□</span><span>✕</span></div>
+</div>
+
+<div class="row grow" style="align-items:stretch;min-height:0;gap:0">
+  <!-- index -->
+  <div class="side br" style="width:232px;padding:12px 10px;display:flex;flex-direction:column;gap:12px">
+    <div class="seg" style="width:100%"><span style="flex:1;text-align:center">On · 7</span><span style="flex:1;text-align:center">For you</span><span class="on" style="flex:1;text-align:center">All</span></div>
+    <div class="col" style="gap:1px">
+      <div class="tiny" style="padding:4px 9px">Jump to</div>
+      <div class="navi"><span class="ico">✦</span><span class="grow">Essentials</span><span class="count">3</span></div>
+      <div class="navi"><span class="ico">⧉</span><span class="grow">Wrappers</span><span class="count">2</span></div>
+      <div class="navi act"><span class="ico">⚡</span><span class="grow">Performance / Sync</span><span class="count">1</span></div>
+      <div class="navi"><span class="ico">▦</span><span class="grow">DXVK</span><span class="count">1</span></div>
+      <div class="navi"><span class="ico">▦</span><span class="grow">VKD3D (D3D12)</span><span class="count dim">0</span></div>
+      <div class="navi"><span class="ico">⤢</span><span class="grow">Upscaling &amp; frame-gen</span><span class="count dim">0</span></div>
+      <div class="navi"><span class="ico">◐</span><span class="grow">Display / HDR</span><span class="count">1</span></div>
+      <div class="navi"><span class="ico">♪</span><span class="grow">Audio</span><span class="count dim">0</span></div>
+      <div class="navi"><span class="ico">⚙</span><span class="grow">Compatibility / Misc</span><span class="count dim">0</span></div>
+      <div class="navi"><span class="ico">⛨</span><span class="grow">Anti-cheat</span><span class="count dim">0</span></div>
+      <div class="navi"><span class="ico">≣</span><span class="grow">Logging / Debug</span><span class="count dim">0</span></div>
+    </div>
+    <div class="grow"></div>
+    <div class="panel" style="padding:10px;font-size:11.5px" ><div class="sub">6 categories hidden for your hardware</div><div style="color:var(--accent);margin-top:2px">Show all</div></div>
+  </div>
+
+  <!-- one continuous list -->
+  <div class="grow col" style="min-height:0;overflow:hidden;position:relative">
+    <div class="secth sticky"><span class="t">Performance / Sync</span><span class="count">1 on</span><span class="grow"></span><span class="muted small">9 options · 3 hidden</span></div>
+    <div style="padding:4px 14px">
+      <div class="opt sel"><div class="sw on"></div><div class="grow"><div class="name">DXVK_ASYNC</div><div class="help">Compile shaders asynchronously to reduce stutter.</div></div><span class="chip mauve">Stutter fix</span><span class="chip green">dxvk-gplasync ✓</span></div>
+      <div class="opt off"><div class="sw"></div><div class="grow"><div class="name">PROTON_NO_NTSYNC</div><div class="help">Disable the in-kernel ntsync driver (falls back to fsync/esync).</div></div><span class="val">1</span></div>
+      <div class="opt off"><div class="sw"></div><div class="grow"><div class="name">PROTON_USE_WOW64</div><div class="help">Run 32-bit games through the new WoW64 mode.</div></div></div>
+      <div class="opt err"><div class="sw on"></div><div class="grow"><div class="name">PROTON_DXVK_GPLASYNC</div><div class="help">GPL async pipeline compile.</div>
+        <div class="inline-warn">● Can trip kernel anti-cheat (EAC detected for this game) <span class="chip red" style="height:19px">Turn off</span></div></div><span class="chip line">manual</span></div>
+    </div>
+    <div class="secth"><span class="t">DXVK</span><span class="count">1 on</span><span class="grow"></span><span class="muted small">16 options</span></div>
+    <div style="padding:4px 14px">
+      <div class="opt"><div class="sw on"></div><div class="grow"><div class="name">DXVK_HUD</div><div class="help">On-screen DXVK stats.</div></div><span class="val">fps,frametimes ▾</span><span class="chip line">manual</span></div>
+      <div class="opt off"><div class="sw"></div><div class="grow"><div class="name">DXVK_FRAME_RATE</div><div class="help">Cap the frame rate inside DXVK.</div></div><span class="val muted">e.g. 60</span></div>
+      <div class="opt off"><div class="sw"></div><div class="grow"><div class="name">DXVK_CONFIG</div><div class="help">Inline dxvk.conf options.</div></div></div>
+    </div>
+    <div class="secth"><span class="t">Display / HDR</span><span class="count">1 on</span></div>
+    <div style="padding:4px 14px">
+      <div class="opt"><div class="sw on"></div><div class="grow"><div class="name">PROTON_ENABLE_WAYLAND</div><div class="help">Native Wayland driver instead of XWayland.</div></div><span class="chip mauve">HDR recipe</span></div>
+    </div>
+
+    <div class="note" style="left:24px;top:650px"><span class="n">1</span><b>One scrolling list</b>, sticky headers. The rail is a jump index, not a page switcher — you never lose the rest of the catalog.</div>
+    <div class="note" style="left:290px;top:650px"><span class="n">2</span>Lint lives <b>on the row it's about</b>, with the fix button inline. No banner stack on top.</div>
+    <div class="note" style="left:560px;top:650px"><span class="n">3</span><b>Source chip</b>: recipe name, preset, or "manual" — answers "why is this on?"</div>
+  </div>
+
+  <!-- inspector -->
+  <div class="side bl" style="width:340px;padding:16px;display:flex;flex-direction:column;gap:14px">
+    <div class="row"><span class="tiny">Inspector</span><span class="grow"></span><span class="muted">✕</span></div>
+    <div><div class="mono" style="font-size:15px;font-weight:500">DXVK_ASYNC</div><div class="sub small" style="margin-top:4px">Lets DXVK compile pipelines in the background instead of stalling the frame. Removes shader-compile hitches at the cost of brief visual pop-in.</div></div>
+    <div class="row" style="flex-wrap:wrap;gap:6px"><span class="chip green">dxvk-gplasync installed</span><span class="chip">DX9–11 only</span><span class="chip">Proton-GE · cachyos</span></div>
+    <div class="panel" style="padding:10px"><div class="tiny">Emits</div><div class="cmd" style="margin-top:4px"><span class="t-env">DXVK_ASYNC</span>=<span class="t-val">1</span></div></div>
+    <div><div class="tiny" style="margin-bottom:6px">Turned on by</div><div class="row"><span class="chip mauve">Recipe · Stutter fix</span><span class="muted small">2 days ago</span></div></div>
+    <div><div class="tiny" style="margin-bottom:6px">Related</div>
+      <div class="col" style="gap:4px" ><span class="small sub">↔ <span class="mono">PROTON_DXVK_GPLASYNC</span> — overlaps, pick one</span><span class="small sub">→ <span class="mono">DXVK_STATE_CACHE</span></span></div></div>
+    <div class="grow"></div>
+    <div class="row"><span class="btn outline">Docs ↗</span><span class="btn outline">Copy line</span></div>
+    <div class="note" style="right:22px;top:560px;max-width:220px"><span class="n">4</span>Details live <b>beside</b> the list, not in a popover — click any row to inspect.</div>
+  </div>
+</div>
+
+<!-- command bar -->
+<div class="bt" style="padding:10px 16px;background:color-mix(in srgb,var(--mantle) 55%,transparent)">
+  <div class="row"><span class="tiny">Steam launch options</span><span class="chip green">● in sync</span><span class="grow"></span><span class="btn ghost">↶</span><span class="btn outline">Copy</span><span class="btn primary">Copy &amp; open Steam</span></div>
+  <div class="cmd" style="margin-top:6px"><span class="tokhl"><span class="t-env">DXVK_ASYNC</span>=<span class="t-val">1</span></span> <span class="t-env">PROTON_DXVK_GPLASYNC</span>=<span class="t-val">1</span> <span class="t-env">DXVK_HUD</span>=<span class="t-val">fps,frametimes</span> <span class="t-env">PROTON_ENABLE_WAYLAND</span>=<span class="t-val">1</span> <span class="t-wr">gamemoderun</span> <span class="t-wr">gamescope</span> <span class="t-arg">-W 2560 -H 1440 -r 165 --</span> <span class="t-tgt">%command%</span></div>
+</div>
+</div></body></html>

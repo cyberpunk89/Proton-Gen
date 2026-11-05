@@ -1970,6 +1970,9 @@ class AppStore {
     this.persistStore();
   }
 
+  /** A request for MainPanel to scroll the catalog to a category (see
+   *  `setSection`); the nonce re-triggers a repeat jump to the same one. */
+  sectionJump = $state<{ section: string; nonce: number } | null>(null);
   /** Where a Simple-mode jump should scroll to (see `setSection`). */
   simpleAnchor = $state<{ id: string; nonce: number } | null>(null);
   /** Whether the Recipes card is collapsed. On the store rather than in the
@@ -1986,10 +1989,16 @@ class AppStore {
    * In Simple mode, the three sections Simple also shows scroll into view there;
    * anything else switches to Advanced (with a way back).
    */
-  setSection(section: string) {
+  setSection(section: string, scroll = true) {
     this.view = "builder";
     this.paramQuery = "";
     this.activeSection = section;
+    // The catalog is one scrolling list, so a category is a place in it, not a
+    // page: ask MainPanel to scroll there. `revealParam` opts out — the row it
+    // targets scrolls itself, and two competing scrolls land on neither.
+    if (scroll && !NON_CATALOG_SECTIONS.has(section)) {
+      this.sectionJump = { section, nonce: ++this.focusNonce };
+    }
     if (section === "recipes") this.recipesCollapsed = false;
     if (this.uiMode !== "simple") return;
     const anchor = SIMPLE_ANCHORS[section];
@@ -2098,7 +2107,7 @@ class AppStore {
 
     // Named after the key rather than its category — that's what was asked for.
     if (this.uiMode === "simple") this.leaveSimpleFor(key);
-    this.setSection(env ? env.category : "Wrappers");
+    this.setSection(env ? env.category : "Wrappers", false);
     this.focusParam = { key, nonce: ++this.focusNonce };
     return true;
   }
@@ -2755,6 +2764,10 @@ class AppStore {
 export type SettingsSection = "appearance" | "behavior" | "ai" | "paths" | "about";
 
 /** Sections Simple mode also shows, and the element id each scrolls to. */
+/** Builder sections that are their own view rather than a category in the
+ *  single scrolling catalog. */
+export const NON_CATALOG_SECTIONS = new Set(["recipes", "game", "@active"]);
+
 const SIMPLE_ANCHORS: Record<string, string> = {
   recipes: "simple-recipes",
   "@active": "simple-active",

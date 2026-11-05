@@ -4,7 +4,6 @@
   import { app } from "$lib/state.svelte";
   import { keys } from "$lib/keys.svelte";
   import Header from "$lib/components/Header.svelte";
-  import NavRail from "$lib/components/NavRail.svelte";
   import MainPanel from "$lib/components/MainPanel.svelte";
   import SimplePanel from "$lib/components/SimplePanel.svelte";
   import Library from "$lib/components/Library.svelte";
@@ -220,20 +219,19 @@
       </div>
     {:else}
       <div class="flex min-h-0 flex-1" in:fade={{ duration: 120 }}>
-        <!-- Advanced mode keeps the category rail; Simple mode drops it for a
-             full-width curated card view. -->
-        {#if app.uiMode === "advanced"}
-          <NavRail />
-        {/if}
         <main class="flex min-h-0 min-w-0 flex-1 flex-col">
-          <!-- The single scrolling region: nothing else clips. -->
-          <div class="min-h-0 flex-1 overflow-y-auto">
-            <div class="mx-auto flex max-w-4xl flex-col gap-3 px-5 py-4">
+          <!-- The single scrolling region: nothing else clips. MainPanel's
+               sticky toolbar, category headers and scroll-spy measure against
+               it, found by the data attribute. -->
+          <div class="min-h-0 flex-1 overflow-y-auto" data-scroll-root>
+            <div class="mx-auto flex max-w-5xl flex-col gap-3 px-5 py-4">
               {@render loadErrorBanner()}
               <UpdateBanner />
               <StaleBanner />
-              <Notices />
               {#if app.uiMode === "simple"}
+                <!-- Advanced shows lint inline on the rows it's about, with a
+                     count in its toolbar; Simple has no rows to put it on. -->
+                <Notices />
                 <SimplePanel />
               {:else}
                 <MainPanel />
@@ -243,7 +241,7 @@
 
           <!-- Pinned command bar -->
           <div class="shrink-0 border-t border-border bg-mantle/30 px-5 py-3">
-            <div class="mx-auto max-w-4xl">
+            <div class="mx-auto max-w-5xl">
               <CommandPreview />
             </div>
           </div>

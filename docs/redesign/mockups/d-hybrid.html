@@ -1,0 +1,89 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>D · Workbench</title><link rel="stylesheet" href="base.css">
+<style>
+  .stk { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+  .stk .k { font: 500 11.5px "JetBrains Mono", monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stk.warn { background: color-mix(in srgb, var(--red) 9%, transparent); }
+  .stk.mute { opacity: .45; } .stk.mute .k { text-decoration: line-through; }
+  .grp { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 8px 3px; font-weight: 500; }
+  .expand { margin: 2px 0 8px 56px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); display: flex; gap: 22px; }
+  .catbar { display: flex; gap: 6px; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .dockbar { display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border); }
+</style></head>
+<body><div class="app">
+<div class="topbar">
+  <div class="logo">&gt;_</div>
+  <span class="btn ghost">← Library</span>
+  <div class="game"><div class="cover"></div><div class="col"><b style="font-weight:500">ELDEN RING</b><span class="muted small" style="margin-top:-2px">Heroic · 144 h</span></div></div>
+  <div class="seg accent"><span class="on">Steam</span><span>umu</span></div>
+  <div class="grow"></div>
+  <div class="search" style="width:440px">⌕ <span class="grow">Find an option, recipe or action…</span><span class="kbd">Ctrl K</span></div>
+  <div class="grow"></div>
+  <span class="btn outline">Presets ▾</span>
+  <span class="btn ghost">⋯</span>
+  <div class="winctl"><span>–</span><span>□</span><span>✕</span></div>
+</div>
+
+<div class="row grow" style="align-items:stretch;min-height:0;gap:0">
+  <!-- left: what's on -->
+  <div class="side br" style="width:290px;padding:12px 10px;display:flex;flex-direction:column;position:relative">
+    <div class="row" style="padding:0 6px 4px"><span style="font-weight:500">On for this game</span><span class="count">8</span><span class="grow"></span><div class="seg"><span class="on">A</span><span>B</span></div></div>
+    <div class="grp">Runtime</div>
+    <div class="stk"><span class="k grow">GE-Proton11-7</span><span class="muted small">▾</span></div>
+    <div class="grp">Wrappers</div>
+    <div class="stk"><span class="k grow t-wr">gamemoderun</span><span class="eye muted">◉</span></div>
+    <div class="stk"><span class="k grow t-wr">gamescope <span class="t-arg">2560×1440@165</span></span><span class="eye muted">◉</span></div>
+    <div class="grp">Environment</div>
+    <div class="stk"><span class="dot" style="background:var(--mauve)"></span><span class="k grow">DXVK_ASYNC</span><span class="muted">◉</span></div>
+    <div class="stk warn"><span class="dot" style="background:var(--red)"></span><span class="k grow">PROTON_DXVK_GPLASYNC</span><span class="muted">◉</span></div>
+    <div class="stk"><span class="dot" style="background:var(--overlay)"></span><span class="k grow">DXVK_HUD</span><span class="muted">◉</span></div>
+    <div class="stk"><span class="dot" style="background:var(--mauve)"></span><span class="k grow">PROTON_ENABLE_WAYLAND</span><span class="muted">◉</span></div>
+    <div class="stk mute"><span class="dot" style="background:var(--blue)"></span><span class="k grow">PROTON_LOG</span><span class="muted">◎</span></div>
+    <div class="row" style="gap:10px;padding:10px 8px 0;font-size:10.5px" class="muted"><span class="row muted" style="gap:4px"><span class="dot" style="background:var(--mauve)"></span>recipe</span><span class="row muted" style="gap:4px"><span class="dot" style="background:var(--overlay)"></span>manual</span><span class="row muted" style="gap:4px"><span class="dot" style="background:var(--blue)"></span>debug kit</span></div>
+    <div class="grow"></div>
+    <div class="row" style="gap:6px"><span class="btn outline grow" style="justify-content:center">Mute all</span><span class="btn outline grow" style="justify-content:center">Save as preset</span></div>
+    <div class="note" style="left:20px;top:440px;max-width:250px"><span class="n">1</span><b>Always-visible "what's on"</b>, grouped in emit order. Dot = where it came from. ◉ mutes for bisecting; A/B keeps two variants.</div>
+  </div>
+
+  <!-- centre: catalog -->
+  <div class="grow col" style="min-height:0;position:relative">
+    <div class="row" style="padding:12px 20px 0">
+      <div class="seg accent"><span class="on">Everything</span><span>Essentials</span></div>
+      <span class="muted small" style="margin-left:6px">replaces the Simple / Advanced switch</span>
+      <div class="grow"></div>
+      <span class="chip line">Hidden for your GPU: 18 · show</span>
+    </div>
+    <div class="catbar" style="margin-top:10px">
+      <span class="chip">Wrappers <span class="count">2</span></span><span class="chip on">Performance <span class="count">2</span></span><span class="chip">DXVK <span class="count">1</span></span><span class="chip">VKD3D</span><span class="chip">Upscaling</span><span class="chip">Display <span class="count">1</span></span><span class="chip">Audio</span><span class="chip">Compat</span><span class="chip">Debug</span>
+    </div>
+    <div style="padding:2px 20px;overflow:hidden">
+      <div class="secth" style="padding-left:0"><span class="t">Performance / Sync</span><span class="muted small">9</span></div>
+      <div class="opt"><div class="sw on"></div><div class="grow"><div class="name">DXVK_ASYNC</div><div class="help">Compile shaders asynchronously to reduce stutter.</div></div><span class="chip mauve">Stutter fix</span><span class="muted">⌄</span></div>
+      <div class="opt err" style="flex-direction:column;gap:0">
+        <div class="row" style="width:100%;align-items:flex-start;gap:12px"><div class="sw on"></div><div class="grow"><div class="name">PROTON_DXVK_GPLASYNC</div><div class="help">GPL async pipeline compile.</div>
+          <div class="inline-warn">● ELDEN RING uses Easy Anti-Cheat — this can get the game refused <span class="chip red" style="height:19px">Turn off</span></div></div><span class="chip line">manual</span><span class="muted">⌃</span></div>
+        <div class="expand" style="margin-left:42px;width:calc(100% - 42px)">
+          <div class="col grow" style="gap:6px"><span class="tiny">About</span><span class="sub small">Like DXVK_ASYNC but uses the graphics-pipeline-library path. Needs a GPL-async DXVK build (bundled with GE-Proton).</span>
+            <div class="row" style="gap:6px;margin-top:2px"><span class="chip green">GE-Proton ✓</span><span class="chip">DX9–11</span><span class="chip">overlaps DXVK_ASYNC</span></div></div>
+          <div class="col" style="gap:6px;width:220px"><span class="tiny">Emits</span><span class="cmd"><span class="t-env">PROTON_DXVK_GPLASYNC</span>=<span class="t-val">1</span></span><span class="small" style="color:var(--accent)">Docs ↗</span></div>
+        </div>
+      </div>
+      <div class="opt off"><div class="sw"></div><div class="grow"><div class="name">PROTON_NO_NTSYNC</div><div class="help">Disable the in-kernel ntsync driver (falls back to fsync/esync).</div></div><span class="val">1</span><span class="muted">⌄</span></div>
+      <div class="opt off"><div class="sw"></div><div class="grow"><div class="name">PROTON_USE_WOW64</div><div class="help">Run 32-bit games through the new WoW64 mode.</div></div><span class="muted">⌄</span></div>
+      <div class="secth" style="padding-left:0"><span class="t">DXVK</span><span class="muted small">16</span></div>
+      <div class="opt"><div class="sw on"></div><div class="grow"><div class="name">DXVK_HUD</div><div class="help">On-screen DXVK stats.</div></div><span class="val">fps,frametimes ▾</span><span class="muted">⌄</span></div>
+    </div>
+    <div class="note" style="right:24px;top:58px;max-width:240px"><span class="n">2</span>Category chips <b>scroll-spy</b> one long list. Click a row to <b>expand in place</b> — no popovers, no side inspector eating width.</div>
+  </div>
+</div>
+
+<!-- bottom dock -->
+<div class="bt" style="background:color-mix(in srgb,var(--mantle) 60%,transparent);position:relative">
+  <div class="dockbar">
+    <span class="tab act">Command</span><span class="tab">Problems <span class="chip red" style="height:18px">1</span><span class="chip yellow" style="height:18px">2</span></span><span class="tab">Logs</span><span class="tab">Runs <span class="count dim">4</span></span>
+    <div class="grow"></div><span class="chip green">● in sync with Steam</span><span class="btn ghost">↶</span><span class="btn outline" style="height:28px">Copy</span><span class="btn primary" style="height:28px">Copy &amp; open Steam</span><span class="muted" style="margin-left:6px">⌃</span>
+  </div>
+  <div class="cmd" style="padding:10px 16px 12px"><span class="t-env">DXVK_ASYNC</span>=<span class="t-val">1</span> <span class="tokhl"><span class="t-env">PROTON_DXVK_GPLASYNC</span>=<span class="t-val">1</span></span> <span class="t-env">DXVK_HUD</span>=<span class="t-val">fps,frametimes</span> <span class="t-env">PROTON_ENABLE_WAYLAND</span>=<span class="t-val">1</span> <span class="t-wr">gamemoderun</span> <span class="t-wr">gamescope</span> <span class="t-arg">-W 2560 -H 1440 -r 165 --</span> <span class="t-tgt">%command%</span></div>
+  <div class="note" style="left:640px;top:-60px;max-width:300px"><span class="n">3</span><b>One dock</b> for everything about the output: the command, lint problems, logs and runs. Pull it up to debug.</div>
+</div>
+</div></body></html>

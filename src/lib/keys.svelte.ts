@@ -174,7 +174,7 @@ const BINDINGS: Binding[] = [
     run: (e) => {
       // preventDefault or the "/" lands in the field we just focused.
       e.preventDefault();
-      // The search box lives in Advanced's NavRail; in Simple mode the palette
+      // The search box lives in Advanced's catalog toolbar; in Simple mode the palette
       // searches the same parameters.
       if (!focusByName("param-search")) app.showPalette = true;
     },

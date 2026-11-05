@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { app } from "$lib/state.svelte";
+  import { app, NON_CATALOG_SECTIONS } from "$lib/state.svelte";
+  import { focusTarget } from "$lib/actions";
+  import { prefersReducedMotion } from "$lib/motion.svelte";
+  import Notices from "./Notices.svelte";
+  import type { Notice, Severity } from "$lib/types";
   import { toast } from "$lib/toast.svelte";
   import { irrelevance } from "$lib/util";
   import { isAdvanced } from "$lib/types";
@@ -9,7 +13,20 @@
   import Recipes from "./Recipes.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
   import ActiveOptions from "./ActiveOptions.svelte";
-  import { MagnifyingGlass, Faders, FilmStrip, Gauge, Monitor, Sparkle } from "phosphor-svelte";
+  import {
+    MagnifyingGlass,
+    Faders,
+    FilmStrip,
+    Gauge,
+    Monitor,
+    Sparkle,
+    X,
+    ListChecks,
+    Cpu,
+    WarningOctagon,
+    Warning,
+    Info,
+  } from "phosphor-svelte";
   import type { EnvDef, WrapperDef } from "$lib/types";
 
   let showAll = $derived(app.store.show_irrelevant);
@@ -89,7 +106,6 @@
     const query = q.trim();
 
     for (const e of app.catalog.envs) {
-      if (!searching && e.category !== app.activeSection) continue;
       if (searching) {
         const t = fuzzy(e.key, query, [e.category]);
         const h = fuzzy(e.help, query);
@@ -125,7 +141,6 @@
     }
 
     for (const w of app.catalog.wrappers) {
-      if (!searching && app.activeSection !== "Wrappers") continue;
       const label = w.label ?? w.key;
       if (searching) {
         const t = fuzzy(label, query, [w.key, "wrappers"]);
@@ -221,7 +236,6 @@
       .sort((a, b) => b.best - a.best);
   });
 
-  let title = $derived(searching ? `Results for “${q.trim()}”` : app.activeSection);
   let resultSummary = $derived(
     `${visible.length} match${visible.length === 1 ? "" : "es"} in ${groups.length} categor${
       groups.length === 1 ? "y" : "ies"
@@ -230,17 +244,152 @@
     }`,
   );
 
-  /** Wrappers first in a category view, matching the previous ordering. */
-  let sectionWraps = $derived(visible.filter((h) => h.kind === "wrap"));
-  let sectionEnvs = $derived(visible.filter((h) => h.kind === "env"));
+  // ------------------------- the one scrolling catalog -------------------------
 
-  /** This section's env keys the "Recommended for your GPU" action would
-   *  still change — scoped to the visible category so the button only shows
-   *  where it's actionable (today, only "Upscaling & frame-gen" has any
-   *  `recommended_for` tags). */
-  let sectionRecommended = $derived(
-    searching ? [] : sectionEnvs.filter((h) => app.recommendedEnvKeys.includes(h.key)),
+  /** Which view the panel shows: the catalog, or one of the non-catalog tabs. */
+  let tab = $derived(NON_CATALOG_SECTIONS.has(app.activeSection) ? app.activeSection : "catalog");
+
+  /** Every section of the list, in order, with its visible rows. Wrappers first,
+   *  as the rail had it. A section the advanced tier emptied keeps its header, so
+   *  "Show advanced" stays reachable by browsing. */
+  let sections = $derived.by(() => {
+    const names = ["Wrappers", ...app.visibleCategories];
+    const by = new Map<string, Hit[]>(names.map((n) => [n, []]));
+    for (const h of visible) by.get(h.group)?.push(h);
+    const advIn = new Map<string, number>();
+    if (!showAdvanced) {
+      for (const h of hits) {
+        if (h.advanced && (showAll || !h.hidden)) advIn.set(h.group, (advIn.get(h.group) ?? 0) + 1);
+      }
+    }
+    return names
+      .map((name) => ({
+        name,
+        rows: by.get(name) ?? [],
+        advancedHidden: advIn.get(name) ?? 0,
+        on:
+          name === "Wrappers"
+            ? app.catalog.wrappers.filter((w) => app.wrap[w.key]?.enabled).length
+            : app.enabledCountInCategory(name),
+      }))
+      .filter((sec) => sec.rows.length || sec.advancedHidden);
+  });
+
+  /** Recommended-for-GPU keys still to apply, per category. */
+  let recommendedIn = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const e of app.catalog.envs) {
+      if (app.recommendedEnvKeys.includes(e.key)) m.set(e.category, (m.get(e.category) ?? 0) + 1);
+    }
+    return m;
+  });
+
+  let panel = $state<HTMLElement | null>(null);
+  let root = $derived(panel?.closest<HTMLElement>("[data-scroll-root]") ?? null);
+  let toolbar = $state<HTMLElement | null>(null);
+  let toolbarH = $state(0);
+  /** The section at the top of the viewport — the chip it lights up. */
+  let spy = $state<string | null>(null);
+
+  function sectionEl(name: string): HTMLElement | null {
+    return panel?.querySelector<HTMLElement>(`[data-section="${CSS.escape(name)}"]`) ?? null;
+  }
+
+  /** Scroll-spy: the last section whose header has reached the toolbar. */
+  function measure() {
+    if (!root || !panel || tab !== "catalog" || searching) return;
+    const line = root.getBoundingClientRect().top + (toolbar?.offsetHeight ?? toolbarH) + 8;
+    let current: string | null = sections[0]?.name ?? null;
+    for (const el of panel.querySelectorAll<HTMLElement>("[data-section]")) {
+      if (el.getBoundingClientRect().top <= line) current = el.dataset.section ?? current;
+      else break;
+    }
+    if (current !== spy) spy = current;
+    // Remembered so leaving for Recipes and coming back lands here again.
+    if (current && app.activeSection !== current) app.activeSection = current;
+  }
+
+  $effect(() => {
+    const r = root;
+    if (!r) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    r.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      r.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  });
+
+  // A chip click, palette jump or the Parameters tab: scroll to the section.
+  $effect(() => {
+    const jump = app.sectionJump;
+    if (!jump || !root || tab !== "catalog" || searching) return;
+    const el = sectionEl(jump.section);
+    if (!el) return;
+    // Measured now, not from `toolbarH`: switching tabs adds the chip row in
+    // this same update, before bind:clientHeight has reported it.
+    const offset = toolbar?.offsetHeight ?? toolbarH;
+    const top =
+      el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - offset;
+    root.scrollTo({ top: Math.max(0, top), behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    spy = jump.section;
+    app.sectionJump = null;
+  });
+
+  function goCatalog() {
+    app.setSection(spy ?? "Wrappers");
+  }
+
+  // ------------------------------- inline lint -------------------------------
+
+  const RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
+  let lintOpen = $state(false);
+  let counts = $derived({
+    error: app.notices.filter((n) => n.severity === "error").length,
+    warning: app.notices.filter((n) => n.severity === "warning").length,
+    info: app.notices.filter((n) => n.severity === "info").length,
+  });
+  let worst = $derived<Severity | null>(
+    counts.error ? "error" : counts.warning ? "warning" : counts.info ? "info" : null,
   );
+  /** Notices by the catalog key they're about — each one shows on its row. */
+  let noticesByKey = $derived.by(() => {
+    const m = new Map<string, Notice[]>();
+    for (const n of [...app.notices].sort((a, b) => RANK[a.severity] - RANK[b.severity])) {
+      for (const k of n.keys) {
+        const list = m.get(k);
+        if (list) list.push(n);
+        else m.set(k, [n]);
+      }
+    }
+    return m;
+  });
+  const SEV_COLOUR: Record<Severity, string> = {
+    error: "var(--red)",
+    warning: "var(--peach)",
+    info: "var(--blue)",
+  };
+  const SEV_ICON: Record<Severity, typeof Info> = { error: WarningOctagon, warning: Warning, info: Info };
+
+  /**
+   * Escape clears the search rather than leaving the builder. Handled here with
+   * stopPropagation, not in the global binding table: the global Escape means
+   * "back to the library", and it can't know this field has text worth
+   * clearing first. Only swallowed when there's something to clear.
+   */
+  function onSearchKeydown(e: KeyboardEvent) {
+    if (e.key !== "Escape" || !app.paramQuery) return;
+    e.stopPropagation();
+    e.preventDefault();
+    app.paramQuery = "";
+  }
 
   function applyRecommended() {
     app.applyRecommendedForGpu();
@@ -248,118 +397,255 @@
   }
 </script>
 
-{#if searching}
-  {@render optionsCard()}
-{:else if app.activeSection === "recipes"}
-  <Recipes />
-{:else if app.activeSection === "game"}
-  <GameRuntimePanel />
-{:else if app.activeSection === "@active"}
-  <!-- Must come before the final {:else}: falling through would render an empty
-       options card, since no catalog category is named "@active". -->
-  <ActiveOptions />
-{:else}
-  {@render optionsCard()}
-{/if}
+<div bind:this={panel} class="flex flex-col gap-3">
+  <!--
+    The toolbar sticks to the top of the scroll region: view tabs, the parameter
+    search, the lint count, and — in the catalog — one chip per category that
+    jumps there and lights up as you scroll past it. Bleeds into the column's
+    padding so rows scrolling under it don't peek out at the sides.
+  -->
+  <div
+    bind:this={toolbar}
+    bind:clientHeight={toolbarH}
+    class="sticky top-0 z-20 -mx-5 space-y-2.5 px-5 pb-2.5 pt-2"
+    style="background: var(--bg)"
+  >
+    <div class="flex flex-wrap items-center gap-2">
+      <div role="tablist" aria-label="Builder views" class="inline-flex rounded-lg border border-border bg-surface-2/50 p-0.5">
+        {@render tabButton("catalog", "Parameters", Faders, goCatalog)}
+        {@render tabButton("@active", "On", ListChecks, () => app.setSection("@active"), app.activeCount)}
+        {@render tabButton("recipes", "Recipes", Sparkle, () => app.setSection("recipes"))}
+        {@render tabButton("game", "Game & runtime", Cpu, () => app.setSection("game"))}
+      </div>
 
-{#snippet optionsCard()}
-  <section class="card p-4">
-    <div class="mb-3 flex items-center gap-2.5">
-      {#if searching}
-        <MagnifyingGlass size={18} class="text-accent" />
-      {:else}
-        <Faders size={18} class="text-accent" />
-      {/if}
-      <h2 class="text-sm font-medium tracking-wide text-text">{title}</h2>
-      {#if searching}
-        <span class="text-xs text-muted">· {resultSummary}</span>
-      {/if}
-      {#if sectionRecommended.length}
+      <div class="relative min-w-48 flex-1">
+        <MagnifyingGlass
+          size={14}
+          class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+        />
+        <input
+          use:focusTarget={"param-search"}
+          bind:value={app.paramQuery}
+          onkeydown={onSearchKeydown}
+          aria-label="Search parameters"
+          placeholder="Search parameters and recipes…  /"
+          class="h-8 w-full rounded-lg border border-border bg-surface-2 pl-8 pr-7 text-xs text-text outline-none focus:border-accent"
+        />
+        {#if app.paramQuery}
+          <button
+            onclick={() => (app.paramQuery = "")}
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-text"
+            aria-label="Clear search"
+          >
+            <X size={13} />
+          </button>
+        {/if}
+      </div>
+
+      {#if worst}
+        {@const Icon = SEV_ICON[worst]}
+        <!-- Lint lives on the rows now; this is the count, and the full list
+             (including notices with no row to sit on) one click away. -->
         <button
-          onclick={applyRecommended}
-          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/10"
+          onclick={() => (lintOpen = !lintOpen)}
+          aria-expanded={lintOpen}
+          class="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition hover:brightness-110"
+          style="border-color: color-mix(in srgb, {SEV_COLOUR[worst]} 40%, transparent);
+                 background: color-mix(in srgb, {SEV_COLOUR[worst]} 10%, transparent);
+                 color: {SEV_COLOUR[worst]}"
         >
-          <Sparkle size={13} weight="fill" /> Recommended for your GPU
+          <Icon size={14} weight="fill" />
+          {[
+            counts.error && `${counts.error} problem${counts.error > 1 ? "s" : ""}`,
+            counts.warning && `${counts.warning} warning${counts.warning > 1 ? "s" : ""}`,
+            counts.info && `${counts.info} hint${counts.info > 1 ? "s" : ""}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </button>
       {/if}
     </div>
 
-    <!-- Two independent filters, one line. Each half only appears when it has
-         something to say, so the common case is a single short sentence. -->
-    {#if hiddenCount > 0 || advancedCount > 0 || showAdvanced}
-      <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-        {#if hiddenCount > 0}
-          <span class="inline-flex items-center gap-2">
-            {#if showAll}
-              <span>Showing all, including unsupported options.</span>
-              <button
-                onclick={() => app.setShowIrrelevant(false)}
-                class="font-medium text-accent hover:underline">Hide unsupported</button
-              >
-            {:else}
-              <span>{hiddenCount} hidden for your hardware.</span>
-              <button
-                onclick={() => app.setShowIrrelevant(true)}
-                class="font-medium text-accent hover:underline">Show all</button
-              >
-            {/if}
-          </span>
-        {/if}
-        {#if advancedCount > 0}
-          <span class="inline-flex items-center gap-2">
-            {#if showAdvanced}
-              <span>{advancedCount} advanced shown.</span>
-              <button
-                onclick={() => app.setShowAdvanced(false)}
-                class="font-medium text-accent hover:underline">Hide advanced</button
-              >
-            {:else}
-              <span>{advancedCount} advanced hidden.</span>
-              <button
-                onclick={() => app.setShowAdvanced(true)}
-                class="font-medium text-accent hover:underline">Show advanced</button
+    {#if tab === "catalog" && !searching}
+      <nav aria-label="Parameter categories" class="flex flex-wrap gap-1">
+        {#each sections as sec (sec.name)}
+          {@const on = spy === sec.name}
+          <button
+            onclick={() => app.setSection(sec.name)}
+            aria-current={on ? "location" : undefined}
+            class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition {on
+              ? 'border-accent/50'
+              : 'border-border/70 text-subtext hover:border-accent/40 hover:text-text'}"
+            style={on ? "background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent)" : ""}
+          >
+            {sec.name}
+            {#if sec.on}
+              <span
+                class="rounded-full px-1 text-[10px]"
+                style="background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent)"
+                >{sec.on}</span
               >
             {/if}
-          </span>
-        {:else if showAdvanced}
-          <!-- Nothing advanced in this section, but the toggle is on globally —
-               say so, or "Show advanced" looks like it did nothing. -->
-          <span>Advanced options are shown; this section has none.</span>
-        {/if}
-      </div>
+          </button>
+        {/each}
+      </nav>
     {/if}
 
+    {#if (tab === "catalog" || searching) && (hiddenCount > 0 || advancedCount > 0 || showAdvanced)}
+      {@render filterSummary()}
+    {/if}
+  </div>
+
+  {#if lintOpen && worst}
+    <Notices />
+  {/if}
+
+  {#if searching}
+    {@render searchResults()}
+  {:else if tab === "recipes"}
+    <Recipes />
+  {:else if tab === "game"}
+    <GameRuntimePanel />
+  {:else if tab === "@active"}
+    <ActiveOptions />
+  {:else if !sections.length}
+    <div class="card flex flex-col items-center gap-2 py-12 text-center">
+      <MagnifyingGlass size={26} class="text-muted" />
+      <p class="text-sm text-muted">Nothing to show here for your hardware.</p>
+    </div>
+  {:else}
+    {#each sections as sec (sec.name)}
+      <section data-section={sec.name} aria-label={sec.name} class="card p-2">
+        <!-- Sticks just under the toolbar while its rows scroll past. -->
+        <div
+          class="sticky z-10 -mx-2 -mt-2 mb-1 flex items-center gap-2 rounded-t-[var(--radius-card)] px-4 py-2"
+          style="top: {toolbarH}px; background: var(--surface-solid)"
+        >
+          <h2 class="text-sm font-medium tracking-wide text-text">{sec.name}</h2>
+          <span class="text-[11px] text-muted"
+            >{sec.rows.length}{sec.on ? ` · ${sec.on} on` : ""}</span
+          >
+          {#if recommendedIn.get(sec.name)}
+            <button
+              onclick={applyRecommended}
+              class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-0.5 text-xs font-medium text-accent transition hover:bg-accent/10"
+            >
+              <Sparkle size={12} weight="fill" /> Recommended for your GPU
+            </button>
+          {/if}
+        </div>
+        <div class="space-y-0.5">
+          {#each sec.rows as h (h.kind + h.key)}
+            {@render row(h)}
+          {/each}
+        </div>
+        {#if sec.advancedHidden}
+          <p class="px-3 py-2 text-xs text-muted">
+            {sec.advancedHidden} advanced option{sec.advancedHidden === 1 ? "" : "s"} hidden here.
+            <button onclick={() => app.setShowAdvanced(true)} class="font-medium text-accent hover:underline"
+              >Show advanced</button
+            >
+          </p>
+        {/if}
+      </section>
+    {/each}
+  {/if}
+</div>
+
+{#snippet tabButton(
+  id: string,
+  label: string,
+  Icon: typeof Faders,
+  go: () => void,
+  count = 0,
+)}
+  {@const active = !searching && tab === id}
+  <button
+    role="tab"
+    aria-selected={active}
+    onclick={go}
+    class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition {active
+      ? 'font-medium'
+      : 'text-muted hover:text-text'}"
+    style={active ? "background: var(--accent); color: var(--on-accent)" : ""}
+  >
+    <Icon size={13} weight={active ? "fill" : "regular"} />
+    {label}
+    {#if count > 0}
+      <span
+        class="rounded-full px-1 text-[10px]"
+        style={active
+          ? "background: color-mix(in srgb, var(--on-accent) 20%, transparent)"
+          : "background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent)"}
+        >{count}</span
+      >
+    {/if}
+  </button>
+{/snippet}
+
+<!-- Two independent filters, one line. Each half only appears when it has
+     something to say, so the common case is a single short sentence. -->
+{#snippet filterSummary()}
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+    {#if searching}
+      <span class="text-subtext">{resultSummary}</span>
+    {/if}
+    {#if hiddenCount > 0}
+      <span class="inline-flex items-center gap-1.5">
+        {#if showAll}
+          <span>Showing options your hardware can't use.</span>
+          <button onclick={() => app.setShowIrrelevant(false)} class="font-medium text-accent hover:underline"
+            >Hide them</button
+          >
+        {:else}
+          <span>{hiddenCount} hidden for your hardware.</span>
+          <button onclick={() => app.setShowIrrelevant(true)} class="font-medium text-accent hover:underline"
+            >Show all</button
+          >
+        {/if}
+      </span>
+    {/if}
+    {#if advancedCount > 0 || showAdvanced}
+      <span class="inline-flex items-center gap-1.5">
+        {#if showAdvanced}
+          <span>Advanced options shown.</span>
+          <button onclick={() => app.setShowAdvanced(false)} class="font-medium text-accent hover:underline"
+            >Hide advanced</button
+          >
+        {:else}
+          <span>{advancedCount} advanced hidden.</span>
+          <button onclick={() => app.setShowAdvanced(true)} class="font-medium text-accent hover:underline"
+            >Show advanced</button
+          >
+        {/if}
+      </span>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet searchResults()}
+  <section class="card p-4">
     {#if !anyShown}
       <div class="flex flex-col items-center gap-2 py-12 text-center">
         <MagnifyingGlass size={26} class="text-muted" />
-        <!-- Name the filter that actually emptied this, rather than blaming
-             hardware for what the advanced tier did. Whole sections (VKD3D,
-             Wine / Overrides) are advanced end to end, so the wrong reason here
-             would send you looking for a hardware problem you don't have. The
-             matching "Show advanced" link is in the summary row above. -->
+        <!-- Name the filter that emptied this, rather than blaming hardware
+             for what the advanced tier did. -->
         <p class="text-sm text-muted">
-          {searching
-            ? `No parameters match “${q.trim()}”.`
-            : advancedCount > 0
-              ? "Everything here is an advanced option."
-              : "Nothing to show here for your hardware."}
+          No parameters match “{q.trim()}”{advancedCount > 0 && !showAdvanced
+            ? " — some advanced ones might"
+            : ""}.
         </p>
-        {#if searching}
-          <button
-            onclick={() => (app.paramQuery = "")}
-            class="text-xs text-accent hover:underline">Clear search</button
-          >
-        {/if}
+        <button onclick={() => (app.paramQuery = "")} class="text-xs text-accent hover:underline"
+          >Clear search</button
+        >
       </div>
-    {:else if searching}
+    {:else}
       <!-- Grouped so a 40-result query reads as a map of the catalog rather than
            a flat wall. Groups ordered by their best member, items by score. -->
       <div class="space-y-4">
         {#if recipeHits.length}
           <div>
-            <p class="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted">
-              Recipes
-            </p>
+            <p class="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted">Recipes</p>
             <div class="space-y-1">
               {#each recipeHits as rh (rh.recipe.name)}
                 {@render recipeRow(rh.index, rh.recipe)}
@@ -369,24 +655,13 @@
         {/if}
         {#each groups as g (g.name)}
           <div>
-            <p class="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted">
-              {g.name}
-            </p>
+            <p class="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted">{g.name}</p>
             <div class="space-y-0.5">
               {#each g.items as h (h.kind + h.key)}
                 {@render row(h)}
               {/each}
             </div>
           </div>
-        {/each}
-      </div>
-    {:else}
-      <div class="space-y-0.5">
-        {#each sectionWraps as h (h.key)}
-          {@render row(h)}
-        {/each}
-        {#each sectionEnvs as h (h.key)}
-          {@render row(h)}
         {/each}
       </div>
     {/if}
@@ -492,6 +767,7 @@
   {#if h.kind === "wrap"}
     {@const w = h.def as WrapperDef}
     <OptionRow
+      wrapper
       paramKey={w.key}
       enabled={app.wrap[w.key]?.enabled ?? false}
       title={h.label}
@@ -509,6 +785,7 @@
       needs={w.needs}
       dim={h.hidden}
       appliedBy={app.recipeOrigin[h.key] ?? null}
+      notices={noticesByKey.get(h.key) ?? []}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       action={w.key === "mangohud"
@@ -541,6 +818,7 @@
       needs={e.needs}
       dim={h.hidden}
       appliedBy={app.recipeOrigin[h.key] ?? null}
+      notices={noticesByKey.get(h.key) ?? []}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       action={e.key === "MANGOHUD_CONFIG"

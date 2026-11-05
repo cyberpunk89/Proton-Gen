@@ -23,7 +23,7 @@
     align?: "start" | "end";
     width?: string;
     open?: boolean;
-    /** Read-only bubbles should not steal focus; see InfoPopover. */
+    /** Read-only bubbles should not steal focus. */
     trapFocus?: boolean;
   } = $props();
 

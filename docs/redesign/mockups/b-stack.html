@@ -1,0 +1,90 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>B · Launch stack</title><link rel="stylesheet" href="base.css">
+<style>
+  .layer { border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+  .layer > .h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  .item { display: flex; align-items: center; gap: 9px; padding: 7px 12px; font-size: 12px; }
+  .item + .item { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+  .item .k { font: 500 12px "JetBrains Mono", monospace; }
+  .item.muted-item { opacity: .45; } .item.muted-item .k { text-decoration: line-through; }
+  .grip { color: var(--overlay); font-size: 11px; letter-spacing: -2px; }
+  .eye { color: var(--muted); font-size: 12px; }
+  .tile { border-radius: 12px; border: 1px solid var(--border); background: var(--surface); padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .tile .t { font-weight: 500; }
+  .res { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; }
+  .res:hover, .res.hl { background: var(--surface-2); }
+  .plus { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-size: 15px; }
+</style></head>
+<body><div class="app">
+<div class="topbar">
+  <div class="logo">&gt;_</div>
+  <span class="btn ghost">← Library</span>
+  <div class="game"><div class="cover"></div><div class="col"><b style="font-weight:500">ELDEN RING</b><span class="muted small" style="margin-top:-2px">Heroic · 144 h</span></div></div>
+  <div class="seg accent"><span class="on">Steam</span><span>umu</span></div>
+  <div class="grow"></div>
+  <span class="btn outline">Presets ▾</span>
+  <span class="btn ghost">⌘ Palette <span class="kbd">Ctrl K</span></span>
+  <span class="btn ghost">⋯</span>
+  <div class="winctl"><span>–</span><span>□</span><span>✕</span></div>
+</div>
+
+<div class="row grow" style="align-items:stretch;min-height:0;gap:0">
+  <!-- the stack: everything that's ON, in emit order -->
+  <div class="side br" style="width:470px;padding:14px;display:flex;flex-direction:column;gap:10px;position:relative">
+    <div class="row"><span style="font-weight:500;font-size:14px">Launch stack</span><span class="count">9</span><span class="grow"></span>
+      <div class="seg"><span class="on">A</span><span>B</span></div><span class="btn outline" style="height:26px">Mute all</span></div>
+
+    <div class="layer"><div class="h"><span class="tiny">1 · Runtime</span></div>
+      <div class="item"><span class="k">GE-Proton11-7</span><span class="grow"></span><span class="chip green">user · newest</span><span class="muted">▾</span></div></div>
+
+    <div class="layer"><div class="h"><span class="tiny">2 · Wrappers</span><span class="muted small">run left → right</span><span class="grow"></span><span class="muted small">+ add</span></div>
+      <div class="item"><span class="grip">⋮⋮</span><span class="k t-wr">gamemoderun</span><span class="grow"></span><span class="chip line">manual</span><span class="eye">◉</span><span class="muted">✕</span></div>
+      <div class="item"><span class="grip">⋮⋮</span><span class="k t-wr">gamescope</span><span class="mono small t-arg">-W 2560 -H 1440 -r 165</span><span class="grow"></span><span class="chip">Edit…</span><span class="eye">◉</span><span class="muted">✕</span></div>
+      <div class="item muted-item"><span class="grip">⋮⋮</span><span class="k t-wr">mangohud</span><span class="grow"></span><span class="chip red">missing</span><span class="eye">◎</span><span class="muted">✕</span></div></div>
+
+    <div class="layer"><div class="h"><span class="tiny">3 · Environment</span><span class="grow"></span><span class="muted small">+ add</span></div>
+      <div class="item"><span class="k t-env">DXVK_ASYNC</span>=<span class="mono t-val">1</span><span class="grow"></span><span class="chip mauve">Stutter fix</span><span class="eye">◉</span><span class="muted">✕</span></div>
+      <div class="item" style="background:color-mix(in srgb,var(--red) 8%,transparent)"><span class="k t-env">PROTON_DXVK_GPLASYNC</span>=<span class="mono t-val">1</span><span class="grow"></span><span class="chip red">⚠ EAC</span><span class="eye">◉</span><span class="muted">✕</span></div>
+      <div class="item"><span class="k t-env">DXVK_HUD</span>=<span class="mono t-val">fps,frametimes</span><span class="grow"></span><span class="chip line">manual</span><span class="eye">◉</span><span class="muted">✕</span></div>
+      <div class="item"><span class="k t-env">PROTON_ENABLE_WAYLAND</span>=<span class="mono t-val">1</span><span class="grow"></span><span class="chip mauve">HDR</span><span class="eye">◉</span><span class="muted">✕</span></div>
+      <div class="item"><span class="k t-env">DXVK_HDR</span>=<span class="mono t-val">1</span><span class="grow"></span><span class="chip mauve">HDR</span><span class="eye">◉</span><span class="muted">✕</span></div></div>
+
+    <div class="layer"><div class="h"><span class="tiny">4 · Game args</span></div>
+      <div class="item"><span class="k t-tgt">%command%</span><span class="mono small muted">-skipintro</span></div></div>
+
+    <div class="note" style="left:14px;top:640px;max-width:215px"><span class="n">1</span><b>A/B slots</b>: keep two stacks, flip to compare. Mute (◉) drops an item from the command without forgetting it — bisect a bad config fast.</div>
+    <div class="note" style="left:242px;top:640px;max-width:215px"><span class="n">2</span>The stack <b>is</b> the command, in emit order. Drag wrappers to reorder.</div>
+  </div>
+
+  <!-- add browser -->
+  <div class="grow col" style="padding:16px 22px;gap:14px;min-height:0;position:relative">
+    <div class="search focus" style="height:40px;font-size:13.5px">⌕ <span style="color:var(--text)">frame</span><span style="border-left:1.5px solid var(--accent);height:16px"></span><span class="grow"></span><span class="muted small">7 matches</span></div>
+    <div class="row" style="gap:6px"><span class="chip on">All</span><span class="chip">Wrappers</span><span class="chip">Performance</span><span class="chip">DXVK</span><span class="chip">VKD3D</span><span class="chip">Upscaling</span><span class="chip">Display</span><span class="chip">Debug</span><span class="chip line">+6 hidden for your GPU</span></div>
+
+    <div class="col" style="gap:2px">
+      <div class="tiny" style="padding:0 12px 4px">Options</div>
+      <div class="res hl"><span class="plus">+</span><div class="grow"><div class="mono" style="font-weight:500"><u>DXVK_FRAME</u>_RATE</div><div class="muted small">Cap the <u>frame</u> rate inside DXVK · DXVK</div></div><span class="val muted">value</span><span class="kbd">↵</span></div>
+      <div class="res"><span class="plus">+</span><div class="grow"><div class="mono" style="font-weight:500">PROTON_FSR4_UPGRADE</div><div class="muted small">FSR 4 <u>frame</u> generation upgrade · Upscaling · RDNA4</div></div><span class="chip green">your GPU ✓</span></div>
+      <div class="res"><span class="plus">+</span><div class="grow"><div class="mono" style="font-weight:500">LSFG_MULTIPLIER</div><div class="muted small">Lossless Scaling <u>frame</u> gen multiplier · Frame Generation</div></div><span class="chip">lsfg-vk ✓</span></div>
+      <div class="res"><span class="plus">+</span><div class="grow"><div class="mono" style="font-weight:500">VKD3D_FRAME_RATE</div><div class="muted small">Cap the <u>frame</u> rate inside VKD3D-Proton · VKD3D</div></div></div>
+    </div>
+    <div class="col" style="gap:2px">
+      <div class="tiny" style="padding:0 12px 4px">Recipes &amp; builders</div>
+      <div class="res"><span class="plus" style="background:color-mix(in srgb,var(--mauve) 18%,transparent);color:var(--mauve)">✦</span><div class="grow"><div style="font-weight:500">Smooth <u>frame</u> pacing</div><div class="muted small">gamescope --framerate-limit + DXVK_FRAME_RATE + gamemode · adds 3</div></div><span class="btn outline" style="height:26px">Preview</span></div>
+      <div class="res"><span class="plus" style="background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)">⚙</span><div class="grow"><div style="font-weight:500">OptiScaler <u>frame</u> gen builder</div><div class="muted small">Opens the builder</div></div></div>
+    </div>
+
+    <div class="grow"></div>
+    <div class="row" style="gap:12px">
+      <div class="tile grow"><span class="tiny">Popular for ELDEN RING</span><span class="t">Stutter fix · HDR · Unlock FPS</span><span class="muted small">from ProtonDB tags + your hardware</span></div>
+      <div class="tile grow"><span class="tiny">Recently used</span><span class="t mono" style="font-size:12px">DXVK_HUD · PROTON_LOG · WINEDLLOVERRIDES</span><span class="muted small">across all games</span></div>
+    </div>
+    <div class="note" style="left:470px;top:58px;max-width:240px"><span class="n">3</span><b>Search-first "add" panel</b>. Categories become filter chips. Enter adds the highlighted match to the stack.</div>
+  </div>
+</div>
+
+<div class="bt" style="padding:10px 16px;background:color-mix(in srgb,var(--mantle) 55%,transparent)">
+  <div class="row"><span class="tiny">Steam launch options · slot A</span><span class="chip yellow">● differs from Steam</span><span class="grow"></span><span class="btn outline">Copy</span><span class="btn primary">Copy &amp; open Steam</span></div>
+  <div class="cmd" style="margin-top:6px"><span class="t-env">DXVK_ASYNC</span>=<span class="t-val">1</span> <span class="t-env">PROTON_DXVK_GPLASYNC</span>=<span class="t-val">1</span> <span class="t-env">DXVK_HUD</span>=<span class="t-val">fps,frametimes</span> <span class="t-env">PROTON_ENABLE_WAYLAND</span>=<span class="t-val">1</span> <span class="t-env">DXVK_HDR</span>=<span class="t-val">1</span> <span class="t-wr">gamemoderun</span> <span class="t-wr">gamescope</span> <span class="t-arg">-W 2560 -H 1440 -r 165 --</span> <span class="t-tgt">%command%</span> -skipintro</div>
+</div>
+</div></body></html>

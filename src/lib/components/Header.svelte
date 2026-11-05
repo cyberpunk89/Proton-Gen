@@ -30,7 +30,37 @@
     Minus,
     Square,
     X,
+    DotsThree,
+    GameController,
+    Terminal,
   } from "phosphor-svelte";
+  import ModeToggle from "./ModeToggle.svelte";
+  import { art as artStore } from "$lib/art.svelte";
+  import { formatPlaytime } from "$lib/util";
+
+  let moreOpen = $state(false);
+  const SOURCE_LABEL: Record<string, string> = {
+    steam: "Steam",
+    "non-steam": "Non-Steam",
+    heroic: "Heroic",
+    nexus: "Nexus",
+  };
+
+  // The game chip (builder view): the cover thumbnail and one line of context.
+  let game = $derived(
+    app.selectedAppId == null ? null : (app.games.find((g) => g.app_id === app.selectedAppId) ?? null),
+  );
+  $effect(() => {
+    void artStore.epoch; // re-ask after a refresh forgets failed art
+    if (game) artStore.request(game.app_id, game.source, "portrait");
+  });
+  let gameArt = $derived(game ? artStore.for(game.app_id, game.source, "portrait") : undefined);
+  let gameSub = $derived.by(() => {
+    if (!game) return "";
+    const played = formatPlaytime(game.playtime_minutes);
+    const src = SOURCE_LABEL[game.source] ?? game.source;
+    return [src, played].filter(Boolean).join(" · ");
+  });
 
   let importText = $state("");
   let importError = $state<string | null>(null);
@@ -132,158 +162,196 @@
   }
 </script>
 
-<header data-tauri-drag-region class="relative flex items-center gap-2.5 px-4 py-2">
+<!--
+  One bar, three zones: where you are (library, game, Steam/umu) · search ·
+  the few things you do often (density, presets) plus a ⋯ menu for the rest.
+  It used to carry ten peer buttons; Import, Logs, Troubleshoot, Refresh and
+  Settings now share the menu (all of them are in the palette too).
+-->
+<header data-tauri-drag-region class="relative flex items-center gap-2 px-3 py-2">
   <!-- Accent hairline along the bottom edge, fading out at both ends. -->
   <span
     class="pointer-events-none absolute inset-x-0 bottom-0 h-px"
     style="background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 45%, transparent) 30%, color-mix(in srgb, var(--mauve) 45%, transparent) 70%, transparent)"
     aria-hidden="true"
   ></span>
-  <img src="/logo.svg" alt="" class="size-7 rounded-lg" data-tauri-drag-region />
-  <div data-tauri-drag-region>
-    <h1 class="text-sm font-medium leading-none text-text" data-tauri-drag-region>protongen</h1>
-    {#if app.steamRoot}
-      <p class="mt-0.5 text-[11px] leading-none text-muted" data-tauri-drag-region>{app.steamRoot}</p>
-    {/if}
-  </div>
+  <img src="/logo.svg" alt="" class="size-7 shrink-0 rounded-lg" data-tauri-drag-region />
 
-  <div class="ml-auto flex items-center gap-1.5">
-    {#if app.view === "builder"}
+  {#if app.view === "builder"}
     <button
       onclick={() => app.backToLibrary()}
-      title="Back to library"
+      title="Back to library (Esc)"
       aria-label="Back to library"
-      class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+      class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-subtext transition hover:bg-surface-2 hover:text-text"
     >
       <ArrowLeft size={14} /> Library
     </button>
 
-    <UiModeToggle />
-
+    <!-- The game this command is for. Was a card in the side rail. -->
     <button
-      onclick={() => (app.showImport = true)}
-      class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+      onclick={() => app.backToLibrary()}
+      title="Change game"
+      class="group relative isolate flex h-9 min-w-0 max-w-56 shrink items-center gap-2 overflow-hidden rounded-lg border border-border bg-surface-2/60 pl-1 pr-2.5 text-left transition hover:border-accent/50"
     >
-      <ClipboardText size={14} /> Import
+      {#if game && gameArt}
+        <img
+          src={gameArt}
+          alt=""
+          aria-hidden="true"
+          class="pointer-events-none absolute inset-0 -z-10 h-full w-full scale-150 object-cover opacity-25 blur-xl saturate-150"
+        />
+      {/if}
+      <span class="h-7 w-5 shrink-0 overflow-hidden rounded bg-mantle ring-1 ring-border/60">
+        {#if game && gameArt}
+          <img src={gameArt} alt="" class="h-full w-full object-cover" />
+        {:else}
+          <span class="grid h-full w-full place-items-center text-muted">
+            {#if game}<GameController size={11} weight="fill" />{:else}<Terminal size={11} />{/if}
+          </span>
+        {/if}
+      </span>
+      <span class="min-w-0">
+        <span class="block truncate text-[13px] font-medium leading-tight text-text"
+          >{app.selectedGameName ?? "Generic command"}</span
+        >
+        {#if gameSub}
+          <span class="block truncate text-[10px] leading-tight text-muted">{gameSub}</span>
+        {/if}
+      </span>
     </button>
 
-    <!-- Presets -->
-    <Popover width="16rem">
-      {#snippet trigger({ props })}
-        <button
-          {...props}
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
-        >
-          <BookmarkSimple size={14} />
-          {app.activePresetName ?? "Presets"}
-          {#if app.presetModified}
-            <span class="text-peach" title="Changed since this preset was loaded" aria-label="modified"
-              >•</span
-            >
-          {/if}
-        </button>
-      {/snippet}
-      <div class="space-y-1">
-        {#if app.store.global_profile}
-          <button
-            onclick={() => {
-              app.applyGlobalProfile();
-              toast.success("Default profile applied", {
-                action: { label: "Undo", onClick: () => app.undo() },
-              });
-            }}
-            class="flex w-full items-center gap-1.5 rounded-lg border border-accent/40 px-2 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
-          >
-            <GlobeHemisphereWest size={13} /> Apply default profile
-          </button>
-          <div class="my-1 border-t border-border/60"></div>
-        {/if}
-        {#if app.presetsForCurrentGame.length}
-          <p class="px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">For this game</p>
-          {#each app.presetsForCurrentGame as p (p.name)}
-            <PresetRow preset={p} />
-          {/each}
-          <div class="my-1 border-t border-border/60"></div>
-        {/if}
-        {#if app.otherPresets.length}
-          {#if app.presetsForCurrentGame.length}
-            <p class="px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">Other presets</p>
-          {/if}
-          {#each app.otherPresets as p (p.name)}
-            <PresetRow preset={p} />
-          {/each}
-        {/if}
-        {#if !app.presetsForCurrentGame.length && !app.otherPresets.length}
-          <p class="px-2 py-3 text-center text-xs text-muted">No saved presets.</p>
-        {/if}
-        <button
-          onclick={openSave}
-          class="mt-1 flex w-full items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs text-subtext hover:bg-surface-2"
-        >
-          <FloppyDisk size={13} /> Save current…
-        </button>
-        <button
-          onclick={() => (app.compareOpen = true)}
-          class="flex w-full items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs text-subtext hover:bg-surface-2"
-        >
-          <ArrowsLeftRight size={13} /> Compare…
-        </button>
-      </div>
-    </Popover>
+    <ModeToggle size="sm" />
+  {:else}
+    <div data-tauri-drag-region class="min-w-0">
+      <h1 class="text-sm font-medium leading-none text-text" data-tauri-drag-region>protongen</h1>
+      {#if app.steamRoot}
+        <p class="mt-0.5 truncate text-[11px] leading-none text-muted" data-tauri-drag-region>
+          {app.steamRoot}
+        </p>
+      {/if}
+    </div>
+  {/if}
 
-    <!-- Per-game Proton log viewer. Only meaningful with a game selected. -->
-    <button
-      onclick={() => (app.showLogs = true)}
-      disabled={app.selectedAppId == null}
-      class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50 disabled:opacity-50"
-      title={app.selectedAppId == null ? "Select a game to view its Proton log" : "View this game's Proton log"}
-    >
-      <FileText size={14} /> Logs
-    </button>
-
-    <!-- AI symptom troubleshooter. Opt-in; only shown when the AI coach is on. -->
-    {#if app.store.llm_enabled}
-      <button
-        onclick={() => (app.showTroubleshooter = true)}
-        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 py-1.5 text-xs text-subtext transition hover:border-accent/50"
-        title="Describe a problem and get AI-suggested fixes"
-      >
-        <Robot size={14} /> Troubleshoot
-      </button>
-    {/if}
-    {/if}
-
-    <!-- The palette reaches every action, game, option and preset; without a
-         visible entry it was Ctrl+K-only and effectively undiscoverable. -->
+  <!-- Search: the palette reaches every option, recipe, game and action. -->
+  <div class="flex min-w-0 flex-1 justify-center px-2" data-tauri-drag-region>
     <button
       onclick={() => (app.showPalette = true)}
-      class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2 text-xs text-muted transition hover:border-accent/50 hover:text-subtext"
+      class="inline-flex h-8 w-full max-w-md min-w-0 items-center gap-2 rounded-lg border border-border bg-surface-2/50 px-2.5 text-xs text-muted transition hover:border-accent/50 hover:text-subtext"
       aria-label="Search actions, games and options"
       title="Search actions, games and options (Ctrl+K)"
     >
-      <MagnifyingGlass size={14} />
-      <kbd class="hidden rounded border border-border px-1 font-sans text-[10px] lg:inline">Ctrl K</kbd>
+      <MagnifyingGlass size={14} class="shrink-0" />
+      <span class="hidden min-w-0 truncate md:inline">Find an option, recipe or action…</span>
+      <kbd class="ml-auto hidden shrink-0 rounded border border-border px-1 font-sans text-[10px] lg:inline"
+        >Ctrl K</kbd
+      >
     </button>
+  </div>
 
-    <!-- Refresh library (available on both library and builder views) -->
-    <button
-      onclick={doRefresh}
-      disabled={app.refreshing}
-      class="grid size-8 place-items-center rounded-lg border border-border bg-surface-2/50 text-subtext transition hover:border-accent/50 disabled:opacity-60"
-      aria-label="Refresh library"
-      title="Re-scan games, runtimes and shortcuts"
-    >
-      <ArrowsClockwise size={15} class={app.refreshing ? "animate-spin" : ""} />
-    </button>
+  <div class="flex shrink-0 items-center gap-1.5">
+    {#if app.view === "builder"}
+      <UiModeToggle />
 
-    <!-- Settings -->
-    <button
-      onclick={() => (app.showSettings = true)}
-      class="grid size-8 place-items-center rounded-lg border border-border bg-surface-2/50 text-subtext transition hover:border-accent/50"
-      aria-label="Settings"
-    >
-      <GearSix size={15} />
-    </button>
+      <!-- Presets: used often enough to keep its own button. -->
+      <Popover width="16rem">
+        {#snippet trigger({ props })}
+          <button
+            {...props}
+            class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2.5 text-xs text-subtext transition hover:border-accent/50"
+          >
+            <BookmarkSimple size={14} />
+            <span class="max-w-32 truncate">{app.activePresetName ?? "Presets"}</span>
+            {#if app.presetModified}
+              <span class="text-peach" title="Changed since this preset was loaded" aria-label="modified"
+                >•</span
+              >
+            {/if}
+          </button>
+        {/snippet}
+        <div class="space-y-1">
+          {#if app.store.global_profile}
+            <button
+              onclick={() => {
+                app.applyGlobalProfile();
+                toast.success("Default profile applied", {
+                  action: { label: "Undo", onClick: () => app.undo() },
+                });
+              }}
+              class="flex w-full items-center gap-1.5 rounded-lg border border-accent/40 px-2 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
+            >
+              <GlobeHemisphereWest size={13} /> Apply default profile
+            </button>
+            <div class="my-1 border-t border-border/60"></div>
+          {/if}
+          {#if app.presetsForCurrentGame.length}
+            <p class="px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">For this game</p>
+            {#each app.presetsForCurrentGame as p (p.name)}
+              <PresetRow preset={p} />
+            {/each}
+            <div class="my-1 border-t border-border/60"></div>
+          {/if}
+          {#if app.otherPresets.length}
+            {#if app.presetsForCurrentGame.length}
+              <p class="px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">Other presets</p>
+            {/if}
+            {#each app.otherPresets as p (p.name)}
+              <PresetRow preset={p} />
+            {/each}
+          {/if}
+          {#if !app.presetsForCurrentGame.length && !app.otherPresets.length}
+            <p class="px-2 py-3 text-center text-xs text-muted">No saved presets.</p>
+          {/if}
+          <button
+            onclick={openSave}
+            class="mt-1 flex w-full items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs text-subtext hover:bg-surface-2"
+          >
+            <FloppyDisk size={13} /> Save current…
+          </button>
+          <button
+            onclick={() => (app.compareOpen = true)}
+            class="flex w-full items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs text-subtext hover:bg-surface-2"
+          >
+            <ArrowsLeftRight size={13} /> Compare…
+          </button>
+        </div>
+      </Popover>
+    {/if}
+
+    <!-- Everything else. Each entry is also a palette action. -->
+    <Popover width="14rem" bind:open={moreOpen}>
+      {#snippet trigger({ props })}
+        <button
+          {...props}
+          class="relative grid size-8 place-items-center rounded-lg border border-border bg-surface-2/50 text-subtext transition hover:border-accent/50"
+          aria-label="More actions"
+          title="More actions"
+        >
+          {#if app.refreshing}
+            <ArrowsClockwise size={15} class="animate-spin" />
+          {:else}
+            <DotsThree size={18} weight="bold" />
+          {/if}
+        </button>
+      {/snippet}
+      <div class="flex flex-col gap-0.5 text-xs">
+        {#if app.view === "builder"}
+          {@render menuItem(ClipboardText, "Import a command…", () => (app.showImport = true))}
+          {@render menuItem(
+            FileText,
+            "Proton logs…",
+            () => (app.showLogs = true),
+            app.selectedAppId == null,
+            app.selectedAppId == null ? "Select a game to view its Proton log" : undefined,
+          )}
+          {#if app.store.llm_enabled}
+            {@render menuItem(Robot, "Troubleshoot…", () => (app.showTroubleshooter = true))}
+          {/if}
+          <div class="my-1 border-t border-border/60"></div>
+        {/if}
+        {@render menuItem(ArrowsClockwise, "Refresh library", doRefresh, app.refreshing)}
+        {@render menuItem(GearSix, "Settings", () => (app.showSettings = true))}
+      </div>
+    </Popover>
 
     <!-- Window controls (native decorations are off) -->
     <div class="ml-1 flex items-center gap-1">
@@ -311,6 +379,27 @@
     </div>
   </div>
 </header>
+
+{#snippet menuItem(
+  Icon: typeof GearSix,
+  label: string,
+  run: () => void,
+  disabled = false,
+  title: string | undefined = undefined,
+)}
+  <button
+    {disabled}
+    {title}
+    onclick={() => {
+      moreOpen = false;
+      run();
+    }}
+    class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-subtext transition hover:bg-surface-2 hover:text-text disabled:opacity-50 disabled:hover:bg-transparent"
+  >
+    <Icon size={14} class="shrink-0" />
+    {label}
+  </button>
+{/snippet}
 
 <Dialog
   bind:open={app.showImport}

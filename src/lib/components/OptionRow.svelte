@@ -2,11 +2,14 @@
   import Switch from "./Switch.svelte";
   import SelectField from "./SelectField.svelte";
   import Badges from "./Badges.svelte";
-  import InfoPopover from "./InfoPopover.svelte";
   import { app } from "$lib/state.svelte";
-  import { prefersReducedMotion } from "$lib/motion.svelte";
-  import { Sparkle } from "phosphor-svelte";
+  import { toast } from "$lib/toast.svelte";
+  import { prefersReducedMotion, slide } from "$lib/motion.svelte";
+  import { openUrl } from "$lib/util";
+  import { shQuote } from "$lib/shell";
+  import { Sparkle, CaretDown, ArrowSquareOut, Wrench } from "phosphor-svelte";
   import type { Snippet } from "svelte";
+  import type { Notice, Severity } from "$lib/types";
 
   let {
     /** Catalog key. Distinct from `title`, which for wrappers is the label. */
@@ -32,6 +35,8 @@
     titleRanges = [],
     helpRanges = [],
     action = null,
+    notices = [],
+    wrapper = false,
     onToggle,
     onValue,
   }: {
@@ -65,6 +70,10 @@
      * `mangohud`-shaped special case baked into MainPanel's row snippet.
      */
     action?: Snippet | null;
+    /** Lint notices about this row, shown on it with their fix. */
+    notices?: Notice[];
+    /** A wrapper program, so "Emits" shows `key args`, not `KEY=value`. */
+    wrapper?: boolean;
     onToggle: () => void;
     onValue?: (v: string) => void;
   } = $props();
@@ -92,9 +101,35 @@
     return out;
   }
 
+  /** Details unfold in place — no popover layer (fewer #63-style risks), and
+   *  the row's own context stays on screen while you read. */
+  let expanded = $state(false);
+
+  /** What this row puts on the command line when on. */
+  let emits = $derived(
+    wrapper
+      ? [paramKey, value].filter(Boolean).join(" ")
+      : `${paramKey}=${shQuote(value || defaultValue || "1")}`,
+  );
+
+  const SEV: Record<Severity, string> = {
+    error: "var(--red)",
+    warning: "var(--peach)",
+    info: "var(--blue)",
+  };
+
+  /** Apply a notice's remedy as one history entry (same as Notices.svelte). */
+  function applyFix(n: Notice) {
+    const fix = n.fix;
+    if (!fix) return;
+    app.applyChanges(fix.label, { enable: fix.enable, disable: fix.disable });
+    toast.success(fix.label, { action: { label: "Undo", onClick: () => app.undo() } });
+  }
+
   // The visible title is the switch's accessible name, so it needs an id.
   const uid = $props.id();
   const labelId = `opt-title-${uid}`;
+  const detailsId = `opt-details-${uid}`;
 
   let row = $state<HTMLDivElement | null>(null);
   let flash = $state(false);
@@ -209,7 +244,16 @@
       {/if}
       {#if action}{@render action()}{/if}
       <Badges {requires} {pkg} {gpu} {needs} />
-      <InfoPopover {details} {example} {url} {defaultValue} {values} />
+      <button
+        type="button"
+        onclick={() => (expanded = !expanded)}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        aria-label="{expanded ? 'Hide' : 'Show'} details for {title}"
+        class="grid size-6 place-items-center rounded-md text-muted transition hover:bg-surface-2 hover:text-text"
+      >
+        <CaretDown size={13} weight="bold" class="transition {expanded ? 'rotate-180' : ''}" />
+      </button>
     </div>
   </div>
 
@@ -221,5 +265,66 @@
             >{seg.text}</mark
           >{:else}{seg.text}{/if}{/each}
     </p>
+  {/if}
+
+  {#each notices as n (n.id)}
+    <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[50px] text-xs leading-snug" style="color: {SEV[n.severity]}">
+      <span class="inline-flex items-start gap-1.5">
+        <span class="mt-[5px] size-1.5 shrink-0 rounded-full" style="background: {SEV[n.severity]}"></span>
+        {n.message}
+      </span>
+      {#if n.fix}
+        <button
+          onclick={() => applyFix(n)}
+          class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition hover:brightness-110"
+          style="background: color-mix(in srgb, {SEV[n.severity]} 18%, transparent)"
+        >
+          <Wrench size={10} weight="bold" />
+          {n.fix.label}
+        </button>
+      {/if}
+    </p>
+  {/each}
+
+  {#if expanded}
+    <div
+      id={detailsId}
+      transition:slide={{ duration: 120 }}
+      class="ml-[50px] mt-2 grid gap-3 rounded-lg bg-mantle/60 p-3 text-xs sm:grid-cols-[minmax(0,1fr)_14rem]"
+    >
+      <div class="min-w-0 space-y-2">
+        <p class="text-[10px] font-medium uppercase tracking-wider text-muted">About</p>
+        <p class="leading-relaxed text-subtext">{details || help || "No further notes for this option."}</p>
+        {#if values.length > 1}
+          <p class="text-muted">
+            Values:
+            {#each values as v, i (v)}<code class="font-mono text-text">{v}</code
+              >{#if i < values.length - 1}, {/if}{/each}
+          </p>
+        {/if}
+        {#if example}
+          <pre class="overflow-x-auto rounded-md bg-mantle p-2 font-mono text-[11px] text-subtext">{example}</pre>
+        {/if}
+      </div>
+      <div class="min-w-0 space-y-2">
+        <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Emits</p>
+        <p class="break-all font-mono text-[11px] {enabled ? 'text-accent' : 'text-muted'}">{emits}</p>
+        {#if defaultValue}
+          <p class="text-muted">Default <code class="font-mono text-text">{defaultValue}</code></p>
+        {/if}
+        <p class="text-muted">
+          {#if appliedBy}Set by the “{appliedBy}” recipe{:else if enabled}Turned on by you{:else}Off{/if}
+        </p>
+        {#if url}
+          <button
+            type="button"
+            onclick={() => openUrl(url)}
+            class="inline-flex items-center gap-1 text-blue hover:underline"
+          >
+            Docs <ArrowSquareOut size={12} weight="bold" />
+          </button>
+        {/if}
+      </div>
+    </div>
   {/if}
 </div>
