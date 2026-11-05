@@ -1,6 +1,6 @@
 # Builder redesign — exploration
 
-Status: **rollout steps 1–2 built** (layout pass + OptiScaler builder rework, On column +
+Status: **rollout steps 1–3 built** (layout pass + OptiScaler builder rework, On column +
 Essentials scope; see below). Mockups are static HTML in [`mockups/`](mockups/)
 (Catppuccin Mocha tokens + Lexend from `app.css`), rendered to [`img/`](img/) at 1440×900.
 Yellow sticky notes are annotations, not UI.
@@ -138,7 +138,11 @@ Where today's ten header controls go:
    and is an overlay with an "On" toggle below that (open question 1). It replaces the
    Active options page and its tab; the column's dots show source (recipe / manual) and
    take the colour of a lint notice about that item. Mute and A/B wait for step 4.
-3. **Dock:** Command / Problems / Logs tabs (moves the LogViewer and Troubleshooter in).
+3. ✅ **Dock:** Command / Problems / Logs tabs (moves the LogViewer and Troubleshooter in).
+   Problems = lint on the command + the fix recipes (searchable by symptom) + the AI
+   troubleshooter when enabled. Matching log lines to recipes (`log_patterns`) is left
+   for step 5, with Runs. The lint banner is gone from both scopes; the Everything
+   toolbar's lint chip opens Problems.
 4. **Mute + A/B:** store fields.
 5. **Runs:** backend run tracking plus diff and "revert to last good".
 

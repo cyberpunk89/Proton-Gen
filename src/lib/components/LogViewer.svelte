@@ -3,7 +3,6 @@
   import { app } from "$lib/state.svelte";
   import { ipc } from "$lib/ipc";
   import { toast } from "$lib/toast.svelte";
-  import Dialog from "./Dialog.svelte";
   import Markdown from "./Markdown.svelte";
   import type { ProtonLog } from "$lib/types";
   import {
@@ -16,8 +15,7 @@
   } from "phosphor-svelte";
 
   /**
-   * The per-game Proton log viewer, mounted once at the app root and opened from
-   * the header for the selected game. `PROTON_LOG=1` writes ~/steam-<appid>.log;
+   * The per-game log viewer: the bottom dock's Logs tab, for the selected game. `PROTON_LOG=1` writes ~/steam-<appid>.log;
    * this reads its tail (read-only) so a stubborn game can be diagnosed without
    * leaving the app.
    */
@@ -70,7 +68,7 @@
     }
   }
 
-  // Fetch when the dialog opens (or the selected game changes while it's open).
+  // Fetch when the tab opens (or the selected game changes while it's open).
   // Reads only showLogs + selectedAppId, so writing log/loading here can't loop.
   $effect(() => {
     if (app.showLogs && app.selectedAppId != null) void refresh();
@@ -107,15 +105,10 @@
   }
 </script>
 
-<Dialog
-  bind:open={app.showLogs}
-  title="Proton log"
-  subtitle={app.selectedGameName
-    ? `Diagnostics for ${app.selectedGameName}`
-    : "Diagnostics for the selected game"}
-  width="52rem"
->
   <div class="space-y-3">
+    {#if app.selectedAppId == null}
+      <p class="py-10 text-center text-sm text-muted">Logs are per game — pick one from the library.</p>
+    {/if}
     {#if presentSources.length > 1}
       <!-- More than one log exists for this game (Proton, Nexus's launch
            output, DXVK, VKD3D): newest is shown first; switch here. -->
@@ -258,10 +251,9 @@
           {log.truncated ? "Tail of log (head trimmed)" : "Log"}
         </p>
         <pre
-          class="max-h-[46vh] overflow-auto rounded-lg border border-border bg-mantle/40 p-3 font-mono text-[11px] leading-relaxed text-subtext">{log.tail}</pre>
+          class="max-h-[60vh] overflow-auto rounded-lg border border-border bg-mantle/40 p-3 font-mono text-[11px] leading-relaxed text-subtext">{log.tail}</pre>
       </div>
     {:else}
       <p class="py-10 text-center text-sm text-muted">Reading log…</p>
     {/if}
   </div>
-</Dialog>

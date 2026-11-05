@@ -9,8 +9,7 @@
   import UiModeToggle from "$lib/components/UiModeToggle.svelte";
   import SimplePanel from "$lib/components/SimplePanel.svelte";
   import Library from "$lib/components/Library.svelte";
-  import CommandPreview from "$lib/components/CommandPreview.svelte";
-  import Notices from "$lib/components/Notices.svelte";
+  import Dock from "$lib/components/Dock.svelte";
   import StaleBanner from "$lib/components/StaleBanner.svelte";
   import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import RuntimeUpdateBanner from "$lib/components/RuntimeUpdateBanner.svelte";
@@ -251,9 +250,6 @@
                   <UiModeToggle />
                   <span class="text-xs text-muted">The options most people reach for.</span>
                 </div>
-                <!-- Everything shows lint inline on the rows it's about, with a
-                     count in its toolbar; Essentials has no rows to put it on. -->
-                <Notices />
                 <SimplePanel />
               {:else}
                 <MainPanel />
@@ -261,12 +257,8 @@
             </div>
           </div>
 
-          <!-- Pinned command bar -->
-          <div class="shrink-0 border-t border-border bg-mantle/30 px-5 py-3">
-            <div class="mx-auto max-w-5xl">
-              <CommandPreview />
-            </div>
-          </div>
+          <!-- Command · Problems · Logs: collapsed it's the command bar. -->
+          <Dock />
         </main>
       </div>
     {/if}
@@ -294,12 +286,6 @@
 <DefaultProfilePrompt />
 <IntroTour />
 <!-- Lazy: mounted on first open, then kept (see Lazy.svelte). -->
-<Lazy load={lazy.logViewer} when={app.showLogs}>
-  {#snippet children(C)}<C />{/snippet}
-</Lazy>
-<Lazy load={lazy.troubleshooter} when={app.showTroubleshooter}>
-  {#snippet children(C)}<C />{/snippet}
-</Lazy>
 <Lazy load={lazy.pendingQueue} when={app.pendingQueueOpen}>
   {#snippet children(C)}<C />{/snippet}
 </Lazy>

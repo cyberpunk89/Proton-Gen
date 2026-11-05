@@ -206,15 +206,43 @@ class AppStore {
   tourReplay = $state(0);
   showPalette = $state(false);
   showShortcuts = $state(false);
-  /** The per-game Proton log viewer (opened from the header, for the selected
-   *  game). Lives here so the palette can open it too. */
-  showLogs = $state(false);
+  /**
+   * The builder's bottom dock: "command" is the collapsed command bar; any
+   * other tab pulls the dock up to `dockHeight` px. Per session.
+   */
+  dockTab = $state<"command" | "problems" | "logs">("command");
+  dockHeight = $state(340);
+  /** Bumped to focus the troubleshooter's symptom box when it's asked for. */
+  troubleshootFocus = $state(0);
+
+  openDock(tab: "command" | "problems" | "logs") {
+    this.view = "builder";
+    this.dockTab = tab;
+  }
+
+  /** The per-game log viewer, now the dock's Logs tab. Kept as a flag so the
+   *  palette, menu and LogViewer's own fetch effect read the same thing. */
+  get showLogs(): boolean {
+    return this.view === "builder" && this.dockTab === "logs";
+  }
+  set showLogs(v: boolean) {
+    if (v) this.openDock("logs");
+    else if (this.dockTab === "logs") this.dockTab = "command";
+  }
   // ---- local-LLM log coach (opt-in; driven from the log viewer) ----
   aiLoading = $state(false);
   aiResult = $state<LlmSuggestion | null>(null);
   aiError = $state<string | null>(null);
-  // ---- local-LLM symptom troubleshooter (opt-in; its own header dialog) ----
-  showTroubleshooter = $state(false);
+  // ---- local-LLM symptom troubleshooter (opt-in; in the dock's Problems tab) ----
+  get showTroubleshooter(): boolean {
+    return this.view === "builder" && this.dockTab === "problems";
+  }
+  set showTroubleshooter(v: boolean) {
+    if (v) {
+      this.openDock("problems");
+      this.troubleshootFocus++;
+    } else if (this.dockTab === "problems") this.dockTab = "command";
+  }
   tsLoading = $state(false);
   tsResult = $state<TroubleshootResult | null>(null);
   tsError = $state<string | null>(null);

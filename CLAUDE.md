@@ -23,8 +23,10 @@ src/                     FRONTEND (Svelte 5 + TS + Tailwind)
                          game", docked ≥1100px, overlay below) beside MainPanel (Everything scope —
                          one scrolling catalog, sticky toolbar + category chips with scroll-spy,
                          lint inline on rows) or SimplePanel (Essentials scope; `ui_mode` "simple"),
-                         with CommandPreview pinned below;
-                         root-mounted dialogs (CommandPalette, LogViewer, Troubleshooter, …)
+                         with the Dock below (tabs Command · Problems · Logs: collapsed it's the
+                         CommandPreview bar; Problems = lint + fix recipes + AI Troubleshooter,
+                         Logs = LogViewer; `app.showLogs`/`showTroubleshooter` map onto `dockTab`);
+                         root-mounted dialogs (CommandPalette, builders, confirms, …)
   lib/state.svelte.ts    single reactive store (runes) — the source of truth
   lib/art.svelte.ts      game-art cache · lib/lookups.svelte.ts  ProtonDB / anti-cheat caches
   lib/ipc.ts + mock.ts   typed Tauri invoke + browser-dev mock fallback
@@ -39,7 +41,7 @@ src/                     FRONTEND (Svelte 5 + TS + Tailwind)
   lib/gamescope.ts · dlloverrides.ts · compare.ts   pure builder / compare logic
   lib/*.test.ts          vitest unit tests (`pnpm test`)
   lib/components/*.svelte Library, OnColumn, MainPanel, SimplePanel, CommandPreview,
-                         SettingsDrawer, CommandPalette, OverlayBuilders, LogViewer, …
+                         SettingsDrawer, CommandPalette, OverlayBuilders, Dock, ProblemsPane, LogViewer, …
   app.css + lib/themes.ts design tokens + 10 themes
 src-tauri/               BACKEND (Rust / Tauri)
   src/lib.rs             wiring: run() + dump(); registers plugins & commands (single-instance first)

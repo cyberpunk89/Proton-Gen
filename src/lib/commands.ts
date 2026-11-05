@@ -333,10 +333,9 @@ export const troubleshootAction: AppCommand = {
   icon: Robot,
   keywords: ["fix", "crash", "stutter", "black screen", "help", "symptom"],
   run: () => {
-    // Without the AI coach there is still a symptom → fix list: the recipes
-    // section's Fixes tab.
-    if (app.store.llm_enabled) app.showTroubleshooter = true;
-    else app.setSection("recipes");
+    // The dock's Problems tab: lint, the symptom → fix list and (when the AI
+    // coach is on) the troubleshooter.
+    app.showTroubleshooter = true;
   },
 };
 

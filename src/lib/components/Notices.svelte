@@ -5,6 +5,8 @@
   import { WarningOctagon, Warning, Info, Wrench, ArrowRight } from "phosphor-svelte";
   import type { Notice, Severity } from "$lib/types";
 
+  /** `bare`: the dock's Problems tab — always open, no card or header. */
+  let { bare = false }: { bare?: boolean } = $props();
   let open = $state(true);
 
   const LOOK: Record<Severity, { colour: string; icon: typeof Warning; label: string }> = {
@@ -36,7 +38,13 @@
   }
 </script>
 
-{#if sorted.length}
+{#if bare}
+  {#if sorted.length}
+    {@render list()}
+  {:else}
+    <p class="text-xs text-muted">No conflicts or footguns in the current command.</p>
+  {/if}
+{:else if sorted.length}
   {@const HeaderIcon = worstLook.icon}
   <div
     class="rounded-xl border p-3"
@@ -63,7 +71,13 @@
     </button>
 
     {#if open}
-      <ul id="notices-list" class="mt-2 space-y-2" transition:slide={{ duration: 120 }}>
+      {@render list()}
+    {/if}
+  </div>
+{/if}
+
+{#snippet list()}
+      <ul id="notices-list" class="mt-2 space-y-2">
         {#each sorted as n (n.id)}
           {@const look = LOOK[n.severity]}
           {@const Icon = look.icon}
@@ -99,6 +113,4 @@
           </li>
         {/each}
       </ul>
-    {/if}
-  </div>
-{/if}
+{/snippet}

@@ -2,7 +2,6 @@
   import { app, NON_CATALOG_SECTIONS } from "$lib/state.svelte";
   import { focusTarget } from "$lib/actions";
   import { prefersReducedMotion } from "$lib/motion.svelte";
-  import Notices from "./Notices.svelte";
   import UiModeToggle from "./UiModeToggle.svelte";
   import type { Severity } from "$lib/types";
   import { toast } from "$lib/toast.svelte";
@@ -348,7 +347,6 @@
 
   // ------------------------------- inline lint -------------------------------
 
-  let lintOpen = $state(false);
   let counts = $derived({
     error: app.notices.filter((n) => n.severity === "error").length,
     warning: app.notices.filter((n) => n.severity === "warning").length,
@@ -433,8 +431,8 @@
         <!-- Lint lives on the rows now; this is the count, and the full list
              (including notices with no row to sit on) one click away. -->
         <button
-          onclick={() => (lintOpen = !lintOpen)}
-          aria-expanded={lintOpen}
+          onclick={() => app.openDock("problems")}
+          title="Open Problems"
           class="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition hover:brightness-110"
           style="border-color: color-mix(in srgb, {SEV_COLOUR[worst]} 40%, transparent);
                  background: color-mix(in srgb, {SEV_COLOUR[worst]} 10%, transparent);
@@ -482,9 +480,6 @@
     {/if}
   </div>
 
-  {#if lintOpen && worst}
-    <Notices />
-  {/if}
 
   {#if searching}
     {@render searchResults()}

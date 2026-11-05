@@ -1,25 +1,23 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
   import { toast } from "$lib/toast.svelte";
-  import Dialog from "./Dialog.svelte";
   import RecipePreview from "./RecipePreview.svelte";
   import Markdown from "./Markdown.svelte";
   import { Robot, Lightning, Wrench, ArrowsClockwise } from "phosphor-svelte";
 
   /**
-   * The AI symptom troubleshooter, mounted once at the app root and opened from
-   * the header (in both Simple and Advanced). The user describes a problem in
+   * The AI symptom troubleshooter, in the bottom dock's Problems tab. The user describes a problem in
    * their own words; the backend diagnoses it, recommending existing Fix recipes
    * where they fit and proposing catalog changes otherwise. The current game's
    * log is pulled in as optional context by `app.troubleshoot`.
    */
   let symptom = $state("");
 
-  // Reset the result whenever the dialog closes, so reopening starts clean and a
-  // stale diagnosis never shows against a different game. Only reads the open
-  // flag; the clear writes result/error/loading, never the flag, so no loop.
+  // The result survives switching dock tabs; `selectGame` clears it, so a
+  // diagnosis never shows against a different game.
+  let box = $state<HTMLTextAreaElement | null>(null);
   $effect(() => {
-    if (!app.showTroubleshooter) app.clearTroubleshoot();
+    if (app.troubleshootFocus) box?.focus();
   });
 
   function submit() {
@@ -56,19 +54,15 @@
   ];
 </script>
 
-<Dialog
-  bind:open={app.showTroubleshooter}
-  title="AI troubleshooter"
-  subtitle={app.selectedGameName
-    ? `Describe the problem with ${app.selectedGameName}`
-    : "Describe the problem you're seeing"}
-  width="52rem"
->
-  <div class="space-y-3">
+<div class="space-y-3">
+  <p class="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
+    <Robot size={13} /> Ask the AI{app.selectedGameName ? ` about ${app.selectedGameName}` : ""}
+  </p>
     <!-- Symptom input -->
     <div>
       <textarea
         bind:value={symptom}
+        bind:this={box}
         {onkeydown}
         rows="2"
         placeholder="e.g. the game shows a black screen on launch, then closes"
@@ -201,5 +195,4 @@
         one-click recipe when one fits.
       </p>
     {/if}
-  </div>
-</Dialog>
+</div>
