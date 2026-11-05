@@ -27,7 +27,11 @@
     CheckCircle,
     WarningCircle,
     ArrowCircleUp,
+    CaretDown,
+    Package,
+    Wrench,
   } from "phosphor-svelte";
+  import Switch from "./Switch.svelte";
 
   let { onapply }: { onapply?: () => void } = $props();
 
@@ -115,6 +119,12 @@
   let config = $derived(buildOptiScaler(c));
 
   let fixCount = $derived(OPTI_FIXES.filter((f) => c.fixes[f.id]).length);
+  /** Folded unless a fix is already on — they're for a problem you have. */
+  let fixesOpen = $state(OPTI_FIXES.some((f) => seed.fixes[f.id]));
+
+  /** The ini entries Apply writes, one per line — easier to scan than one
+   *  long semicolon string. */
+  let entries = $derived(config ? config.split(";").filter(Boolean) : []);
 
   // Re-seed when the env changes underneath us — an undo, a recipe, a preset, or
   // a hand edit on the PROTON_OPTISCALER_CONFIG row while this panel is open.
@@ -139,6 +149,11 @@
     proxy = src;
   });
 
+  /** The builder differs from what's in the launch command. */
+  let pending = $derived(
+    config !== sourceConfig || proxy !== sourceProxy || !app.optiInjected,
+  );
+
   function apply() {
     app.applyOptiScaler(config, proxy);
     toast.success("OptiScaler config applied");
@@ -146,194 +161,76 @@
   }
 </script>
 
-<div class="space-y-3">
-  {#if appId != null}
-    <div class="space-y-2 rounded-lg border border-border/60 p-3">
-      <p class="text-[11px] font-medium uppercase tracking-wider text-muted">
-        Upgrade the installed OptiScaler build
-      </p>
-      {#if statusLoading || !status}
-        <p class="flex items-center gap-1.5 text-xs text-muted">
-          <ArrowClockwise size={12} class="animate-spin" /> Checking this game's folder…
-        </p>
-      {:else if !status.install_dir}
-        <p class="text-xs text-muted">
-          This game's install folder couldn't be resolved, so this isn't available here.
-        </p>
-      {:else if !status.found}
-        <p class="text-xs text-muted">
-          No manual OptiScaler install detected in <span class="font-mono">{status.install_dir}</span> —
-          nothing to upgrade. Proton's own <span class="font-mono">PROTON_USE_OPTISCALER</span> injects
-          its copy from the prefix, re-synced at every launch, and needs nothing here.
+<div class="grid gap-5 md:grid-cols-[minmax(0,1fr)_16rem]">
+  <!-- ─────────────── settings, in the order people reach for them ─────────────── -->
+  <div class="min-w-0 space-y-3">
+    {#if appId != null}
+      {@render installStrip()}
+    {/if}
+
+    <section class="space-y-2 rounded-xl border border-border/60 p-3">
+      {@render heading("Upscaler", "Which upscaler OptiScaler swaps in, per graphics API. Most games are DirectX 12.")}
+      {@render pick("DirectX 12", DX12_UPSCALERS, () => c.dx12Upscaler, (v) => (c.dx12Upscaler = v))}
+      {@render pick("DirectX 11", DX11_UPSCALERS, () => c.dx11Upscaler, (v) => (c.dx11Upscaler = v))}
+      {@render pick("Vulkan", VULKAN_UPSCALERS, () => c.vulkanUpscaler, (v) => (c.vulkanUpscaler = v))}
+    </section>
+
+    <section class="space-y-2 rounded-xl border border-border/60 p-3">
+      {@render toggleHead(
+        "Frame generation (OptiFG)",
+        () => c.frameGenOn,
+        (v) => (c.frameGenOn = v),
+      )}
+      {#if app.lsfgActive}
+        <!-- Two frame generators in one chain compound artifacts and latency;
+             lint.rs's lsfg-double-framegen flags the same thing after Apply. -->
+        <p class="text-[11px] leading-snug {c.frameGenOn ? 'text-yellow' : 'text-muted'}">
+          Lossless Scaling is generating frames for this game{c.frameGenOn
+            ? " — turn this off, or frames get generated twice"
+            : ", so leave this off and use OptiScaler for upscaling"}.
+          <button class="text-accent hover:underline" onclick={() => app.openLsfgFromOpti()}
+            >Lossless Scaling settings…</button
+          >
         </p>
       {:else}
-        <p class="text-xs text-subtext">
-          Detected in <span class="font-mono">{status.install_dir}</span>{#if status.proxies.length === 1}, loading as
-            <span class="font-mono">{status.proxies[0]}</span>{/if}.
-        </p>
-        {#if manualInstall}
-          {@render versionLine(manualInstall)}
-        {/if}
-        {#if confirmOpen}
-          {@render confirmPanel(status.install_dir, status.proxies, status.stray_dll)}
-        {:else}
-          <button
-            bind:this={fetchButton}
-            onclick={openConfirm}
-            class="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/10"
-          >
-            <CloudArrowDown size={13} /> Fetch latest OptiScaler build…
-            {#if app.optiscalerChannel === "nightly"}
-              <span class="rounded bg-yellow/15 px-1 text-[10px] uppercase tracking-wide text-yellow">nightly</span>
-            {/if}
-          </button>
-        {/if}
-      {/if}
-      {#if protonInstall && (app.optiInjected || !manualInstall)}
-        <div class="space-y-1 border-t border-border/60 pt-2">
-          <p class="text-xs text-subtext">
-            Proton's injected copy (last launch{app.optiInjected ? "" : ", injection now off"}):
-          </p>
-          {@render versionLine(protonInstall)}
-          {#if protonPin}
-            <p class="text-[11px] leading-snug text-yellow">
-              Pinned to <span class="font-mono">{protonPin}</span> by
-              <span class="font-mono">PROTON_USE_OPTISCALER</span> — set it to
-              <span class="font-mono">1</span> to follow proton-upscalers' newest build.
-            </p>
-          {/if}
-        </div>
-      {/if}
-      <button
-        onclick={() => app.openOptiscalerManagerFromBuilder()}
-        class="text-[11px] text-accent hover:underline">OptiScaler versions across the library…</button
-      >
-    </div>
-  {/if}
-
-  <p class="text-xs text-muted">
-    Compose OptiScaler.ini settings, then apply them to <span class="font-mono"
-      >PROTON_OPTISCALER_CONFIG</span
-    >. Only the options you change are written; the rest stay at OptiScaler's defaults.
-  </p>
-
-  <div class="grid gap-5 md:grid-cols-2">
-    <div class="space-y-3">
-      <!-- Upscaler selection -->
-      <div class="space-y-2">
-        <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Upscaler</p>
-        {@render pick("DirectX 12", DX12_UPSCALERS, () => c.dx12Upscaler, (v) => (c.dx12Upscaler = v))}
-        {@render pick("DirectX 11", DX11_UPSCALERS, () => c.dx11Upscaler, (v) => (c.dx11Upscaler = v))}
-        {@render pick("Vulkan", VULKAN_UPSCALERS, () => c.vulkanUpscaler, (v) => (c.vulkanUpscaler = v))}
-        {@render pick("Inject as", PROXY_DLLS, () => proxy, (v) => (proxy = v))}
         <p class="text-[11px] leading-snug text-muted">
-          Change “Inject as” if OptiScaler never loads at all — some games already own
-          <span class="font-mono">dxgi.dll</span>.
+          Or leave this off and pair OptiScaler's upscaling with
+          <button class="text-accent hover:underline" onclick={() => app.openLsfgFromOpti()}
+            >Lossless Scaling frame generation…</button
+          >
         </p>
-        <div class="flex items-start justify-between gap-2">
-          <span class="pt-1 text-sm text-subtext">In-game menu hotkey</span>
-          <!-- OptiScaler runs inside the game under Wine and reads a raw
-               Windows virtual-key code, never a name; -1 turns the hotkey off. -->
-          <KeyCapture
-            label="In-game menu hotkey"
-            format="vk"
-            defaultLabel="Insert"
-            disableValue="-1"
-            value={c.menuShortcutKey}
-            onchange={(v) => (c.menuShortcutKey = v)}
-          />
+      {/if}
+      {#if c.frameGenOn}
+        <div class="space-y-2 border-l-2 border-accent/30 pl-3">
+          {@render pick("Input", FG_INPUTS, () => c.fgInput, (v) => (c.fgInput = v))}
+          {@render pick("Output", FG_OUTPUTS, () => c.fgOutput, (v) => (c.fgOutput = v))}
         </div>
-      </div>
+      {/if}
+    </section>
 
-      <!-- Output scaling -->
-      <div class="space-y-2 border-t border-border/60 pt-3">
-        <label class="flex items-center gap-2">
-          <input type="checkbox" bind:checked={c.outputScalingOn} class="accent-[var(--accent)]" />
-          <span class="text-sm text-subtext">Output scaling</span>
-          <input
-            type="range"
-            min="0.5"
-            max="3"
-            step="0.1"
-            bind:value={c.outputScalingMult}
-            disabled={!c.outputScalingOn}
-            aria-label="Output scaling multiplier"
-            class="ml-auto w-28 accent-[var(--accent)] disabled:opacity-40"
-          />
-          <span class="w-8 text-right font-mono text-xs text-muted">{c.outputScalingMult}×</span>
-        </label>
-      </div>
-
-      <!-- Sharpening (RCAS) -->
-      <div class="space-y-2 border-t border-border/60 pt-3">
-        <label class="flex items-center gap-2">
-          <input type="checkbox" bind:checked={c.sharpenOn} class="accent-[var(--accent)]" />
-          <span class="text-sm text-subtext">Sharpening</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            bind:value={c.sharpness}
-            disabled={!c.sharpenOn}
-            aria-label="Sharpness amount"
-            class="ml-auto w-28 accent-[var(--accent)] disabled:opacity-40"
-          />
-          <span class="w-8 text-right font-mono text-xs text-muted">{c.sharpness}</span>
-        </label>
+    <section class="space-y-3 rounded-xl border border-border/60 p-3">
+      {@render heading("Image quality")}
+      <div class="space-y-2">
+        {@render toggleHead("Sharpening", () => c.sharpenOn, (v) => (c.sharpenOn = v))}
         {#if c.sharpenOn}
-          <div class="flex items-center justify-between gap-2 pl-6">
-            <span class="text-sm text-subtext">Filter</span>
-            <SelectField label="Filter" value={c.sharpenShader} options={SHARPEN_SHADERS} onValueChange={(v) => (c.sharpenShader = v)} />
+          <div class="space-y-2 border-l-2 border-accent/30 pl-3">
+            {@render slider("Amount", 0, 1, 0.05, () => c.sharpness, (v) => (c.sharpness = v), "")}
+            {@render pick("Filter", SHARPEN_SHADERS, () => c.sharpenShader, (v) => (c.sharpenShader = v))}
           </div>
         {/if}
       </div>
-
-      <!-- Frame generation -->
       <div class="space-y-2 border-t border-border/60 pt-3">
-        <label class="flex items-center gap-2">
-          <input type="checkbox" bind:checked={c.frameGenOn} class="accent-[var(--accent)]" />
-          <span class="text-sm text-subtext">Frame generation (OptiFG)</span>
-        </label>
-        {#if app.lsfgActive}
-          <!-- Two frame generators in one chain compound artifacts and latency;
-               lint.rs's lsfg-double-framegen flags the same thing after Apply. -->
-          <p class="pl-6 text-[11px] leading-snug {c.frameGenOn ? 'text-yellow' : 'text-muted'}">
-            Lossless Scaling is generating frames for this game{c.frameGenOn
-              ? " — turn this off, or frames get generated twice"
-              : ", so leave this off and use OptiScaler for upscaling"}.
-            <button class="text-accent hover:underline" onclick={() => app.openLsfgFromOpti()}
-              >Lossless Scaling settings…</button
-            >
-          </p>
-        {:else}
-          <p class="pl-6 text-[11px] leading-snug text-muted">
-            Or leave this off and pair OptiScaler's upscaling with
-            <button class="text-accent hover:underline" onclick={() => app.openLsfgFromOpti()}
-              >Lossless Scaling frame generation…</button
-            >
-          </p>
-        {/if}
-        {#if c.frameGenOn}
-          <div class="flex items-center justify-between gap-2 pl-6">
-            <span class="text-sm text-subtext">Input</span>
-            <SelectField label="Input" value={c.fgInput} options={FG_INPUTS} onValueChange={(v) => (c.fgInput = v)} />
-          </div>
-          <div class="flex items-center justify-between gap-2 pl-6">
-            <span class="text-sm text-subtext">Output</span>
-            <SelectField label="Output" value={c.fgOutput} options={FG_OUTPUTS} onValueChange={(v) => (c.fgOutput = v)} />
+        {@render toggleHead("Output scaling", () => c.outputScalingOn, (v) => (c.outputScalingOn = v))}
+        {#if c.outputScalingOn}
+          <div class="border-l-2 border-accent/30 pl-3">
+            {@render slider("Multiplier", 0.5, 3, 0.1, () => c.outputScalingMult, (v) => (c.outputScalingMult = v), "×")}
           </div>
         {/if}
       </div>
-
-      <!-- DLSS render preset (ray-reconstruction / quality tuning) -->
       <div class="space-y-2 border-t border-border/60 pt-3">
-        <label class="flex items-center gap-2">
-          <input type="checkbox" bind:checked={c.dlssPresetOn} class="accent-[var(--accent)]" />
-          <span class="text-sm text-subtext">Override DLSS render preset</span>
-        </label>
+        {@render toggleHead("Override DLSS render preset", () => c.dlssPresetOn, (v) => (c.dlssPresetOn = v))}
         {#if c.dlssPresetOn}
-          <label class="flex items-center justify-between gap-2 pl-6">
+          <label class="flex items-center justify-between gap-2 border-l-2 border-accent/30 pl-3">
             <span class="text-sm text-subtext">Preset (0–15)</span>
             <input
               bind:value={c.dlssPreset}
@@ -344,81 +241,121 @@
           </label>
         {/if}
       </div>
-
-      <!-- GPU spoofing: unlock DLSS/RT on Radeon -->
-      <div class="space-y-2 border-t border-border/60 pt-3">
-        <label class="flex gap-2">
-          <input type="checkbox" bind:checked={c.spoofUnlock} class="mt-0.5 shrink-0 accent-[var(--accent)]" />
-          <span class="min-w-0">
-            <span class="block text-sm leading-snug text-subtext">Unlock DLSS / RT on Radeon</span>
-            <span class="block text-[11px] leading-snug text-muted">
-              Streamline GPU spoofing, so RE Engine / Streamline games expose their DLSS and
-              ray-tracing options for OptiScaler to translate. On by default upstream — set it here
-              when a game hides them.
-            </span>
-          </span>
-        </label>
+      <div class="border-t border-border/60 pt-3">
+        {@render toggleHead(
+          "Unlock DLSS / RT on Radeon",
+          () => c.spoofUnlock,
+          (v) => (c.spoofUnlock = v),
+          "Streamline GPU spoofing, so RE Engine / Streamline games expose their DLSS and ray-tracing options for OptiScaler to translate. On by default upstream — set it here when a game hides them.",
+        )}
       </div>
-    </div>
+    </section>
 
-    <div class="space-y-4">
-      <!--
-        Compatibility fixes, labelled by symptom. These are the settings people
-        come here for when a game misbehaves, and none of them is guessable from
-        its ini key — so the key is not shown at all; it is in the Result pane
-        below for anyone who wants to check.
-      -->
-      <div class="space-y-2">
-        <p class="text-[11px] font-medium uppercase tracking-wider text-muted">
-          Compatibility fixes{fixCount ? ` · ${fixCount} on` : ""}
-        </p>
-        <p class="text-[11px] leading-snug text-muted">
-          Only turn these on for a problem you're actually seeing — each one trades
-          something away.
-        </p>
-        {#each OPTI_FIXES as f (f.id)}
-          <label class="flex gap-2">
-            <input
-              type="checkbox"
-              checked={!!c.fixes[f.id]}
-              onchange={(e) => (c.fixes[f.id] = e.currentTarget.checked)}
-              class="mt-0.5 shrink-0 accent-[var(--accent)]"
-            />
-            <span class="min-w-0">
-              <span class="block text-sm leading-snug text-subtext">{f.label}</span>
-              <span class="block text-[11px] leading-snug text-muted">{f.note}</span>
-            </span>
-          </label>
-        {/each}
-      </div>
-
-      <!-- Resulting string -->
-      <div class="space-y-1.5 border-t border-border/60 pt-3">
-        <p class="text-[11px] font-medium uppercase tracking-wider text-muted">Result</p>
-        <p class="overflow-x-auto rounded-lg bg-mantle p-2 font-mono text-xs break-all text-muted">
-          PROTON_OPTISCALER_CONFIG={config || "none"}
-        </p>
-        <p class="text-[11px] leading-snug text-muted">
-          Applying also enables <span class="font-mono">PROTON_USE_OPTISCALER</span>, so the
-          injected config takes effect.
-        </p>
-        {#if c.passthrough.length}
-          <p class="text-[11px] leading-snug text-muted">
-            {c.passthrough.length} setting{c.passthrough.length === 1 ? "" : "s"} this builder doesn't
-            model {c.passthrough.length === 1 ? "is" : "are"} kept as-is.
-          </p>
+    <!--
+      Compatibility fixes, labelled by symptom. These are the settings people
+      come here for when a game misbehaves, and none of them is guessable from
+      its ini key — so the key is not shown here; it is in the Result pane for
+      anyone who wants to check. Folded by default: each trades something away.
+    -->
+    <section class="rounded-xl border border-border/60 p-3">
+      <button
+        class="flex w-full items-center gap-2 text-left"
+        aria-expanded={fixesOpen}
+        onclick={() => (fixesOpen = !fixesOpen)}
+      >
+        <Wrench size={14} class="text-muted" />
+        <span class="text-sm font-medium text-text">Fix a problem</span>
+        {#if fixCount}
+          <span class="rounded-full bg-accent/15 px-1.5 text-[10px] text-accent">{fixCount} on</span>
         {/if}
+        <span class="ml-auto text-[11px] text-muted">{OPTI_FIXES.length} fixes</span>
+        <CaretDown size={13} class="text-muted transition {fixesOpen ? 'rotate-180' : ''}" />
+      </button>
+      {#if fixesOpen}
+        <p class="mt-2 text-[11px] leading-snug text-muted">
+          Only turn these on for a problem you're actually seeing — each one trades something
+          away.
+        </p>
+        <div class="mt-2 space-y-2.5">
+          {#each OPTI_FIXES as f (f.id)}
+            {@render toggleHead(
+              f.label,
+              () => !!c.fixes[f.id],
+              (v) => (c.fixes[f.id] = v),
+              f.note,
+            )}
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <section class="space-y-2 rounded-xl border border-border/60 p-3">
+      {@render heading("Loading")}
+      {@render pick("Inject as", PROXY_DLLS, () => proxy, (v) => (proxy = v))}
+      <p class="text-[11px] leading-snug text-muted">
+        Change this if OptiScaler never loads at all — some games already own
+        <span class="font-mono">dxgi.dll</span>.
+      </p>
+      <div class="flex items-start justify-between gap-2">
+        <span class="pt-1 text-sm text-subtext">In-game menu hotkey</span>
+        <!-- OptiScaler runs inside the game under Wine and reads a raw
+             Windows virtual-key code, never a name; -1 turns the hotkey off. -->
+        <KeyCapture
+          label="In-game menu hotkey"
+          format="vk"
+          defaultLabel="Insert"
+          disableValue="-1"
+          value={c.menuShortcutKey}
+          onchange={(v) => (c.menuShortcutKey = v)}
+        />
       </div>
-    </div>
+    </section>
   </div>
 
-  <div class="sticky bottom-0 -mx-1 flex justify-end bg-surface-solid px-1 pb-1 pt-2">
+  <!-- ─────────────── what Apply will write ─────────────── -->
+  <aside class="space-y-3 self-start md:sticky md:top-0">
+    <div class="space-y-2 rounded-xl border border-border/60 bg-mantle/40 p-3">
+      <p class="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
+        Writes
+        {#if pending}
+          <span class="ml-auto inline-flex items-center gap-1 normal-case tracking-normal text-peach"
+            ><span class="size-1.5 rounded-full bg-peach"></span> not applied</span
+          >
+        {:else}
+          <span class="ml-auto inline-flex items-center gap-1 normal-case tracking-normal text-green"
+            ><CheckCircle size={11} weight="fill" /> applied</span
+          >
+        {/if}
+      </p>
+      <ul class="space-y-0.5 font-mono text-[11px] leading-snug">
+        {#if !app.optiInjected}
+          <li class="break-all text-green">+ PROTON_USE_OPTISCALER=1</li>
+        {/if}
+        {#if proxy}
+          <li class="break-all text-subtext">PROTON_OPTISCALER_NAME={proxy}</li>
+        {/if}
+        {#each entries as e (e)}
+          <li class="break-all text-subtext">{e}</li>
+        {:else}
+          <li class="text-muted">OptiScaler defaults — no ini overrides</li>
+        {/each}
+      </ul>
+      {#if c.passthrough.length}
+        <p class="text-[11px] leading-snug text-muted">
+          {c.passthrough.length} setting{c.passthrough.length === 1 ? "" : "s"} this builder doesn't
+          model {c.passthrough.length === 1 ? "is" : "are"} kept as-is.
+        </p>
+      {/if}
+      <p class="text-[11px] leading-snug text-muted">
+        Only what you change is written; everything else stays at OptiScaler's defaults.
+      </p>
+    </div>
     <button
       onclick={apply}
-      class="rounded-lg px-3 py-1.5 text-sm font-medium transition active:scale-95"
-      style="background: var(--accent); color: var(--on-accent)">Apply OptiScaler config</button
+      class="w-full rounded-lg px-3 py-2 text-sm font-medium transition active:scale-95"
+      style="background: var(--accent); color: var(--on-accent)">Apply to launch command</button
     >
-  </div>
+  </aside>
 </div>
 
 {#snippet confirmPanel(installDir: string, proxies: string[], strayDll: boolean)}
@@ -602,4 +539,125 @@
     <span class="text-sm text-subtext">{label}</span>
     <SelectField {label} value={get()} options={choices} onValueChange={set} width="w-44" />
   </div>
+{/snippet}
+
+{#snippet heading(title: string, note = "")}
+  <div>
+    <p class="text-sm font-medium text-text">{title}</p>
+    {#if note}<p class="text-[11px] leading-snug text-muted">{note}</p>{/if}
+  </div>
+{/snippet}
+
+<!-- One on/off setting: the app's Switch, not a bare checkbox, so this dialog
+     reads like every option row behind it. -->
+{#snippet toggleHead(label: string, get: () => boolean, set: (v: boolean) => void, note = "")}
+  {@const id = `opti-${label.replace(/\W+/g, "-")}`}
+  <div class="flex items-start gap-3">
+    <div class="min-w-0 flex-1">
+      <span {id} class="block text-sm leading-snug {get() ? 'text-text' : 'text-subtext'}">{label}</span>
+      {#if note}<span class="block text-[11px] leading-snug text-muted">{note}</span>{/if}
+    </div>
+    <Switch checked={get()} onchange={() => set(!get())} labelledby={id} />
+  </div>
+{/snippet}
+
+{#snippet slider(
+  label: string,
+  min: number,
+  max: number,
+  step: number,
+  get: () => string,
+  set: (v: string) => void,
+  unit: string,
+)}
+  <label class="flex items-center gap-3">
+    <span class="text-sm text-subtext">{label}</span>
+    <input
+      type="range"
+      {min}
+      {max}
+      {step}
+      value={get()}
+      oninput={(e) => set(e.currentTarget.value)}
+      aria-label={label}
+      class="ml-auto w-36 accent-[var(--accent)]"
+    />
+    <span class="w-9 text-right font-mono text-xs text-muted">{get()}{unit}</span>
+  </label>
+{/snippet}
+
+<!--
+  Which OptiScaler this game actually loads, in one line. It used to be a full
+  card at the top of the dialog, ahead of the settings people open it for; the
+  fetch flow (a rare, write-to-disk action) now unfolds from here on demand.
+-->
+{#snippet installStrip()}
+  <section class="space-y-2 rounded-xl border border-border/60 bg-mantle/40 p-3">
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Package size={15} class="text-muted" />
+      {#if statusLoading || !status}
+        <span class="flex items-center gap-1.5 text-xs text-muted">
+          <ArrowClockwise size={12} class="animate-spin" /> Checking this game's folder…
+        </span>
+      {:else if app.optiInjected}
+        <span class="text-sm text-text">Proton injects OptiScaler</span>
+        <span class="text-xs text-muted">from the prefix, re-synced every launch</span>
+      {:else if status.found}
+        <span class="text-sm text-text">Manual install</span>
+        <span class="min-w-0 truncate font-mono text-xs text-muted" title={status.install_dir ?? ""}
+          >{status.proxies.length === 1 ? status.proxies[0] : "game folder"}</span
+        >
+      {:else}
+        <span class="text-sm text-subtext">Not active yet</span>
+        <span class="text-xs text-muted">— Apply turns on Proton's injected copy</span>
+      {/if}
+      <button
+        onclick={() => app.openOptiscalerManagerFromBuilder()}
+        class="ml-auto text-[11px] text-accent hover:underline">All versions…</button
+      >
+    </div>
+
+    {#if status && !statusLoading}
+      {#if app.optiInjected && protonInstall}
+        {@render versionLine(protonInstall)}
+        {#if protonPin}
+          <p class="text-[11px] leading-snug text-yellow">
+            Pinned to <span class="font-mono">{protonPin}</span> by
+            <span class="font-mono">PROTON_USE_OPTISCALER</span> — set it to
+            <span class="font-mono">1</span> to follow proton-upscalers' newest build.
+          </p>
+        {/if}
+      {:else if status.found && manualInstall}
+        {@render versionLine(manualInstall)}
+      {:else if !status.found && protonInstall}
+        {@render versionLine(protonInstall)}
+      {/if}
+
+      {#if status.found && status.install_dir}
+        {#if app.optiInjected}
+          <!-- Both at once: say so here, not only behind the fetch button. -->
+          <p class="flex items-start gap-1.5 text-[11px] leading-snug text-yellow">
+            <WarningCircle size={12} class="mt-px shrink-0" />
+            A manual install is also in the game folder, so two builds may load. Remove one.
+          </p>
+        {/if}
+        {#if confirmOpen}
+          {@render confirmPanel(status.install_dir, status.proxies, status.stray_dll)}
+        {:else}
+          <button
+            bind:this={fetchButton}
+            onclick={openConfirm}
+            class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-subtext transition hover:border-accent/50 hover:text-text"
+          >
+            <CloudArrowDown size={13} /> Update the manual install…
+            {#if app.optiscalerChannel === "nightly"}
+              <span class="rounded bg-yellow/15 px-1 text-[10px] uppercase tracking-wide text-yellow">nightly</span>
+            {/if}
+          </button>
+        {/if}
+      {:else if !status.install_dir}
+        <p class="text-[11px] text-muted">This game's install folder couldn't be resolved.</p>
+      {/if}
+    {/if}
+  </section>
 {/snippet}

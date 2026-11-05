@@ -37,8 +37,8 @@
 <Dialog
   bind:open={app.optiBuilderOpen}
   title="OptiScaler"
-  subtitle="Compose the upscaler config, then apply it to the launch command."
-  width="46rem"
+  subtitle="Pick an upscaler and the extras you need; only what you change is written."
+  width="56rem"
 >
   <Lazy load={lazy.optiscaler}>
     {#snippet children(C)}<C onapply={() => (app.optiBuilderOpen = false)} />{/snippet}
