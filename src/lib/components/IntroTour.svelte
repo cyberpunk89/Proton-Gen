@@ -68,7 +68,7 @@
     {
       icon: Sparkle,
       title: "Toggle what you need",
-      body: "Simple mode shows the options people reach for most — upscaling, frame pacing, HDR — as plain switches. Once a game is open, the Simple / Advanced switch in the header exposes the full catalog if you ever need it.",
+      body: "Essentials shows the options people reach for most — upscaling, frame pacing, HDR — as plain switches. Once a game is open, the Essentials / Everything switch above the options exposes the full catalog if you ever need it.",
     },
     {
       icon: ClipboardText,

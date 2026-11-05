@@ -7,7 +7,6 @@
   import Dialog from "./Dialog.svelte";
   import Lazy from "./Lazy.svelte";
   import { lazy } from "$lib/lazy";
-  import UiModeToggle from "./UiModeToggle.svelte";
   import PresetRow from "./PresetRow.svelte";
   import { decodePreset, isPresetCode } from "$lib/presetCode";
   import type { SharedPreset } from "$lib/presetCode";
@@ -250,8 +249,6 @@
 
   <div class="flex shrink-0 items-center gap-1.5">
     {#if app.view === "builder"}
-      <UiModeToggle />
-
       <!-- Presets: used often enough to keep its own button. -->
       <Popover width="16rem">
         {#snippet trigger({ props })}

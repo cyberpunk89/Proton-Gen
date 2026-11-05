@@ -4,11 +4,8 @@
   import { irrelevance } from "$lib/util";
   import { prefersReducedMotion } from "$lib/motion.svelte";
   import Switch from "./Switch.svelte";
-  import ModeToggle from "./ModeToggle.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
-  import CurrentGameCard from "./CurrentGameCard.svelte";
   import Recipes from "./Recipes.svelte";
-  import ActiveOptions from "./ActiveOptions.svelte";
   import {
     Rocket,
     MagicWand,
@@ -220,7 +217,7 @@
   const gp = $derived(app.store.global_profile);
 
   // A jump to Recipes / Active options / the game panel (palette, notice links,
-  // ActiveOptions' own links) lands here in Simple mode: open it and scroll to it.
+  // On-column links) lands here in Essentials: open it and scroll to it.
   $effect(() => {
     const target = app.simpleAnchor;
     if (!target) return;
@@ -235,14 +232,8 @@
 </script>
 
 <div class="space-y-4">
-  <!-- Which game this is — Advanced shows it in the header bar. -->
-  <CurrentGameCard details />
-
-  <!-- Steam vs umu, then the game & runtime block (shared with Advanced). -->
-  <div class="flex items-center justify-between">
-    <h2 class="text-sm font-medium tracking-wide text-text">Launch mode</h2>
-    <ModeToggle />
-  </div>
+  <!-- The game and Steam/umu are in the header bar; what's on is in the On
+       column. The game & runtime block is shared with Everything. -->
   <div id="simple-game" class="scroll-mt-4"><GameRuntimePanel /></div>
 
   <!-- Default profile -->
@@ -308,12 +299,10 @@
   <!-- Recipes: the same one-click profiles and troubleshooter fixes Advanced has. -->
   <div id="simple-recipes" class="scroll-mt-4"><Recipes /></div>
 
-  <!-- Everything turned on, including options set in Advanced, a recipe or an
-       import that no card above shows. -->
-  <div id="simple-active" class="scroll-mt-4"><ActiveOptions /></div>
-
   <p class="px-1 text-xs text-muted">
-    Looking for more? Switch to <span class="font-medium text-subtext">Advanced</span> in the header
-    for the full catalog and search.
+    Looking for more? Switch the scope to
+    <button class="font-medium text-accent hover:underline" onclick={() => app.setUiMode("advanced")}
+      >Everything</button
+    > for the full catalog and search.
   </p>
 </div>

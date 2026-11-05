@@ -712,12 +712,11 @@ class AppStore {
   }
 
   /**
-   * Everything the user has turned on, for the nav badge and the Active view.
+   * Everything the user has turned on, for the On column and its badges.
    *
    * `$derived`, not a getter: a class getter is re-evaluated on every read, and
-   * `ActiveOptions` reads this three times per render while `NavRail` reads it
-   * once — each time walking the whole catalog twice and re-tokenizing the
-   * custom-env string. Same reasoning for every `$derived` below.
+   * several components read it per render — each read walking the whole
+   * catalog twice and re-tokenizing the custom-env string. Same reasoning for every `$derived` below.
    */
   activeCount = $derived.by((): number => {
     const envs = this.catalog.envs.filter((e) => this.env[e.key]?.enabled).length;
@@ -1970,6 +1969,27 @@ class AppStore {
     this.persistStore();
   }
 
+  /** The "On for this game" column, opened as an overlay below the width
+   *  where it docks (~1100px). Per session. */
+  onColumnOpen = $state(false);
+  /** Bumped to draw the eye to the On column (palette "Show active options"). */
+  onColumnFlash = $state(0);
+
+  /** Lint notices by the catalog key they're about, worst first — each shows
+   *  on its catalog row and as a dot in the On column. */
+  noticesByKey = $derived.by(() => {
+    const rank: Record<string, number> = { error: 0, warning: 1, info: 2 };
+    const m = new Map<string, Notice[]>();
+    for (const n of [...this.notices].sort((a, b) => rank[a.severity] - rank[b.severity])) {
+      for (const k of n.keys) {
+        const list = m.get(k);
+        if (list) list.push(n);
+        else m.set(k, [n]);
+      }
+    }
+    return m;
+  });
+
   /** A request for MainPanel to scroll the catalog to a category (see
    *  `setSection`); the nonce re-triggers a repeat jump to the same one. */
   sectionJump = $state<{ section: string; nonce: number } | null>(null);
@@ -1982,7 +2002,7 @@ class AppStore {
 
   /**
    * Navigate to a section, from anywhere: the library, Simple or Advanced mode.
-   * Palette actions, notice chips and ActiveOptions links all route through
+   * Palette actions, notice chips and On-column links all route through
    * here, and used to do nothing outside the Advanced builder — the section
    * they set only exists in Advanced's MainPanel.
    *
@@ -1991,6 +2011,12 @@ class AppStore {
    */
   setSection(section: string, scroll = true) {
     this.view = "builder";
+    // "What's on" is the always-visible On column now, not a page.
+    if (section === "@active") {
+      this.onColumnOpen = true;
+      this.onColumnFlash++;
+      return;
+    }
     this.paramQuery = "";
     this.activeSection = section;
     // The catalog is one scrolling list, so a category is a place in it, not a
@@ -2010,8 +2036,8 @@ class AppStore {
    *  one-click way back — the user didn't ask to change modes, only to go there. */
   private leaveSimpleFor(what: string) {
     this.setUiMode("advanced");
-    toast.info(`Switched to Advanced to show ${what}`, {
-      action: { label: "Back to Simple", onClick: () => this.setUiMode("simple") },
+    toast.info(`Switched to Everything to show ${what}`, {
+      action: { label: "Back to Essentials", onClick: () => this.setUiMode("simple") },
     });
   }
 
@@ -2766,11 +2792,10 @@ export type SettingsSection = "appearance" | "behavior" | "ai" | "paths" | "abou
 /** Sections Simple mode also shows, and the element id each scrolls to. */
 /** Builder sections that are their own view rather than a category in the
  *  single scrolling catalog. */
-export const NON_CATALOG_SECTIONS = new Set(["recipes", "game", "@active"]);
+export const NON_CATALOG_SECTIONS = new Set(["recipes", "game"]);
 
 const SIMPLE_ANCHORS: Record<string, string> = {
   recipes: "simple-recipes",
-  "@active": "simple-active",
   game: "simple-game",
 };
 

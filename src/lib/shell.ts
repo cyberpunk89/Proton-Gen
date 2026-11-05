@@ -7,7 +7,7 @@
  * (src-tauri/src/parser.rs) so `FOO="a b"` stays one token.
  *
  * Kept in lockstep with the Rust side deliberately: the "custom env" chips in
- * ActiveOptions must agree with what `compose::parse_extra_env` will actually
+ * The On column must agree with what `compose::parse_extra_env` will actually
  * put on the command line, or removing a chip would edit a token the backend
  * never saw.
  */

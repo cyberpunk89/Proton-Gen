@@ -3,7 +3,8 @@
   import { focusTarget } from "$lib/actions";
   import { prefersReducedMotion } from "$lib/motion.svelte";
   import Notices from "./Notices.svelte";
-  import type { Notice, Severity } from "$lib/types";
+  import UiModeToggle from "./UiModeToggle.svelte";
+  import type { Severity } from "$lib/types";
   import { toast } from "$lib/toast.svelte";
   import { irrelevance } from "$lib/util";
   import { isAdvanced } from "$lib/types";
@@ -12,7 +13,6 @@
   import OptionRow from "./OptionRow.svelte";
   import Recipes from "./Recipes.svelte";
   import GameRuntimePanel from "./GameRuntimePanel.svelte";
-  import ActiveOptions from "./ActiveOptions.svelte";
   import {
     MagnifyingGlass,
     Faders,
@@ -21,7 +21,6 @@
     Monitor,
     Sparkle,
     X,
-    ListChecks,
     Cpu,
     WarningOctagon,
     Warning,
@@ -349,7 +348,6 @@
 
   // ------------------------------- inline lint -------------------------------
 
-  const RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
   let lintOpen = $state(false);
   let counts = $derived({
     error: app.notices.filter((n) => n.severity === "error").length,
@@ -359,18 +357,6 @@
   let worst = $derived<Severity | null>(
     counts.error ? "error" : counts.warning ? "warning" : counts.info ? "info" : null,
   );
-  /** Notices by the catalog key they're about — each one shows on its row. */
-  let noticesByKey = $derived.by(() => {
-    const m = new Map<string, Notice[]>();
-    for (const n of [...app.notices].sort((a, b) => RANK[a.severity] - RANK[b.severity])) {
-      for (const k of n.keys) {
-        const list = m.get(k);
-        if (list) list.push(n);
-        else m.set(k, [n]);
-      }
-    }
-    return m;
-  });
   const SEV_COLOUR: Record<Severity, string> = {
     error: "var(--red)",
     warning: "var(--peach)",
@@ -411,9 +397,9 @@
     style="background: var(--bg)"
   >
     <div class="flex flex-wrap items-center gap-2">
+      <UiModeToggle />
       <div role="tablist" aria-label="Builder views" class="inline-flex rounded-lg border border-border bg-surface-2/50 p-0.5">
         {@render tabButton("catalog", "Parameters", Faders, goCatalog)}
-        {@render tabButton("@active", "On", ListChecks, () => app.setSection("@active"), app.activeCount)}
         {@render tabButton("recipes", "Recipes", Sparkle, () => app.setSection("recipes"))}
         {@render tabButton("game", "Game & runtime", Cpu, () => app.setSection("game"))}
       </div>
@@ -506,8 +492,6 @@
     <Recipes />
   {:else if tab === "game"}
     <GameRuntimePanel />
-  {:else if tab === "@active"}
-    <ActiveOptions />
   {:else if !sections.length}
     <div class="card flex flex-col items-center gap-2 py-12 text-center">
       <MagnifyingGlass size={26} class="text-muted" />
@@ -785,7 +769,7 @@
       needs={w.needs}
       dim={h.hidden}
       appliedBy={app.recipeOrigin[h.key] ?? null}
-      notices={noticesByKey.get(h.key) ?? []}
+      notices={app.noticesByKey.get(h.key) ?? []}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       action={w.key === "mangohud"
@@ -818,7 +802,7 @@
       needs={e.needs}
       dim={h.hidden}
       appliedBy={app.recipeOrigin[h.key] ?? null}
-      notices={noticesByKey.get(h.key) ?? []}
+      notices={app.noticesByKey.get(h.key) ?? []}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       action={e.key === "MANGOHUD_CONFIG"

@@ -19,9 +19,11 @@ TypeScript + Tailwind 4 frontend · Vite 6. UI primitives from `bits-ui`, icons 
 
 ```
 src/                     FRONTEND (Svelte 5 + TS + Tailwind)
-  App.svelte             shell: Header + Library view, or builder view (MainPanel in Advanced —
+  App.svelte             shell: Header + Library view, or builder view: OnColumn ("On for this
+                         game", docked ≥1100px, overlay below) beside MainPanel (Everything scope —
                          one scrolling catalog, sticky toolbar + category chips with scroll-spy,
-                         lint inline on rows — / SimplePanel in Simple) with CommandPreview pinned below;
+                         lint inline on rows) or SimplePanel (Essentials scope; `ui_mode` "simple"),
+                         with CommandPreview pinned below;
                          root-mounted dialogs (CommandPalette, LogViewer, Troubleshooter, …)
   lib/state.svelte.ts    single reactive store (runes) — the source of truth
   lib/art.svelte.ts      game-art cache · lib/lookups.svelte.ts  ProtonDB / anti-cheat caches
@@ -36,7 +38,7 @@ src/                     FRONTEND (Svelte 5 + TS + Tailwind)
   lib/mangohud.ts        pure MANGOHUD_CONFIG parse/build for the overlay builder
   lib/gamescope.ts · dlloverrides.ts · compare.ts   pure builder / compare logic
   lib/*.test.ts          vitest unit tests (`pnpm test`)
-  lib/components/*.svelte Library, MainPanel, SimplePanel, CommandPreview,
+  lib/components/*.svelte Library, OnColumn, MainPanel, SimplePanel, CommandPreview,
                          SettingsDrawer, CommandPalette, OverlayBuilders, LogViewer, …
   app.css + lib/themes.ts design tokens + 10 themes
 src-tauri/               BACKEND (Rust / Tauri)

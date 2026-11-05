@@ -424,7 +424,8 @@ line-splitting, and which extra keys it may replace. A test scans `mangohud.ts` 
 
 A single-page Svelte 5 app. The shell (`App.svelte`) shows a spinner until `app.init()`
 resolves, then renders the `Header` over either the **Library** (cover-art grid) or the
-**builder** — `MainPanel` in Advanced mode, `SimplePanel` in Simple — with
+**builder** — the `OnColumn` ("On for this game") beside `MainPanel` (the Everything scope)
+or `SimplePanel` (Essentials; stored as `ui_mode = "simple"`) — with
 `CommandPreview` pinned below. Every dialog (palette, builders, confirms, log viewer,
 troubleshooter, compare) is mounted once at the root (the #63 rule, §11).
 
@@ -472,7 +473,7 @@ field, or an enum's string values differ. CI checks the generated files are comm
 
 | Area | Components | Role |
 | --- | --- | --- |
-| Shell | `Header`, `UiModeToggle`, `ModeToggle`, `PresetRow`, `StaleBanner`, `UpdateBanner`, `Toast`, `ResizeGrips` | Top bar (back to library, game chip, Steam⇄umu, palette search, Simple⇄Advanced, preset picker, a ⋯ menu for import / logs / troubleshooter / rescan / settings, window controls), banners, transient toasts, CSD resize edges. `MainPanel` owns Advanced's sticky toolbar (Parameters · On · Recipes · Game & runtime tabs, search, lint count) and the single scrolling catalog with scroll-spy category chips. |
+| Shell | `Header`, `OnColumn`, `UiModeToggle` (Essentials⇄Everything scope + narrow On toggle), `ModeToggle`, `PresetRow`, `StaleBanner`, `UpdateBanner`, `Toast`, `ResizeGrips` | Top bar (back to library, game chip, Steam⇄umu, palette search, preset picker, a ⋯ menu for import / logs / troubleshooter / rescan / settings, window controls), banners, transient toasts, CSD resize edges. `MainPanel` owns Advanced's sticky toolbar (scope switch, Parameters · Recipes · Game & runtime tabs, search, lint count) and the single scrolling catalog with scroll-spy category chips. |
 | Library | `Library`, `GameTile` | Game grid (Steam, shortcuts, Heroic, Nexus) with local filters; picking a game or "Generic" enters the builder. *Select* mode applies one preset to many games (`applyPresetToGames`, one undo for all). |
 | Builder | `MainPanel` (Advanced), `SimplePanel` (Simple), `GameRuntimePanel`, `CurrentGameCard`, `RuntimePicker` (type-to-filter Combobox), `ModeToggle`, `UmuFields`, `ProtonDbChip`, `AntiCheatNote`, `GameFolders`, `ActiveOptions` | Advanced = full categorised catalog; Simple = curated toggle grid over the same keys (a view, not a second store). Both share the game/runtime panel (Proton dropdown, Steam⇄umu toggle, umu fields, ProtonDB chip) and the "what's on" summary. |
 | Command bar | `CommandPreview`, `CommandBody`, `LauncherAction`, `OpenInSteam`, `SyncPill` | Pinned live preview with Copy, tokenised/annotated via `explain.rs`; the one "get it into your launcher" slot (Open in Steam, or Heroic inject); Steam-sync status from `diff.rs`. |

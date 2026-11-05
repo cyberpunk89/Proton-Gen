@@ -1,6 +1,7 @@
 # Builder redesign — exploration
 
-Status: **rollout step 1 built** (layout pass + OptiScaler builder rework, see below). Mockups are static HTML in [`mockups/`](mockups/)
+Status: **rollout steps 1–2 built** (layout pass + OptiScaler builder rework, On column +
+Essentials scope; see below). Mockups are static HTML in [`mockups/`](mockups/)
 (Catppuccin Mocha tokens + Lexend from `app.css`), rendered to [`img/`](img/) at 1440×900.
 Yellow sticky notes are annotations, not UI.
 
@@ -131,8 +132,12 @@ Where today's ten header controls go:
    **OptiScaler builder**: one-line install status (the fetch flow unfolds from it), settings
    grouped Upscaler → Frame gen → Image → *Fix a problem* (folded) → Loading, app-standard
    switches, and a sticky side summary listing exactly what Apply writes plus "not applied".
-2. **"On" column and Essentials scope:** left stack; Simple/Advanced becomes a scope.
-   Drop `uiMode` or migrate it.
+2. ✅ **"On" column and Essentials scope:** left stack; Simple/Advanced becomes a scope.
+   Built keeping `ui_mode` as the stored value ("simple" = Essentials), so no migration.
+   Essentials reuses SimplePanel's cards (open question 2). The column docks from 1100 px
+   and is an overlay with an "On" toggle below that (open question 1). It replaces the
+   Active options page and its tab; the column's dots show source (recipe / manual) and
+   take the colour of a lint notice about that item. Mute and A/B wait for step 4.
 3. **Dock:** Command / Problems / Logs tabs (moves the LogViewer and Troubleshooter in).
 4. **Mute + A/B:** store fields.
 5. **Runs:** backend run tracking plus diff and "revert to last good".

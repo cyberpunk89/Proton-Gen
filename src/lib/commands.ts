@@ -371,7 +371,7 @@ export const applyDefaultProfileAction: AppCommand = {
 export const uiModeAction: AppCommand = {
   id: "ui-mode",
   get label() {
-    return app.uiMode === "simple" ? "Switch to Advanced view" : "Switch to Simple view";
+    return app.uiMode === "simple" ? "Switch to Everything scope" : "Switch to Essentials scope";
   },
   icon: SlidersHorizontal,
   keywords: ["simple", "advanced", "layout"],

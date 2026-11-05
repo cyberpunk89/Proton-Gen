@@ -5,6 +5,8 @@
   import { keys } from "$lib/keys.svelte";
   import Header from "$lib/components/Header.svelte";
   import MainPanel from "$lib/components/MainPanel.svelte";
+  import OnColumn from "$lib/components/OnColumn.svelte";
+  import UiModeToggle from "$lib/components/UiModeToggle.svelte";
   import SimplePanel from "$lib/components/SimplePanel.svelte";
   import Library from "$lib/components/Library.svelte";
   import CommandPreview from "$lib/components/CommandPreview.svelte";
@@ -218,7 +220,22 @@
         <Library />
       </div>
     {:else}
-      <div class="flex min-h-0 flex-1" in:fade={{ duration: 120 }}>
+      <div class="relative flex min-h-0 flex-1" in:fade={{ duration: 120 }}>
+        <!-- "On for this game": docked from ~1100px, an overlay below that
+             (opened from the scope bar's On button). Shared by both scopes. -->
+        <div class="hidden min-h-0 min-[1100px]:flex">
+          <OnColumn />
+        </div>
+        {#if app.onColumnOpen}
+          <div class="absolute inset-0 z-30 flex min-[1100px]:hidden">
+            <div class="flex min-h-0 shadow-2xl"><OnColumn /></div>
+            <button
+              class="flex-1 bg-black/40"
+              aria-label="Close the On column"
+              onclick={() => (app.onColumnOpen = false)}
+            ></button>
+          </div>
+        {/if}
         <main class="flex min-h-0 min-w-0 flex-1 flex-col">
           <!-- The single scrolling region: nothing else clips. MainPanel's
                sticky toolbar, category headers and scroll-spy measure against
@@ -229,8 +246,13 @@
               <UpdateBanner />
               <StaleBanner />
               {#if app.uiMode === "simple"}
-                <!-- Advanced shows lint inline on the rows it's about, with a
-                     count in its toolbar; Simple has no rows to put it on. -->
+                <!-- Everything has the scope switch in its sticky toolbar. -->
+                <div class="flex items-center gap-3">
+                  <UiModeToggle />
+                  <span class="text-xs text-muted">The options most people reach for.</span>
+                </div>
+                <!-- Everything shows lint inline on the rows it's about, with a
+                     count in its toolbar; Essentials has no rows to put it on. -->
                 <Notices />
                 <SimplePanel />
               {:else}
