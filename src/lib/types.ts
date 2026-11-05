@@ -462,6 +462,16 @@ export interface Config {
   umu_wineprefix: string;
   umu_gameid: string;
   game_args: string;
+  /** Keys on but left out of the command (the On column's mute). */
+  muted: string[];
+}
+
+/** Mirrors store::AbSlot — a game's other A/B variant. */
+export interface AbSlot {
+  /** Which slot is live in `game_memory`: false = A, true = B. */
+  on_b: boolean;
+  /** The slot that isn't live. */
+  other: Config;
 }
 
 /** Mirrors ipc::ParsedCommand. */
@@ -548,6 +558,8 @@ export interface Store {
    *  different `GameDto.build_id` now means "updated since you tuned it".
    *  Rust `BTreeMap<String, u64>`. */
   tuned_builds: Record<string, number>;
+  /** Per-game A/B slots, keyed like `game_memory`. */
+  ab_slots: Record<string, AbSlot>;
 }
 
 /// Mirrors explain::TokenKind (serde rename_all = "snake_case").
@@ -740,6 +752,7 @@ export function emptyConfig(): Config {
     umu_wineprefix: "",
     umu_gameid: "",
     game_args: "",
+    muted: [],
   };
 }
 

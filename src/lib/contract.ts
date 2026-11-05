@@ -19,6 +19,7 @@ import type { Catalog as R_Catalog } from "./generated/Catalog";
 import type { Change as R_Change } from "./generated/Change";
 import type { ChangeKind as R_ChangeKind } from "./generated/ChangeKind";
 import type { Channel as R_Channel } from "./generated/Channel";
+import type { AbSlot as R_AbSlot } from "./generated/AbSlot";
 import type { Config as R_Config } from "./generated/Config";
 import type { ConfigWarning as R_ConfigWarning } from "./generated/ConfigWarning";
 import type { DiffStatus as R_DiffStatus } from "./generated/DiffStatus";
@@ -116,6 +117,7 @@ export type _Contract = [
   Same<Keys<T.MangohudExportResult, R_ExportResult>>,
   Same<Keys<T.VkBasaltExportResult, R_ExportResult>>,
   Same<Keys<T.Config, R_Config>>,
+  Same<Keys<T.AbSlot, R_AbSlot>>,
   Same<Keys<T.ParsedCommand, R_ParsedCommand>>,
   Same<Keys<T.Preset, R_Preset>>,
   Same<Keys<T.Paths, R_Paths>>,

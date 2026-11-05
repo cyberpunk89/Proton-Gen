@@ -37,6 +37,7 @@
     action = null,
     notices = [],
     wrapper = false,
+    muted = false,
     onToggle,
     onValue,
   }: {
@@ -74,6 +75,8 @@
     notices?: Notice[];
     /** A wrapper program, so "Emits" shows `key args`, not `KEY=value`. */
     wrapper?: boolean;
+    /** On, but muted from the On column: left out of the command. */
+    muted?: boolean;
     onToggle: () => void;
     onValue?: (v: string) => void;
   } = $props();
@@ -230,6 +233,16 @@
     {/if}
 
     <div class="flex items-center gap-1.5">
+      {#if enabled && muted}
+        <button
+          type="button"
+          onclick={() => app.toggleMute(paramKey)}
+          class="inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] text-peach transition hover:brightness-110"
+          style="background: color-mix(in srgb, var(--peach) 16%, transparent)"
+          title="Muted: on, but left out of the command. Click to unmute."
+          >muted</button
+        >
+      {/if}
       {#if appliedBy}
         <!-- Cleared as soon as the row is edited by hand (see disownParam), so
              the chip never claims a recipe owns a value the user has changed. -->

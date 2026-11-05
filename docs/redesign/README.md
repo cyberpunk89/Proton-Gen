@@ -1,6 +1,6 @@
 # Builder redesign — exploration
 
-Status: **rollout steps 1–3 built** (layout pass + OptiScaler builder rework, On column +
+Status: **rollout steps 1–4 built** (layout pass + OptiScaler builder rework, On column +
 Essentials scope; see below). Mockups are static HTML in [`mockups/`](mockups/)
 (Catppuccin Mocha tokens + Lexend from `app.css`), rendered to [`img/`](img/) at 1440×900.
 Yellow sticky notes are annotations, not UI.
@@ -143,7 +143,10 @@ Where today's ten header controls go:
    troubleshooter when enabled. Matching log lines to recipes (`log_patterns`) is left
    for step 5, with Runs. The lint banner is gone from both scopes; the Everything
    toolbar's lint chip opens Problems.
-4. **Mute + A/B:** store fields.
+4. ✅ **Mute + A/B:** `Config.muted` (keys kept in the stack, dropped by `Config::unmuted`
+   wherever a command is assembled or linted, so presets, game memory and the JSON CLI
+   honour it) and `Store.ab_slots` (per game, the slot that isn't live; B starts as a copy
+   of A). Answers open question 4 with two slots; per-game presets still exist for more.
 5. **Runs:** backend run tracking plus diff and "revert to last good".
 
 ## Open questions

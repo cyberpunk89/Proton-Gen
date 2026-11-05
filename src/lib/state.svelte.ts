@@ -14,6 +14,7 @@ import { LSFG_BUILDER_KEYS } from "./lsfg";
 import { encodePreset } from "./presetCode";
 import { buildOptiScaler, parseOptiScaler } from "./optiscaler";
 import type {
+  AbSlot,
   Catalog,
   Config,
   DiffStatus,
@@ -84,6 +85,7 @@ const EMPTY_STORE: Store = {
   paths: { steam_roots: [], steam_libraries: [], proton_dirs: [], bins: {} },
   global_profile: null,
   tuned_builds: {},
+  ab_slots: {},
 };
 
 /** Library sort ids. Kept here because both the toolbar and the comparator in
@@ -158,6 +160,9 @@ class AppStore {
   wrap = $state<Record<string, OptState>>({});
   extraEnv = $state("");
   gameArgs = $state("");
+  /** Keys that are on but muted: kept in the stack, left out of the command
+   *  (`Config.muted`; the backend drops them in `Config::unmuted`). */
+  muted = $state<string[]>([]);
   umuExe = $state("");
   umuWineprefix = $state("");
   umuGameid = $state("");
@@ -585,6 +590,7 @@ class AppStore {
     this.wrap = wrap;
     this.extraEnv = "";
     this.gameArgs = "";
+    this.muted = [];
     // Attribution describes how the *current* values were reached, so it cannot
     // outlive them. This also covers undo and preset/game loads, which all funnel
     // through loadConfig → resetOptions.
@@ -629,6 +635,61 @@ class AppStore {
     // Typing coalesces into one entry; note() just gives it a real name.
     history.note(`set ${key}`);
   }
+  isMuted(key: string): boolean {
+    return this.muted.includes(key);
+  }
+
+  /** Mute or unmute an on row: it stays in the stack, but not the command. */
+  toggleMute(key: string) {
+    const was = this.muted.includes(key);
+    this.muted = was ? this.muted.filter((k) => k !== key) : [...this.muted, key];
+    this.mark(`${was ? "unmute" : "mute"} ${key}`);
+  }
+
+  // ---------------------------------- A/B ----------------------------------
+
+  /** The selected game's A/B slots, or null when it has only the one config. */
+  get abSlot(): AbSlot | null {
+    if (this.selectedAppId == null) return null;
+    return this.store.ab_slots[String(this.selectedAppId)] ?? null;
+  }
+
+  /** Which slot is live: "A" unless the game has slots and B is on. */
+  get abSide(): "A" | "B" {
+    return this.abSlot?.on_b ? "B" : "A";
+  }
+
+  /**
+   * Flip to the other slot. The first flip creates B as a copy of A, so you
+   * change one thing and compare. After that the live config and the stored
+   * other swap places. Undo history restarts: an undo across the swap would
+   * restore one slot's config into the other.
+   */
+  switchAB(side: "A" | "B") {
+    if (this.selectedAppId == null || side === this.abSide) return;
+    const key = String(this.selectedAppId);
+    const current = this.toConfig();
+    const slot = this.store.ab_slots[key];
+    if (!slot) {
+      this.store.ab_slots[key] = { on_b: true, other: JSON.parse(JSON.stringify(current)) };
+      toast.info("B starts as a copy of A — change something, then flip to compare");
+    } else {
+      const next = slot.other;
+      this.store.ab_slots[key] = { on_b: !slot.on_b, other: current };
+      this.loadConfig(next);
+    }
+    this.persistStore();
+    history.reset(this.snapshot());
+  }
+
+  /** Keep only the live slot. */
+  dropAB() {
+    if (this.selectedAppId == null) return;
+    delete this.store.ab_slots[String(this.selectedAppId)];
+    this.persistStore();
+    toast.success(`Kept ${this.abSide === "B" ? "B" : "A"} as this game's only config`);
+  }
+
   toggleWrap(key: string) {
     const s = this.wrap[key];
     if (!s) return;
@@ -809,6 +870,8 @@ class AppStore {
       umu_wineprefix: this.umuWineprefix,
       umu_gameid: this.umuGameid,
       game_args: this.gameArgs,
+      // Only keys that are actually on: a mute outlives nothing it muted.
+      muted: this.muted.filter((k) => this.env[k]?.enabled || this.wrap[k]?.enabled),
     };
   }
 
@@ -840,6 +903,7 @@ class AppStore {
     // in `cfg.extra_env`, so it produces no leftover and nothing is duplicated.
     this.extraEnv = mergeIntoExtraEnv(cfg.extra_env, leftover);
     this.gameArgs = cfg.game_args;
+    this.muted = [...(cfg.muted ?? [])];
     this.umuExe = target.umu_exe;
     this.umuWineprefix = target.umu_wineprefix;
     this.umuGameid = target.umu_gameid;

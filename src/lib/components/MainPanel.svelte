@@ -765,6 +765,7 @@
       dim={h.hidden}
       appliedBy={app.recipeOrigin[h.key] ?? null}
       notices={app.noticesByKey.get(h.key) ?? []}
+      muted={app.isMuted(h.key)}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       action={w.key === "mangohud"
@@ -798,6 +799,7 @@
       dim={h.hidden}
       appliedBy={app.recipeOrigin[h.key] ?? null}
       notices={app.noticesByKey.get(h.key) ?? []}
+      muted={app.isMuted(h.key)}
       titleRanges={h.titleRanges}
       helpRanges={h.helpRanges}
       action={e.key === "MANGOHUD_CONFIG"

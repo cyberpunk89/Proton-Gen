@@ -870,6 +870,8 @@ fn parse_command_with(catalog: &Catalog, input: &str) -> ParsedCommand {
             umu_wineprefix: p.umu_wineprefix.unwrap_or_default(),
             umu_gameid: p.umu_gameid.unwrap_or_default(),
             game_args: p.game_args,
+            // A pasted command has nothing muted: it is what runs.
+            muted: Vec::new(),
         },
         dropped,
     }
@@ -1000,6 +1002,8 @@ async fn lint_notices(
     config: &Config,
     app_id: Option<u32>,
 ) -> Result<Vec<lint::Notice>, String> {
+    // Lint the command that will actually run: a muted row can't conflict.
+    let config = &*config.unmuted();
     let value = |key: &str| config.env.iter().find(|(k, _)| k == key).map(|(_, v)| v.trim());
     let injected = value("PROTON_USE_OPTISCALER").is_some_and(|v| v != "0");
     let dir = app_id.filter(|_| injected).and_then(|id| state.game(id)).and_then(|g| g.install_dir);

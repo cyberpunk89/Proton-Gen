@@ -89,6 +89,8 @@ pub fn resolve_env_wrappers(
     catalog: &Catalog,
     config: &Config,
 ) -> (Vec<(String, String)>, Vec<builder::Wrapper>) {
+    // Muted rows stay in the config but never reach the command.
+    let config = &*config.unmuted();
     let (options, leftover) = options_from_config(catalog, config);
     let (mut env, wrappers) = params::to_spec(catalog, &options);
     // One merge, so the preview and `ipc::apply_recipe` cannot disagree about

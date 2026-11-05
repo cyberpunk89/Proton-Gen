@@ -3,4 +3,12 @@
 /**
  * A serializable snapshot of the builder state (everything except the chosen game).
  */
-export type Config = { umu: boolean, runtime: string | null, env: Array<[string, string]>, wrappers: Array<[string, string]>, extra_env: string, umu_exe: string, umu_wineprefix: string, umu_gameid: string, game_args: string, };
+export type Config = { umu: boolean, runtime: string | null, env: Array<[string, string]>, wrappers: Array<[string, string]>, extra_env: string, umu_exe: string, umu_wineprefix: string, umu_gameid: string, game_args: string, 
+/**
+ * Catalog keys (env or wrapper) that stay on in the stack but are left out
+ * of the command: the On column's mute, for bisecting a problem without
+ * losing the value. Applied where a command is assembled or linted
+ * ([`Config::unmuted`]), so presets, game memory and the JSON CLI all
+ * honour it. A key that isn't on is simply ignored.
+ */
+muted: Array<string>, };

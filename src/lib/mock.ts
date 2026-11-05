@@ -72,6 +72,7 @@ function emptyMockConfig(): Config {
     umu_wineprefix: "",
     umu_gameid: "",
     game_args: "",
+    muted: [],
   };
 }
 
@@ -718,6 +719,7 @@ export const mockBootstrap: Bootstrap = {
     },
     global_profile: null,
     tuned_builds: { "553850": 20000001 },
+    ab_slots: {},
   },
   // 553850 drifts against anything the builder produces; 1245620 is exactly
   // what `mockBuildCommand` emits for a freshly-reset config, so opening it
@@ -920,6 +922,9 @@ export function mockParseCommand(input: string): { config: Config; dropped: stri
 }
 
 export function mockBuildCommand(config: Config, protonPath: string | null): string {
+  // Config::unmuted: a muted row never reaches the command.
+  const live = ([k]: [string, string]) => !(config.muted ?? []).includes(k);
+  config = { ...config, env: config.env.filter(live), wrappers: config.wrappers.filter(live) };
   // Values are shell-quoted like `builder::sh_quote`, so `pnpm dev` shows the
   // same `DXVK_CONFIG="a;b"` the real backend emits.
   const env = config.env.map(([k, v]) => formatExtraEnv([[k, v]]));

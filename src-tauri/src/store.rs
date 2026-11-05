@@ -29,6 +29,44 @@ pub struct Config {
     pub umu_gameid: String,
     #[serde(default)]
     pub game_args: String,
+    /// Catalog keys (env or wrapper) that stay on in the stack but are left out
+    /// of the command: the On column's mute, for bisecting a problem without
+    /// losing the value. Applied where a command is assembled or linted
+    /// ([`Config::unmuted`]), so presets, game memory and the JSON CLI all
+    /// honour it. A key that isn't on is simply ignored.
+    #[serde(default)]
+    pub muted: Vec<String>,
+}
+
+impl Config {
+    /// This config as the command sees it: muted env vars and wrappers dropped.
+    /// Borrowed unchanged in the common case of nothing muted.
+    pub fn unmuted(&self) -> std::borrow::Cow<'_, Config> {
+        if self.muted.is_empty() {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let live = |(k, _): &(String, String)| !self.muted.iter().any(|m| m == k);
+        std::borrow::Cow::Owned(Config {
+            env: self.env.iter().filter(|p| live(p)).cloned().collect(),
+            wrappers: self.wrappers.iter().filter(|p| live(p)).cloned().collect(),
+            muted: Vec::new(),
+            ..self.clone()
+        })
+    }
+}
+
+/// A game's A/B slots: two variants of its tuning to flip between. The live
+/// one is the game's `game_memory` entry; this holds the other, so a store
+/// without any slots is exactly the old single-config shape.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../../src/lib/generated/"))]
+pub struct AbSlot {
+    /// Which slot is live in `game_memory`: false = A, true = B.
+    #[serde(default)]
+    pub on_b: bool,
+    /// The slot that isn't live.
+    #[serde(default)]
+    pub other: Config,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -198,6 +236,9 @@ pub struct Store {
     /// reuse and which must not carry a per-install fact.
     #[serde(default)]
     pub tuned_builds: BTreeMap<String, u64>,
+    /// Per-game A/B slots, keyed like `game_memory`. See [`AbSlot`].
+    #[serde(default)]
+    pub ab_slots: BTreeMap<String, AbSlot>,
 }
 
 fn default_llm_endpoint() -> String {
@@ -466,6 +507,41 @@ show_irrelevant = true
         assert_eq!(s.gpu_gen, "");
         assert_eq!(s.ui_mode, "");
         assert!(s.global_profile.is_none());
+        assert!(s.ab_slots.is_empty());
+    }
+
+    #[test]
+    fn a_partial_ab_slot_and_a_config_without_muted_still_load() {
+        // Same rule as `[paths]`: a nested table written by hand, or by an older
+        // build, carries only some keys, and each must default on its own.
+        let partial = r#"
+[game_memory.1245620]
+env = [["DXVK_ASYNC", "1"]]
+[ab_slots.1245620]
+on_b = true
+"#;
+        let s: Store = toml::from_str(partial).expect("a partial ab slot still parses");
+        assert!(s.game_memory["1245620"].muted.is_empty());
+        let slot = &s.ab_slots["1245620"];
+        assert!(slot.on_b);
+        assert!(slot.other.env.is_empty());
+    }
+
+    #[test]
+    fn unmuted_drops_only_the_muted_keys() {
+        let c = Config {
+            env: vec![("DXVK_ASYNC".into(), "1".into()), ("PROTON_LOG".into(), "1".into())],
+            wrappers: vec![("gamemoderun".into(), String::new()), ("mangohud".into(), String::new())],
+            muted: vec!["PROTON_LOG".into(), "mangohud".into()],
+            ..Config::default()
+        };
+        let u = c.unmuted();
+        assert_eq!(u.env, vec![("DXVK_ASYNC".to_string(), "1".to_string())]);
+        assert_eq!(u.wrappers, vec![("gamemoderun".to_string(), String::new())]);
+        assert!(u.muted.is_empty());
+        // Nothing muted: no copy.
+        let plain = Config::default();
+        assert!(matches!(plain.unmuted(), std::borrow::Cow::Borrowed(_)));
     }
 
     #[test]

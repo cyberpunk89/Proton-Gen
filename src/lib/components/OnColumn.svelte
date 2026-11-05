@@ -3,7 +3,7 @@
   import { toast } from "$lib/toast.svelte";
   import { splitExtraEnv } from "$lib/shell";
   import { irrelevance } from "$lib/util";
-  import { X, Warning, FloppyDisk, CaretRight } from "phosphor-svelte";
+  import { X, Warning, FloppyDisk, CaretRight, SpeakerSlash, SpeakerHigh } from "phosphor-svelte";
   import type { Severity } from "$lib/types";
 
   /**
@@ -14,8 +14,11 @@
    *
    * Each item says where it came from (a recipe, or you), whether lint has
    * something to say about it, and whether your hardware can use it. Clicking
-   * one jumps to its catalog row; × turns it off.
+   * one jumps to its catalog row; the speaker mutes it (stays here, leaves the
+   * command — for bisecting); × turns it off. A/B keeps two variants of the
+   * whole stack per game to flip between.
    */
+  let mutedCount = $derived(app.muted.filter((k) => app.env[k]?.enabled || app.wrap[k]?.enabled).length);
 
   let wrappers = $derived(app.catalog.wrappers.filter((w) => app.wrap[w.key]?.enabled));
   let envs = $derived(app.catalog.envs.filter((e) => app.env[e.key]?.enabled));
@@ -69,9 +72,38 @@
       style="background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent)"
       >{app.activeCount}</span
     >
+    {#if app.selectedAppId != null}
+      <!-- A/B: two variants of this game's stack. B starts as a copy of A. -->
+      <div
+        class="ml-auto inline-flex items-center rounded-md border border-border p-0.5"
+        role="group"
+        aria-label="A/B slot"
+        title={app.abSlot ? "Flip between this game's two variants" : "Make a B variant to compare against"}
+      >
+        {#each ["A", "B"] as const as side (side)}
+          <button
+            onclick={() => app.switchAB(side)}
+            aria-pressed={app.abSide === side}
+            class="rounded px-1.5 text-[11px] font-medium transition {app.abSide === side
+              ? 'bg-accent text-on-accent'
+              : 'text-muted hover:text-text'}">{side}</button
+          >
+        {/each}
+      </div>
+      {#if app.abSlot}
+        <button
+          onclick={() => app.dropAB()}
+          class="grid size-5 place-items-center rounded text-muted hover:text-text"
+          aria-label="Keep only {app.abSide}"
+          title="Keep only {app.abSide}, discard the other"
+        >
+          <X size={11} />
+        </button>
+      {/if}
+    {/if}
     <button
       onclick={() => (app.onColumnOpen = false)}
-      class="ml-auto grid size-6 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-text min-[1100px]:hidden"
+      class="grid size-6 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-text min-[1100px]:hidden"
       aria-label="Close"
     >
       <X size={13} />
@@ -151,6 +183,19 @@
       >
         <FloppyDisk size={13} /> Save as preset
       </button>
+      {#if mutedCount}
+        <button
+          onclick={() => {
+            app.muted = [];
+            toast.success("Unmuted everything");
+          }}
+          class="rounded-lg border border-border px-2 py-1.5 text-xs text-subtext transition hover:border-accent/50"
+          aria-label="Unmute all {mutedCount}"
+          title="Unmute all {mutedCount}"
+        >
+          <SpeakerHigh size={13} />
+        </button>
+      {/if}
       <button
         onclick={clearAll}
         disabled={app.activeCount === 0}
@@ -175,7 +220,8 @@
 )}
   {@const notices = kind === "custom" ? [] : (app.noticesByKey.get(key) ?? [])}
   {@const recipe = kind === "custom" ? null : (app.recipeOrigin[key] ?? null)}
-  <div class="group flex items-center rounded-lg transition hover:bg-surface-2/60">
+  {@const muted = kind !== "custom" && app.isMuted(key)}
+  <div class="group flex items-center rounded-lg transition hover:bg-surface-2/60 {muted ? 'opacity-55' : ''}">
     <button
       onclick={() => kind !== "custom" && go(key)}
       disabled={kind === "custom"}
@@ -197,13 +243,26 @@
             ? 'var(--mauve)'
             : 'var(--muted)'}"
       ></span>
-      <span class="min-w-0 flex-1 truncate font-mono text-[12px] text-text">
+      <span class="min-w-0 flex-1 truncate font-mono text-[12px] text-text {muted ? 'line-through' : ''}">
         {label}{#if value}<span class="text-muted">{kind === "wrap" ? " " : "="}{value}</span>{/if}
       </span>
       {#if hwWarning}
         <Warning size={11} weight="fill" class="shrink-0 text-peach" />
       {/if}
     </button>
+    {#if kind !== "custom"}
+      <button
+        onclick={() => app.toggleMute(key)}
+        aria-label="{muted ? 'Unmute' : 'Mute'} {label}"
+        aria-pressed={muted}
+        title={muted ? "Unmute — put it back in the command" : "Mute — keep it here, leave it out of the command"}
+        class="grid size-5 shrink-0 place-items-center rounded transition hover:text-text focus-visible:opacity-100 group-hover:opacity-100 {muted
+          ? 'text-peach opacity-100'
+          : 'text-muted opacity-0'}"
+      >
+        <SpeakerSlash size={11} weight={muted ? "fill" : "regular"} />
+      </button>
+    {/if}
     <button
       onclick={() => off(kind, key)}
       aria-label="Turn off {label}"

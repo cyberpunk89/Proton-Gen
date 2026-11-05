@@ -77,6 +77,11 @@ export function decodePreset(code: string, knownWrappers: string[]): DecodeResul
     if (!isSafeString(v)) return fail("The preset contains an invalid value.");
     config[field] = v;
   }
+  // Mutes only for keys this preset actually turns on.
+  if (Array.isArray(c.muted)) {
+    const on = new Set([...config.env, ...config.wrappers].map(([k]) => k));
+    config.muted = c.muted.filter((k): k is string => typeof k === "string" && on.has(k));
+  }
   if (c.runtime != null) {
     if (!isSafeString(c.runtime)) return fail("The preset's runtime is invalid.");
     config.runtime = c.runtime;
